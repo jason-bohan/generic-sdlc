@@ -55,6 +55,109 @@ function writeJson(file, value) {
   fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
 }
 
+function timestampForFile() {
+  return new Date().toISOString().replace(/[:.]/g, '-');
+}
+
+function backupFile(file, reason) {
+  const backup = `${file}.bak-${timestampForFile()}`;
+  fs.copyFileSync(file, backup);
+  console.log(color('yellow', `  Backed up ${path.basename(file)} (${reason}) to ${path.basename(backup)}`));
+  return backup;
+}
+
+function isPlainObject(value) {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function mergeMissingDefaults(target, defaults, prefix = '') {
+  const added = [];
+  const repaired = [];
+  const output = { ...target };
+
+  for (const [key, defaultValue] of Object.entries(defaults)) {
+    const keyPath = prefix ? `${prefix}.${key}` : key;
+    const currentValue = output[key];
+
+    if (currentValue === undefined) {
+      output[key] = defaultValue;
+      added.push(keyPath);
+      continue;
+    }
+
+    if (isPlainObject(defaultValue)) {
+      if (isPlainObject(currentValue)) {
+        const merged = mergeMissingDefaults(currentValue, defaultValue, keyPath);
+        output[key] = merged.value;
+        added.push(...merged.added);
+        repaired.push(...merged.repaired);
+      } else if (currentValue === null || Array.isArray(currentValue)) {
+        output[key] = defaultValue;
+        repaired.push(keyPath);
+      }
+    }
+  }
+
+  return { value: output, added, repaired };
+}
+
+function readConfigOrSelfHeal(configFile, templateFile) {
+  const hasTemplate = templateFile && fs.existsSync(templateFile);
+  const template = hasTemplate ? readJson(templateFile) : null;
+
+  if (!fs.existsSync(configFile)) {
+    if (!template) {
+      console.log(color('yellow', '  No config template found; create .sdlc-framework.config.json manually'));
+      return null;
+    }
+    writeJson(configFile, template);
+    console.log(color('green', `  Created .sdlc-framework.config.json from ${path.basename(templateFile)}`));
+    return template;
+  }
+
+  let cfg;
+  try {
+    cfg = readJson(configFile);
+  } catch (error) {
+    if (!template) {
+      console.log(color('yellow', `  Could not parse .sdlc-framework.config.json: ${error.message}`));
+      return null;
+    }
+    backupFile(configFile, 'invalid JSON');
+    writeJson(configFile, template);
+    console.log(color('green', '  Recreated .sdlc-framework.config.json from template'));
+    return template;
+  }
+
+  if (!isPlainObject(cfg)) {
+    if (!template) {
+      console.log(color('yellow', '  .sdlc-framework.config.json is not an object; create it manually'));
+      return null;
+    }
+    backupFile(configFile, 'invalid config shape');
+    writeJson(configFile, template);
+    console.log(color('green', '  Recreated .sdlc-framework.config.json from template'));
+    return template;
+  }
+
+  if (!template) {
+    console.log(color('green', '  .sdlc-framework.config.json exists'));
+    return cfg;
+  }
+
+  const merged = mergeMissingDefaults(cfg, template);
+  if (merged.added.length || merged.repaired.length) {
+    writeJson(configFile, merged.value);
+    const addedText = merged.added.length ? `${merged.added.length} missing key(s)` : '';
+    const repairedText = merged.repaired.length ? `${merged.repaired.length} malformed section(s)` : '';
+    console.log(color('green', `  Self-healed .sdlc-framework.config.json from template (${[addedText, repairedText].filter(Boolean).join(', ')})`));
+  } else {
+    console.log(color('green', '  .sdlc-framework.config.json already matches the template shape'));
+  }
+
+  return merged.value;
+}
+
 function createPrompt() {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   return {
@@ -105,20 +208,11 @@ function ensureEnvFile() {
 
 function ensureConfigFile(driver) {
   const configFile = path.join(root, '.sdlc-framework.config.json');
-  if (!fs.existsSync(configFile)) {
-    const template = configTemplatePath();
-    if (!template) {
-      console.log(color('yellow', '  No config template found; create .sdlc-framework.config.json manually'));
-      return null;
-    }
-    fs.copyFileSync(template, configFile);
-    console.log(color('green', `  Created .sdlc-framework.config.json from ${path.basename(template)}`));
-  } else {
-    console.log(color('green', '  .sdlc-framework.config.json already exists'));
-  }
+  const template = configTemplatePath();
+  const cfg = readConfigOrSelfHeal(configFile, template);
+  if (!cfg) return null;
 
   try {
-    const cfg = readJson(configFile);
     cfg.scheduler = cfg.scheduler || {};
     if (!cfg.scheduler.driver || cfg.scheduler.driver === 'generic') {
       cfg.scheduler.driver = driver;
@@ -232,6 +326,7 @@ async function main() {
   printToolStatus('ollama', 'Install from https://ollama.com/download for local models.');
   printToolStatus('goose', 'Install from https://block.github.io/goose/docs/getting-started for local execution mode.');
   printToolStatus('claude', 'Install with: npm install -g @anthropic-ai/claude-code');
+  printToolStatus('gh', 'Install GitHub CLI from https://cli.github.com for Renovate/Dependabot PR upkeep.');
   printToolStatus('harlequin', 'Install with: pip install harlequin for the SQLite TUI.');
 
   logStep('[3/8] Detecting agent driver');
