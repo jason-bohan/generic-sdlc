@@ -1,6 +1,6 @@
 ﻿# SDLC Framework
 
-**SDLC Framework** (Irish: *cooperative workgroup*) is a multi-agent SDLC automation platform. Six autonomous AI agents collaborate on software projects end-to-end — from story creation through coding, PR review, CI, and merge — with zero human intervention or full step-by-step control.
+**SDLC Framework** is a multi-agent SDLC automation platform. Six autonomous AI agents collaborate on software projects end-to-end — from story creation through coding, PR review, CI, and merge — with zero human intervention or full step-by-step control.
 
 Built on top of Azure DevOps and Agility (Digital.ai), SDLC Framework turns any AI-powered IDE workspace into a fully staffed engineering team. Works with **Cursor**, **Claude Code**, **Goose**, or any CLI-driven agent via a configurable driver.
 
