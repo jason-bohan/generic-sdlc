@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <link rel="icon" type="image/png" href="/favicon.png" />
+        <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link href="https://fonts.googleapis.com/css2?family=Righteous&display=swap" rel="stylesheet" />
+        <title>The Office — OSV Agent Workspace</title>
+        <style>
+            *,
+            *::before,
+            *::after {
+                box-sizing: border-box;
+                margin: 0;
+                padding: 0;
+            }
+            :root {
+                /* 70s palette */
+                --mikado: #301F10;
+                --teakwood: #6F5637;
+                --autumn-cream: #EDE9D3;
+                --sisal: #D2D0BA;
+                --sea-turtle: #57AC9B;
+                --pale-gold: #D8C494;
+
+                /* mapped to semantic tokens (light cream theme) */
+                --bg-primary: #EDE9D3;
+                --bg-secondary: #E2DDCA;
+                --bg-card: #F5F3E8;
+                --bg-card-hover: #FFFDF2;
+                --border: #C9C4AD;
+                --text-primary: #301F10;
+                --text-secondary: #5C4433;
+                --text-tertiary: #8a7a62;
+                --accent: #3d8a7a;
+                --accent-dim: rgba(87, 172, 155, 0.12);
+                --success: #3d8a7a;
+                --warning: #b8942e;
+                --error: #b04a34;
+                --info: #4a9a8a;
+                --font-mono: 'Courier New', 'Lucida Console', monospace;
+                --font-sans: 'Georgia', 'Times New Roman', serif;
+            }
+            html {
+                font-size: 14px;
+                transition: background-color 0.3s ease, color 0.3s ease;
+            }
+            body {
+                font-family: var(--font-sans);
+                background: var(--bg-primary);
+                color: var(--text-primary);
+                line-height: 1.5;
+                min-height: 100vh;
+                transition: background-color 0.3s ease, color 0.3s ease;
+            }
+            #root {
+                width: 100%;
+                height: 100vh;
+                overflow: hidden;
+            }
+            @keyframes pulse {
+                0%, 100% { opacity: 1; }
+                50% { opacity: 0.3; }
+            }
+            @keyframes slowFade {
+                0%, 100% { opacity: 1; }
+                50% { opacity: 0.5; }
+            }
+            @keyframes blink-cursor {
+                0%, 100% { opacity: 1; }
+                50% { opacity: 0; }
+            }
+            @keyframes typing-scroll {
+                0%   { transform: translateY(0); }
+                100% { transform: translateY(-100%); }
+            }
+            @keyframes screen-flicker {
+                0%, 100% { opacity: 0.85; }
+                50% { opacity: 1; }
+            }
+            @keyframes fish-swim-1 {
+                0%, 100% { transform: translateX(0); }
+                50% { transform: translateX(12px); }
+            }
+            @keyframes fish-swim-2 {
+                0%, 100% { transform: translateX(0) scaleX(1); }
+                40% { transform: translateX(-14px) scaleX(1); }
+                50% { transform: translateX(-14px) scaleX(-1); }
+                90% { transform: translateX(0) scaleX(-1); }
+                100% { transform: translateX(0) scaleX(1); }
+            }
+            @keyframes fish-swim-3 {
+                0%, 100% { transform: translateX(0); }
+                50% { transform: translateX(-10px); }
+            }
+            @keyframes bubble-rise {
+                0% { transform: translateY(0); opacity: 0.6; }
+                100% { transform: translateY(-14px); opacity: 0; }
+            }
+            @keyframes idle-sway {
+                0%, 100% { transform: translateX(0) translateY(0); }
+                25% { transform: translateX(2px) translateY(-1px); }
+                50% { transform: translateX(-1px) translateY(1px); }
+                75% { transform: translateX(1px) translateY(-1px); }
+            }
+        </style>
+    </head>
+    <body>
+        <div id="root"></div>
+        <script type="module" src="/src/dashboard/main.tsx"></script>
+    </body>
+</html>

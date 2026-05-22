@@ -1,0 +1,19 @@
+meta {
+  name: Build Complete
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/handoff/build-complete
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "prId": 42,
+    "result": "passed",
+    "buildId": 1001
+  }
+}

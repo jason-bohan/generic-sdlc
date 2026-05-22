@@ -1,0 +1,21 @@
+meta {
+  name: Update Tokens
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/api/tokens/update
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "agentId": "{{agentId}}",
+    "source": "cloud",
+    "input": 1500,
+    "output": 400,
+    "phase": "development"
+  }
+}

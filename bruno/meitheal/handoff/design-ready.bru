@@ -1,0 +1,20 @@
+meta {
+  name: Design Ready
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/api/handoff/design-ready
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "storyNumber": "B-12345",
+    "storyName": "Add password reset flow",
+    "designSpec": "## Password Reset\n\n- Use modal dialog\n- Brand colors: #6366f1\n- WCAG AA compliant",
+    "targetAgent": "lasair"
+  }
+}

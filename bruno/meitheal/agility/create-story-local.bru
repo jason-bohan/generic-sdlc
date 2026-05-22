@@ -1,0 +1,26 @@
+meta {
+  name: Create Story (local backlog)
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/api/agility/create-story
+  body: json
+  auth: none
+}
+
+docs {
+  Use after Meitheal picked LOCAL or mock agility. Requires classOfService. Omits live Agility team or owner OIDs.
+}
+
+body:json {
+  {
+    "name": "Bruno sample local story",
+    "description": "Created from Bruno for API contract tests",
+    "estimate": 2,
+    "classOfService": "Standard",
+    "source": "local",
+    "workspaceDir": "{{workspaceDir}}"
+  }
+}

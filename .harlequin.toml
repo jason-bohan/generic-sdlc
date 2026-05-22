@@ -1,0 +1,11 @@
+default_profile = "default"
+
+[profiles.default]
+theme = "monokai"
+keymap_name = ["vscode", "meitheal"]
+
+# F5 runs the query (familiar from SSMS / Azure Data Studio)
+[[keymaps.meitheal]]
+keys = "F5"
+action = "code_editor.run_query"
+key_display = "F5 Run"

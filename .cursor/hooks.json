@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "hooks": {
+    "afterAgentResponse": [
+      {
+        "command": "powershell -NoProfile -ExecutionPolicy Bypass -File .cursor/hooks/invoke-hook.ps1 -HookName cloud-token-estimator.ps1",
+        "loop_limit": 1
+      }
+    ],
+    "stop": [
+      {
+        "command": "powershell -NoProfile -ExecutionPolicy Bypass -File .cursor/hooks/invoke-hook.ps1 -HookName cloud-token-reporter.ps1",
+        "loop_limit": 1
+      },
+      {
+        "command": "powershell -NoProfile -ExecutionPolicy Bypass -File .cursor/hooks/invoke-hook.ps1 -HookName workflow-validator.ps1",
+        "loop_limit": 3
+      },
+      {
+        "command": "powershell -NoProfile -ExecutionPolicy Bypass -File .cursor/hooks/invoke-hook.ps1 -HookName reviewer-watcher.ps1",
+        "loop_limit": 1
+      },
+      {
+        "command": "powershell -NoProfile -ExecutionPolicy Bypass -File .cursor/hooks/invoke-hook.ps1 -HookName devops-watcher.ps1",
+        "loop_limit": 1
+      },
+      {
+        "command": "powershell -NoProfile -ExecutionPolicy Bypass -File .cursor/hooks/invoke-hook.ps1 -HookName ux-watcher.ps1",
+        "loop_limit": 1
+      },
+      {
+        "command": "powershell -NoProfile -ExecutionPolicy Bypass -File .cursor/hooks/invoke-hook.ps1 -HookName frontend-watcher.ps1",
+        "loop_limit": 1
+      },
+      {
+        "command": "powershell -NoProfile -ExecutionPolicy Bypass -File .cursor/hooks/invoke-hook.ps1 -HookName backend-watcher.ps1",
+        "loop_limit": 1
+      }
+    ]
+  }
+}

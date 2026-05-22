@@ -1,0 +1,21 @@
+{
+  "mcpServers": {
+    "Agility (Digital.ai) [formerly VersionOne]": {
+      "command": "node",
+      "args": ["tools/mcp-agility/index.js"],
+      "envFile": "${workspaceFolder}/.env",
+      "env": {
+        "AGILITY_API_KEY": "${env:AGILITY_API_KEY}",
+        "AGILITY_BASE_URL": "${env:AGILITY_BASE_URL}"
+      }
+    },
+    "Azure DevOps": {
+      "command": "npx",
+      "args": ["-y", "@azure-devops/mcp", "oursundayvisitor"]
+    },
+    "goose-developer": {
+      "command": "goose",
+      "args": ["mcp", "developer"]
+    }
+  }
+}

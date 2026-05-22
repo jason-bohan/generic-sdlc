@@ -1,0 +1,40 @@
+---
+description: PowerShell terminal conventions - no bash syntax
+alwaysApply: true
+---
+
+# PowerShell Shell Rules
+
+This workspace uses PowerShell. Bash syntax does not work.
+
+## Git commits
+
+- NEVER use heredoc (`<<'EOF'`) for commit messages - PowerShell does not support it
+- Use single-line `-m "message"` for commits
+- For multi-line messages, write to a temp file first:
+  ```powershell
+  Set-Content -Path .git\COMMIT_MSG -Value "Title`n`nBody here"
+  git commit -F .git\COMMIT_MSG
+  Remove-Item .git\COMMIT_MSG
+  ```
+
+## npm scripts (package.json)
+
+npm scripts run via `cmd.exe` on Windows, not PowerShell or bash. They must be cross-platform:
+
+- NEVER use `test -d`, `true`, `false`, `grep`, `sed`, `awk`, `which`, `chmod`, `ln -s`, or other Unix-only commands
+- For conditional logic, use `node -e` with inline JavaScript instead
+- Example: `"postinstall": "node -e \"try{require('fs').statSync('dir/package.json');require('child_process').execSync('npm install',{cwd:'dir',stdio:'inherit'})}catch(e){}\""` 
+
+## No em dashes or special Unicode
+
+- NEVER use em dashes (`—`, U+2014) or en dashes (`–`, U+2013) in `.ps1` files or any string that will be written to a `.ps1` file
+- PowerShell 5.1 reads scripts as ANSI (Windows-1252) by default; multi-byte UTF-8 characters like em dashes corrupt the parser and cause silent script failures
+- Use a plain hyphen-minus (`-`) instead
+
+## Other reminders
+
+- Use `Select-Object -First N` instead of `head -N`
+- Use `Select-Object -Last N` instead of `tail -N`
+- Use PowerShell here-strings (`@"..."@`) instead of bash heredocs if multi-line input is needed
+- Chain commands with `&&` (PowerShell 7+) or `;` - not `\` for line continuation

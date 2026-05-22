@@ -1,0 +1,17 @@
+# Unsloth QLoRA fine-tuning environment for Qwen3:8B
+# Target: RTX 3500 Ada 12GB VRAM, CUDA 13.1 (driver 591.86), Python 3.12
+#
+# NOTE: torch/torchvision/torchaudio are NOT listed here.
+# They must be installed separately with --index-url for CUDA wheels.
+# See setup-env.ps1 for the correct install order.
+
+datasets
+trl
+bitsandbytes
+accelerate
+peft
+transformers
+sentencepiece
+protobuf
+huggingface_hub
+safetensors

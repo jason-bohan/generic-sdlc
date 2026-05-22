@@ -1,0 +1,27 @@
+meta {
+  name: PR created (reviewer handoff)
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/api/pr/created
+  body: json
+  auth: none
+}
+
+docs {
+  Registers a PR with Meitheal and assigns the reviewer desk. agentId and prId are required. prUrl must not be a live Azure URL when externalMode is mock.
+}
+
+body:json {
+  {
+    "agentId": "{{agentId}}",
+    "prId": {{prId}},
+    "prTitle": "feat(LOCAL-B-0000): sample from Bruno",
+    "prUrl": "{{prUrl}}",
+    "storyNumber": "LOCAL-B-0000",
+    "branch": "feat/LOCAL-B-0000-sample",
+    "projectKey": "meitheal"
+  }
+}

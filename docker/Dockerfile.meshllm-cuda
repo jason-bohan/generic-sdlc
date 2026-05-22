@@ -1,0 +1,33 @@
+# MeshLLM CUDA runtime image for serving local models.
+# The upstream Dockerfile.client is API/client-only; this image uses the
+# published Linux CUDA release bundle so `mesh-llm serve --model/--gguf` can
+# load the embedded llama.cpp runtime.
+
+FROM nvidia/cuda:12.4.1-runtime-ubuntu22.04
+
+ARG MESHLLM_VERSION=v0.65.1
+ARG MESHLLM_ARCH=x86_64-unknown-linux-gnu-cuda
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    libdbus-1-3 \
+    libgomp1 \
+    libssl3 \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN set -eux; \
+    curl -L "https://github.com/Mesh-LLM/mesh-llm/releases/download/${MESHLLM_VERSION}/mesh-llm-${MESHLLM_ARCH}.tar.gz" \
+      -o /tmp/mesh-llm.tar.gz; \
+    mkdir -p /tmp/mesh-llm /opt/mesh-llm; \
+    tar -xzf /tmp/mesh-llm.tar.gz -C /tmp/mesh-llm; \
+    find /tmp/mesh-llm -type f -maxdepth 3 -print; \
+    cp -R /tmp/mesh-llm/* /opt/mesh-llm/; \
+    find /opt/mesh-llm -type f -maxdepth 3 -exec cp {} /usr/local/bin/ \;; \
+    chmod +x /usr/local/bin/mesh-llm /usr/local/bin/*-cuda; \
+    ln -sf /usr/local/bin/rpc-server-cuda /usr/local/bin/rpc-server; \
+    ln -sf /usr/local/bin/llama-server-cuda /usr/local/bin/llama-server; \
+    rm -rf /tmp/mesh-llm /tmp/mesh-llm.tar.gz
+
+EXPOSE 3131 9337
+ENTRYPOINT ["mesh-llm"]

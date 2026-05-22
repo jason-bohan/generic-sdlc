@@ -1,0 +1,26 @@
+﻿# Test isolation overrides — combine with docker-compose.yml for E2E test runs.
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.test.yml up -d --wait --no-deps server
+#   bin/docker-test.ps1  (handles the full lifecycle automatically)
+#
+# Key differences from dev stack:
+#   - External mode forced to mock (no real ADO/Agility calls)
+#   - VITEST=1 suppresses Ollama boot sequence (tests manage their own server)
+#   - Per-test ephemeral volumes (cleaned up on docker compose down -v)
+#   - No ollama service needed (docker-test.ps1 starts server with --no-deps)
+
+services:
+  server:
+    environment:
+      SDLC_EXTERNAL_MODE: mock
+      # Skip the Ollama boot sequence so the server starts immediately
+      VITEST: "1"
+      # Suppress agent CLI spawns during Cypress docker E2E (see spawn-agent.shouldSuppressAgentSpawn)
+      SDLC_FRAMEWORK_E2E: "1"
+    # Keep the base per-project volume; docker-test.ps1 uses a test-specific
+    # COMPOSE_PROJECT_NAME and tears it down with --volumes.
+    volumes:
+      - .:/app:rw  # writable — write-status seeds .agent-status.json files at /app
+      - /app/node_modules
+    # Keep the base ollama dependency present so merged Compose config remains valid.
+    # VITEST=1 prevents the server from running the Ollama boot sequence in mock tests.

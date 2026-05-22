@@ -1,0 +1,20 @@
+meta {
+  name: Create Task
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/api/scheduler/create-task
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "agentId": "{{agentId}}",
+    "storyNumber": "B-12345",
+    "name": "Implement forgot-password component",
+    "estimate": 2
+  }
+}

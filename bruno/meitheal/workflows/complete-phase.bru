@@ -1,0 +1,33 @@
+meta {
+  name: Complete workflow phase
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/api/workflows/complete-phase
+  body: json
+  auth: none
+}
+
+docs {
+  Body must match SDLC contract for the phase you are closing. Example uses reading-story outputs; replace phase, nextPhase, and outputs for your run.
+}
+
+body:json {
+  {
+    "workflowItemId": {{workflowItemId}},
+    "agentId": "backend",
+    "phase": "reading-story",
+    "nextPhase": "analyzing",
+    "outputs": {
+      "tasks": [],
+      "taskIds": [],
+      "branchPlan": { "branch": "feat/LOCAL-B-0000-example", "baseRef": "origin/main" },
+      "testMatrix": { "started": true, "rows": [] },
+      "risks": [],
+      "openQuestions": [],
+      "auditEvent": { "completedBy": "backend", "note": "Bruno template: replace outputs before send" }
+    }
+  }
+}

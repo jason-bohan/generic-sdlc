@@ -1,0 +1,16 @@
+﻿{
+  "name": "sdlc-framework-teams-agent",
+  "version": "0.1.0",
+  "description": "Teams meeting agent that routes human decisions into the SDLC Framework autonomous pipeline",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "dependencies": {
+    "botbuilder": "^4.23.0",
+    "restify": "^11.1.0",
+    "dotenv": "^16.4.0",
+    "axios": "^1.6.0"
+  }
+}

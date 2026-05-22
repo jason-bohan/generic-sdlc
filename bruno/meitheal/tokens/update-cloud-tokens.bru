@@ -1,0 +1,19 @@
+meta {
+  name: Update Cloud Tokens (shorthand)
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/api/tokens/cloud
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "agentId": "{{agentId}}",
+    "input": 800,
+    "output": 200
+  }
+}

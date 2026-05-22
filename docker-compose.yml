@@ -1,0 +1,81 @@
+﻿# SDLC Framework isolated dev stack.
+# Each worktree gets a unique COMPOSE_PROJECT_NAME so containers, networks,
+# and per-worktree volumes are fully isolated.
+#
+# Usage (let bin/docker-up.ps1 handle this automatically):
+#   COMPOSE_PROJECT_NAME=sdlc-framework-myworktree docker compose up -d
+#   docker compose port server 3001   # find the assigned host port
+#
+# Ollama model storage is a GLOBAL named volume shared across all worktrees
+# so models are downloaded only once.
+
+services:
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: sdlc-server:local
+    # Port 0 = Docker assigns a random available host port, avoiding conflicts
+    # between multiple worktrees running simultaneously.
+    ports:
+      - "0:3001"
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+      MESHLLM_HOST: ${MESHLLM_HOST:-http://meshllm:9337}
+      SDLC_EXTERNAL_MODE: ${SDLC_EXTERNAL_MODE:-}
+      SDLC_API_PORT: "3001"
+      AZURE_DEVOPS_PAT: ${AZURE_DEVOPS_PAT:-}
+      AZURE_DEVOPS_EXT_PAT: ${AZURE_DEVOPS_EXT_PAT:-}
+      COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:-sdlc-framework}
+      LOCAL_LLM_MODEL: ${LOCAL_LLM_MODEL:-sdlc-tuned:latest}
+      FORCE_COLOR: "1"
+    volumes:
+      # Source mounted for live edits and config writes
+      - .:/app
+      # node_modules from the image layer, not the host
+      - /app/node_modules
+      # Per-worktree database / state (isolated per COMPOSE_PROJECT_NAME)
+      - sdlc-db:/app/.sdlc-framework
+      # Docker socket — lets the server launch sibling containers (e.g. meshllm profile)
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: on-failure:3
+
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "0:11434"
+    volumes:
+      # Host Ollama store — shares fine-tuned and pre-pulled models with the container
+      - ${USERPROFILE}/.ollama:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 15s
+
+  meshllm:
+    # Optional Mesh-LLM client node. Enable with:
+    #   docker compose --profile meshllm up -d meshllm
+    #
+    # The image is built automatically on first launch from:
+    #   https://github.com/Mesh-LLM/mesh-llm.git  (docker/Dockerfile.client)
+    # Docker Compose on Windows cannot resolve remote git build contexts, so the
+    # launcher uses `docker build` directly and then runs compose up.
+    profiles: ["meshllm"]
+    image: sdlc-framework-mesh-llm:client
+    pull_policy: never
+    environment:
+      APP_MODE: console
+      MESH_HEADLESS: ${MESHLLM_HEADLESS:-1}
+    ports:
+      - "9337:9337"
+      - "3131:3131"
+    restart: unless-stopped
+
+volumes:
+  sdlc-db:
+    # Scoped to the project (per-worktree) automatically by Compose

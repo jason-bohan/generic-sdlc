@@ -1,0 +1,18 @@
+meta {
+  name: Update Story Status
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/api/agility/story-status
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "number": "B-12345",
+    "status": "Released"
+  }
+}

@@ -1,0 +1,292 @@
+import { writeFileSync, existsSync } from 'fs';
+import { resolve } from 'path';
+import { findStoryOwnerByPrId, applyReviewComplete, applyBuildComplete, applyDesignReady, applyDesignReviewComplete, loadReviewerCommentsAsReviewComments, wrapUpDeskRequestId } from '../handoff';
+import { tryClaimBuildCompleteNotification } from '../build-complete-dedup';
+import { voteOnPr } from '../ado-bridge';
+import { getProjectProfile } from '../project-config';
+import { cleanupStoryWorktrees, resolveWorktreeRepoRoots } from '../worktree-cleanup';
+import { spawnAgent } from '../spawn-agent';
+import { isGlobalStepMode } from '../stepMode';
+import { sendTeamsNotification } from '../teams-notify';
+import { skillSubdirForAgentId } from '../../shared/agentSkillDirs';
+import { resolveAgentDisplayName } from '../agent-display-names';
+import { dbUpsertWorkflowArtifact } from '../db';
+import { readBody, json, cors } from '../router';
+import { getExternalMode, isMockExternalMode } from '../external-mode';
+import { setMockPullRequestStatus } from '../mock-external';
+import { getExecMode } from '../modes';
+import { getSchedulerWorkflowMode } from '../schedulerMode';
+import {
+    getSchedulerConfig,
+    getAgentModel,
+    isAgentStepMode,
+    recordWorkflowMilestone,
+    storyNumberFromOwnerStatus } from '../route-shared';
+import type { UseFn } from './types';
+import { parseJsonUtf8File } from '../json-file';
+
+export function mount(use: UseFn, rootDir: string, configFile: string): void {
+    // ── /api/handoff/review-complete ─────────────────────────────────────────
+    use('/api/handoff/review-complete', async (req, res) => {
+        cors(res, 'POST, OPTIONS');
+        if (req.method === 'OPTIONS') { res.statusCode = 204; res.end(); return; }
+        if (req.method !== 'POST') { res.statusCode = 405; res.end('Method not allowed'); return; }
+        const body = await readBody(req);
+        try {
+            const { prId, verdict, storyNumber, branch, commentCount, projectKey, comments } = JSON.parse(body);
+            if (!prId || !verdict) { json(res, { error: 'prId and verdict are required' }, 400); return; }
+            const config = getSchedulerConfig(rootDir);
+            let statusProjectKey = typeof projectKey === 'string' && projectKey.trim() ? projectKey.trim() : undefined;
+            try {
+                const reviewerFile = resolve(rootDir, '.reviewer-status.json');
+                if (!statusProjectKey && existsSync(reviewerFile)) {
+                    const bs = parseJsonUtf8File(reviewerFile);
+                    statusProjectKey = bs.assignedPR?.projectKey || bs.projectKey || undefined;
+                }
+            } catch { /* ok */ }
+            const prUrlBase = (getProjectProfile(configFile, statusProjectKey)).prUrlBase || config.project?.prUrlBase || '';
+            const prIdNum = Number(prId);
+            let effectiveComments = Array.isArray(comments) ? comments : undefined;
+            if (verdict === 'changes-requested' && (!effectiveComments || effectiveComments.length === 0)) {
+                const fromFile = loadReviewerCommentsAsReviewComments(rootDir, prIdNum);
+                if (fromFile?.length) effectiveComments = fromFile;
+            }
+            const resolvedCommentCount = effectiveComments?.length
+                ? effectiveComments.length
+                : (typeof commentCount === 'number' && commentCount >= 0 ? commentCount : 0);
+            const result = applyReviewComplete(rootDir, { prId: prIdNum, verdict, storyNumber, branch, prUrlBase, projectKey: statusProjectKey, comments: effectiveComments });
+            const prLink = prUrlBase ? `[PR #${prId}](${prUrlBase}/${prId})` : `PR #${prId}`;
+            const targetAgent = result.target && !['unknown', 'waiting-for-design-review', 'waiting-for-code-review'].includes(result.target)
+                ? result.target
+                : null;
+            const targetInStepMode = targetAgent ? isAgentStepMode(targetAgent, rootDir) : false;
+            const storyOwnerForStep = result.target === 'devops' ? findStoryOwnerByPrId(rootDir, prIdNum) : null;
+            const storyOwnerInStepMode = !!(storyOwnerForStep && isAgentStepMode(storyOwnerForStep.agentId, rootDir));
+            let agentSpawned = false;
+            if (verdict === 'approved') {
+                if (!isMockExternalMode(configFile)) {
+                    voteOnPr(prId, 'Approved', undefined, statusProjectKey).catch(e => console.error('[handoff] ADO vote failed:', e));
+                }
+                if (result.target === 'devops' && !storyOwnerInStepMode && !isAgentStepMode('devops', rootDir)) {
+                    await sendTeamsNotification(rootDir, `PR #${prId} Approved`, `**${resolveAgentDisplayName('reviewer', rootDir)}** approved ${prLink}${storyNumber ? ` (story ${storyNumber})` : ''}. Handing off to **${resolveAgentDisplayName('devops', rootDir)}** for CI build.`, '22c55e');
+                    await sendTeamsNotification(rootDir, `${resolveAgentDisplayName('devops', rootDir)}: build gate — PR #${prId}`, `**${resolveAgentDisplayName('devops', rootDir)}** — \`.devops-status.json\` is **pending-build**. Run Pipeline Workflow Mode B.`, '06b6d4');
+                    try { agentSpawned = spawnAgent('devops', `Build gate for PR #${prId}. Read skills/${skillSubdirForAgentId('devops')}/SKILL.md Mode B and .devops-status.json.`, rootDir, getAgentModel('devops', rootDir)).spawned; } catch (e) { console.error('[handoff] devops spawn failed:', e); }
+                }
+            } else if (!targetInStepMode) {
+                await sendTeamsNotification(rootDir, `Changes Requested: PR #${prId}`, `**${resolveAgentDisplayName('reviewer', rootDir)}** requested changes on ${prLink}${storyNumber ? ` (story ${storyNumber})` : ''}.${resolvedCommentCount ? ` ${resolvedCommentCount} comment(s).` : ''}`, 'ef4444');
+                if (targetAgent) { try { agentSpawned = spawnAgent(targetAgent, `Changes requested on PR #${prId}. Read your skill and status file, then address the review feedback.`, rootDir, getAgentModel(targetAgent, rootDir)).spawned; } catch (e) { console.error('[handoff] spawn failed:', e); } }
+            }
+            try {
+                const owner = findStoryOwnerByPrId(rootDir, prId);
+                const workflowStoryNumber = (typeof storyNumber === 'string' && storyNumber.trim())
+                    ? storyNumber.trim()
+                    : storyNumberFromOwnerStatus(owner?.status);
+                const nextAgent = verdict === 'approved' ? 'devops' : result.target;
+                const nextPhase = verdict === 'approved' ? 'pending-build' : result.targetPhase;
+                const workflow = recordWorkflowMilestone({
+                    storyNumber: workflowStoryNumber,
+                    agentId: 'reviewer',
+                    phase: verdict === 'approved' ? 'approved' : 'changes-requested',
+                    eventType: 'review-complete',
+                    outputs: {
+                        reviewVerdict: verdict,
+                        reviewThreads: { commentCount: resolvedCommentCount },
+                        handoff: { target: result.target, targetPhase: result.targetPhase },
+                        auditEvent: { route: '/api/handoff/review-complete', externalMode: getExternalMode(configFile) } },
+                    message: `Review ${verdict} for PR #${prId}`,
+                    transition: nextAgent && nextAgent !== 'unknown' ? {
+                        agentId: nextAgent,
+                        nextPhase,
+                        outputs: { auditEvent: { route: '/api/handoff/review-complete' } },
+                        message: `Review routed PR #${prId} to ${nextAgent}/${nextPhase}` } : undefined });
+                if (workflow) {
+                    dbUpsertWorkflowArtifact({
+                        workflowItemId: workflow.id,
+                        artifactType: 'review',
+                        artifactKey: String(prId),
+                        payload: { prId, verdict, commentCount: resolvedCommentCount, target: result.target, targetPhase: result.targetPhase } });
+                }
+            } catch (workflowErr) {
+                console.warn('[handoff] review workflow audit failed:', workflowErr);
+            }
+            json(res, { ...result, agentSpawned });
+        } catch (e: unknown) { json(res, { error: e instanceof Error ? e.message : String(e) }, 500); }
+    });
+
+    // ── /api/handoff/build-complete ──────────────────────────────────────────
+    use('/api/handoff/build-complete', async (req, res) => {
+        cors(res, 'POST, OPTIONS');
+        if (req.method === 'OPTIONS') { res.statusCode = 204; res.end(); return; }
+        if (req.method !== 'POST') { res.statusCode = 405; res.end('Method not allowed'); return; }
+        const body = await readBody(req);
+        try {
+            const parsed = JSON.parse(body) as { prId?: unknown; result?: unknown; buildId?: unknown };
+            const prId = Number(parsed.prId);
+            const buildResult = parsed.result as 'passed' | 'failed' | string | undefined;
+            const buildIdParsed = parsed.buildId === undefined || parsed.buildId === null || parsed.buildId === ''
+                ? undefined
+                : Number(parsed.buildId);
+            const buildId = buildIdParsed !== undefined && Number.isFinite(buildIdParsed) ? buildIdParsed : undefined;
+            if (!Number.isFinite(prId) || prId <= 0 || (buildResult !== 'passed' && buildResult !== 'failed')) {
+                json(res, { error: 'prId and result are required' }, 400); return;
+            }
+            const devopsFile = resolve(rootDir, '.devops-status.json');
+            let alreadyHandled = false;
+            let statusProjectKey: string | undefined;
+            let devopsStoryNumberSnapshot: string | undefined;
+            if (existsSync(devopsFile)) {
+                try {
+                    const cs = parseJsonUtf8File(devopsFile);
+                    statusProjectKey = cs.assignedPR?.projectKey || cs.projectKey || undefined;
+                    const sn0 = cs.assignedPR?.storyNumber;
+                    if (typeof sn0 === 'string' && sn0.trim()) devopsStoryNumberSnapshot = sn0.trim();
+                    const deskIdRaw = cs.assignedPR?.id;
+                    const deskId = typeof deskIdRaw === 'number' ? deskIdRaw : Number(deskIdRaw);
+                    if (['build-passed', 'build-failed', 'idle', 'complete'].includes(cs.currentPhase) && Number.isFinite(deskId) && deskId === prId) alreadyHandled = true;
+                } catch { /* ok */ }
+            }
+            if (alreadyHandled) {
+                if (isMockExternalMode(configFile) && buildResult === 'passed') {
+                    setMockPullRequestStatus(rootDir, prId, 'completed');
+                }
+                json(res, { ok: true, deduplicated: true });
+                return;
+            }
+            const result = applyBuildComplete(rootDir, { prId, result: buildResult, buildId });
+            const buildConfig = getSchedulerConfig(rootDir);
+            const buildPrUrlBase = (getProjectProfile(configFile, statusProjectKey)).prUrlBase || buildConfig.project?.prUrlBase || '';
+            const buildPrLink = buildPrUrlBase ? `[PR #${prId}](${buildPrUrlBase}/${prId})` : `PR #${prId}`;
+            const color = buildResult === 'passed' ? '06b6d4' : 'ef4444';
+            const title = buildResult === 'passed' ? `Build Passed: PR #${prId}` : `Build Failed: PR #${prId}`;
+            const devopsName = resolveAgentDisplayName('devops', rootDir);
+            const msg = buildResult === 'passed' ? `**${devopsName}** - Build${buildId ? ` #${buildId}` : ''} passed for ${buildPrLink}.` : `**${devopsName}** - Build${buildId ? ` #${buildId}` : ''} failed for ${buildPrLink}.`;
+            if (tryClaimBuildCompleteNotification(rootDir, prId, buildId, buildResult)) await sendTeamsNotification(rootDir, title, msg, color);
+            let agentSpawned = false;
+            if (buildResult === 'passed' && !result.hasIncompleteTasks && !isMockExternalMode(configFile)) {
+                const ownerForWorktrees = findStoryOwnerByPrId(rootDir, prId);
+                let devopsAfter: { assignedPR?: { storyNumber?: string } } | null = null;
+                if (existsSync(devopsFile)) {
+                    try { devopsAfter = parseJsonUtf8File(devopsFile); } catch { devopsAfter = null; }
+                }
+                const snFromDevops = typeof devopsAfter?.assignedPR?.storyNumber === 'string' ? devopsAfter.assignedPR.storyNumber.trim() : undefined;
+                const storyNumForWorktrees = storyNumberFromOwnerStatus(ownerForWorktrees?.status)
+                    || devopsStoryNumberSnapshot
+                    || snFromDevops;
+                if (storyNumForWorktrees) {
+                    for (const wtRoot of resolveWorktreeRepoRoots(rootDir, configFile)) {
+                        try {
+                            cleanupStoryWorktrees(wtRoot, storyNumForWorktrees);
+                        } catch (wtErr) {
+                            console.warn('[handoff] worktree cleanup failed:', wtErr);
+                        }
+                    }
+                }
+            }
+            if (result.storyOwner && result.storyOwner !== 'unknown' && !isAgentStepMode(result.storyOwner, rootDir)) {
+                let spawnPrompt: string;
+                if (buildResult === 'passed' && result.hasIncompleteTasks) {
+                    const taskList = result.incompleteTaskIds?.join(', ') || 'remaining';
+                    spawnPrompt = `Build passed for PR #${prId}, but ${result.incompleteTaskIds?.length || 'some'} task(s) are still incomplete (${taskList}). Read your skill and status file, then pick up the remaining tasks, implement them, and create a new PR.`;
+                } else if (buildResult === 'passed') {
+                    spawnPrompt = `Build passed for PR #${prId}. Read your skill and status file, then wrap up the story.`;
+                } else {
+                    spawnPrompt = `Build failed for PR #${prId}. Read your skill and status file, then fix the build failures.`;
+                }
+                try { agentSpawned = spawnAgent(result.storyOwner, spawnPrompt, rootDir, getAgentModel(result.storyOwner, rootDir)).spawned || agentSpawned; } catch (e) { console.error('[handoff] spawn failed:', e); }
+            }
+            const storyOwnerInStepMode = !!(result.storyOwner && result.storyOwner !== 'unknown' && isAgentStepMode(result.storyOwner, rootDir));
+            if (buildResult === 'passed' && !result.hasIncompleteTasks && !storyOwnerInStepMode && !isGlobalStepMode(configFile) && !isAgentStepMode('devops', rootDir)) {
+                const ownerSn = storyNumberFromOwnerStatus(findStoryOwnerByPrId(rootDir, prId)?.status);
+                const wrapDismissId = result.wrapUpRequestId || wrapUpDeskRequestId(ownerSn || devopsStoryNumberSnapshot, prId);
+                const wrapPrompt = `Build passed for PR #${prId}. Read .cursor/rules/story-wrapup.mdc and skills/${skillSubdirForAgentId('devops')}/SKILL.md: run wrap-up (ADO, Agility, reset agents), dismiss open request ${wrapDismissId} on the DevOps desk Tasks list when finished, then set .devops-status.json to idle with assignedPR null.`;
+                try {
+                    agentSpawned = spawnAgent('devops', wrapPrompt, rootDir, getAgentModel('devops', rootDir), { bypassHandoffDispatched: true }).spawned || agentSpawned;
+                } catch (e) { console.error('[handoff] devops wrap-up spawn failed:', e); }
+            }
+            try {
+                const owner = findStoryOwnerByPrId(rootDir, prId);
+                const devopsStatus = existsSync(devopsFile) ? parseJsonUtf8File(devopsFile) : null;
+                const workflowStoryNumber = storyNumberFromOwnerStatus(owner?.status)
+                    || (typeof devopsStatus?.assignedPR?.storyNumber === 'string' ? devopsStatus.assignedPR.storyNumber : undefined);
+                const nextPhase = (buildResult === 'passed' && !result.hasIncompleteTasks) ? 'complete' : buildResult === 'passed' ? 'reading-story' : 'validating';
+                const nextAgent = buildResult === 'passed' ? (result.storyOwner || 'devops') : (result.storyOwner || 'devops');
+                const workflow = recordWorkflowMilestone({
+                    storyNumber: workflowStoryNumber,
+                    agentId: 'devops',
+                    phase: buildResult === 'passed' ? 'build-passed' : 'build-failed',
+                    eventType: 'build-complete',
+                    outputs: {
+                        build: { id: buildId || null, result: buildResult, prId },
+                        testResults: { build: buildResult },
+                        handoff: { target: nextAgent, targetPhase: nextPhase },
+                        auditEvent: { route: '/api/handoff/build-complete', externalMode: getExternalMode(configFile) } },
+                    message: `Build ${buildResult} for PR #${prId}`,
+                    transition: nextAgent && nextAgent !== 'unknown' ? {
+                        agentId: nextAgent,
+                        nextPhase,
+                        outputs: { auditEvent: { route: '/api/handoff/build-complete' } },
+                        message: `Build ${buildResult} routed PR #${prId} to ${nextAgent}/${nextPhase}`,
+                        status: (buildResult === 'passed' && !result.hasIncompleteTasks) ? 'complete' : 'active' } : undefined });
+                if (workflow) {
+                    dbUpsertWorkflowArtifact({
+                        workflowItemId: workflow.id,
+                        artifactType: 'build',
+                        artifactKey: String(buildId || prId),
+                        payload: { id: buildId || null, prId, result: buildResult, target: nextAgent, targetPhase: nextPhase } });
+                }
+            } catch (workflowErr) {
+                console.warn('[handoff] build workflow audit failed:', workflowErr);
+            }
+            json(res, { ...result, agentSpawned });
+        } catch (e: unknown) { json(res, { error: e instanceof Error ? e.message : String(e) }, 500); }
+    });
+
+    // ── /api/handoff/design-ready ────────────────────────────────────────────
+    use('/api/handoff/design-ready', async (req, res) => {
+        cors(res, 'POST, OPTIONS');
+        if (req.method === 'OPTIONS') { res.statusCode = 204; res.end(); return; }
+        if (req.method !== 'POST') { res.statusCode = 405; res.end('Method not allowed'); return; }
+        const body = await readBody(req);
+        try {
+            const { storyNumber, storyName, designSpec, targetAgent } = JSON.parse(body);
+            if (!storyNumber) { json(res, { error: 'storyNumber is required' }, 400); return; }
+            const schedCfg = getSchedulerConfig(rootDir);
+            const result = applyDesignReady(rootDir, { storyNumber, storyName, designSpec, targetAgent, execMode: getExecMode(configFile), workflowMode: getSchedulerWorkflowMode(schedCfg) });
+            await sendTeamsNotification(rootDir, `Design Spec Ready: ${storyNumber}`, `**${resolveAgentDisplayName('ux', rootDir)}** — Design spec for **${storyName || storyNumber}** is ready. **${resolveAgentDisplayName(result.targetAgent, rootDir)}** assigned for implementation.`, 'ec4899');
+            let designSpawned = false;
+            if (!isAgentStepMode(result.targetAgent, rootDir)) {
+                try { designSpawned = spawnAgent(result.targetAgent, `Design spec ready for story ${storyNumber}. Read your skill and .${result.targetAgent}-status.json to begin implementation.`, rootDir, getAgentModel(result.targetAgent, rootDir)).spawned; } catch (e) { console.error('[handoff] spawn failed:', e); }
+            }
+            json(res, { ...result, agentSpawned: designSpawned });
+        } catch (e: unknown) { json(res, { error: e instanceof Error ? e.message : String(e) }, 500); }
+    });
+
+    // ── /api/handoff/design-review-complete ─────────────────────────────────
+    use('/api/handoff/design-review-complete', async (req, res) => {
+        cors(res, 'POST, OPTIONS');
+        if (req.method === 'OPTIONS') { res.statusCode = 204; res.end(); return; }
+        if (req.method !== 'POST') { res.statusCode = 405; res.end('Method not allowed'); return; }
+        const body = await readBody(req);
+        try {
+            const { prId, verdict, storyNumber, comments, designComments } = JSON.parse(body);
+            if (!prId || !verdict) { json(res, { error: 'prId and verdict are required' }, 400); return; }
+            const result = applyDesignReviewComplete(rootDir, { prId, verdict, storyNumber, comments, designComments: Array.isArray(designComments) ? designComments : undefined });
+            let agentSpawned = false;
+            if (result.bothApproved) {
+                if (!isAgentStepMode('devops', rootDir)) {
+                    await sendTeamsNotification(rootDir, `PR #${prId} Fully Approved`, `Both **${resolveAgentDisplayName('reviewer', rootDir)}** (code) and **${resolveAgentDisplayName('ux', rootDir)}** (design) approved PR #${prId}. Handing off to **${resolveAgentDisplayName('devops', rootDir)}** for CI build.`, '22c55e');
+                    try { agentSpawned = spawnAgent('devops', `Build gate for PR #${prId}. Read skills/${skillSubdirForAgentId('devops')}/SKILL.md Mode B and .devops-status.json.`, rootDir, getAgentModel('devops', rootDir)).spawned; } catch (e) { console.error('[handoff] devops spawn failed:', e); }
+                }
+            } else if (verdict === 'changes-requested') {
+                const targetInStepMode = result.target && result.target !== 'unknown' && isAgentStepMode(result.target, rootDir);
+                if (!targetInStepMode) {
+                    await sendTeamsNotification(rootDir, `Design Changes Requested: PR #${prId}`, `**${resolveAgentDisplayName('ux', rootDir)}** requested design changes on PR #${prId}.${comments ? ` ${comments}` : ''}`, 'ec4899');
+                    if (result.target && result.target !== 'unknown') {
+                        try { agentSpawned = spawnAgent(result.target, `Design changes requested on PR #${prId}. Read your skill and status file, then address the design feedback.`, rootDir, getAgentModel(result.target, rootDir)).spawned; } catch (e) { console.error('[handoff] spawn failed:', e); }
+                    }
+                }
+            }
+            json(res, { ...result, agentSpawned });
+        } catch (e: unknown) { json(res, { error: e instanceof Error ? e.message : String(e) }, 500); }
+    });
+}

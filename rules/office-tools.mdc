@@ -1,0 +1,102 @@
+---
+description: Token-saving infrastructure for any agent conversation working in the Hub codebase
+globs:
+  - src/Mosaic.Web/**
+alwaysApply: true
+---
+
+# The Office — Token-Saving Tools
+
+You have access to "The Office" infrastructure that can significantly reduce your cloud token usage. Use these tools proactively during ANY conversation involving the Hub codebase.
+
+## 1. Goose Analyze (Zero-Token Codebase Understanding)
+
+Before reading multiple files to understand a codebase area, call Goose `analyze` via the `user-goose-developer` MCP. This gives you directory trees, file summaries, function/class counts, and call graphs — **for zero cloud tokens**.
+
+### When to Use
+
+- **Exploring unfamiliar areas**: Instead of reading 5-10 files, call `analyze` on the directory first
+- **Understanding dependencies**: Use `focus` parameter to get call graphs for a specific symbol
+- **Planning changes**: Get the full picture before deciding what files to modify
+
+### How to Use
+
+```
+# Directory overview — file tree with LOC/function/class counts
+CallMcpTool: user-goose-developer / analyze
+  { "path": "src/Mosaic.Web/libs/<feature>", "max_depth": 2 }
+
+# Symbol focus — call graph showing who calls what
+CallMcpTool: user-goose-developer / analyze
+  { "path": "src/Mosaic.Web/libs/<feature>/shared/src", "focus": "ServiceName" }
+
+# Deep directory scan
+CallMcpTool: user-goose-developer / analyze
+  { "path": "src/Mosaic.Web/libs/<feature>", "max_depth": 3, "force": true }
+```
+
+### Decision Matrix
+
+| Situation | Action |
+|-----------|--------|
+| Need to understand a module's structure | `analyze(path, max_depth: 2)` — NOT reading every file |
+| Need to find where a symbol is used | `analyze(path, focus: "SymbolName")` — NOT grep + read |
+| Need to understand one specific file | Read the file directly (still cheaper for single files) |
+| Need to modify a file you already read | Just modify it — no analyze needed |
+
+**Savings**: ~2k tokens per file read avoided. A typical exploration of 5-10 files saves 10-20k tokens.
+
+## 2. Ollama Delegation (Local SLM for Lightweight Tasks)
+
+If Ollama is running locally (port 11434), delegate lightweight tasks to it instead of using cloud tokens.
+
+### Delegatable Tasks
+
+- **Lint fixes**: ESLint/Stylelint error corrections
+- **Boilerplate**: Generating empty component/service scaffolds
+- **Simple unit tests**: Testing straightforward getters, transformations, pipes
+- **PR review responses**: Drafting replies to simple review comments
+
+### How to Delegate
+
+Run the Ollama delegate script from the repo root (`scripts/ollama-delegate.ts`):
+```
+npx tsx src/scripts/ollama-delegate.ts --prompt-file prompts/<template>.md --context "<file content or error>"
+```
+
+Available templates in `scripts/prompts/`:
+- `lint-fix.md` — Fix ESLint/Stylelint errors
+- `boilerplate.md` — Generate Angular component/service skeleton
+- `simple-test.md` — Generate Jest unit test
+- `review-response.md` — Draft PR review reply
+
+### Decision Matrix
+
+| Task | Cloud Agent | Ollama |
+|------|------------|--------|
+| Multi-file refactor | X | |
+| Complex business logic | X | |
+| Routing/state management | X | |
+| Fix a lint error | | X |
+| Generate empty component | | X |
+| Write test for a getter | | X |
+| Draft "fixed in latest push" reply | | X |
+
+**Always validate Ollama output** before committing. If quality is poor, handle it yourself.
+
+## 3. Status Dashboard
+
+When working on a longer task, update `.frontend-status.json` (workspace root convention) so the Office dashboard shows what you're doing. This helps the user track progress in the Tauri desktop app.
+
+```json
+{
+  "currentPhase": "generating-code",
+  "events": [{ "timestamp": "...", "type": "info", "message": "Working on component X" }]
+}
+```
+
+## Priority Order
+
+1. **Always check**: Can Goose `analyze` answer this without reading files? → Use it
+2. **Then check**: Is this a lightweight task Ollama can handle? → Delegate it
+3. **Only then**: Use cloud tokens for the actual complex work

@@ -1,0 +1,11 @@
+# Real-time voice pipeline
+faster-whisper>=1.0.0
+sounddevice>=0.4.6
+numpy>=1.24.0
+
+# Text-to-speech (voice agent)
+edge-tts>=6.1.9
+
+# Audio playback (preview + voice agent)
+# Windows: use pygame; Linux: use playsound or pygame
+pygame>=2.5.0

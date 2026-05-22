@@ -1,0 +1,17 @@
+meta {
+  name: Send Message (/btw)
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/chat/messages?agentId={{agentId}}
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "message": "hey, prioritize the login page fix"
+  }
+}

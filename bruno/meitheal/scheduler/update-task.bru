@@ -1,0 +1,18 @@
+meta {
+  name: Sync tasks from Agility
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/api/agility/tasks/sync
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "agentId": "{{agentId}}",
+    "storyNumber": "B-12345"
+  }
+}

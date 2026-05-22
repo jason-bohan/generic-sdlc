@@ -1,0 +1,77 @@
+---
+description: Testing requirements - every feature needs tests, test-first for bug fixes
+globs: "**/*.{ts,tsx}"
+alwaysApply: false
+---
+
+# Testing Requirements
+
+## Every PR Must Include Tests
+
+No feature or bug fix is complete without corresponding tests. This is not optional.
+
+### What needs tests
+
+| Change type | Required test type | Example |
+|---|---|---|
+| New API endpoint | Vitest integration test | `src/test/endpointName.test.ts` |
+| New React component | Vitest + React Testing Library | `src/test/ComponentName.test.tsx` |
+| Bug fix | Regression test that fails without the fix | Write the test FIRST |
+| New utility/helper | Unit test | `src/test/utilName.test.ts` |
+| UI workflow | Cypress E2E test | `cypress/e2e/feature.cy.ts` |
+| Refactor | Existing tests must still pass, add coverage for gaps |
+
+### What doesn't need new tests
+
+- Pure style/CSS changes with no logic
+- Documentation-only changes
+- Config file changes (unless they affect runtime behavior)
+
+## Test Structure
+
+```typescript
+// Good: focused, descriptive, independent
+describe('createReviewTask', () => {
+    it('creates a task with Review category when PR is assigned', async () => {
+        // Arrange - set up preconditions
+        // Act - call the function
+        // Assert - verify the result
+    });
+
+    it('does not duplicate task if one already exists for the PR', async () => {
+        // ...
+    });
+});
+```
+
+## Test Quality Rules
+
+- **No empty tests**: Every `it()` must have at least one assertion.
+- **No test interdependence**: Each test must pass when run alone.
+- **Mock external boundaries, not internals**: Mock HTTP, file system, child processes. Don't mock private functions.
+- **Test behavior, not implementation**: Assert on outcomes, not internal state.
+- **Descriptive names**: Test name should read as a sentence describing expected behavior.
+
+## Bug Fix Protocol
+
+1. Write a failing test that reproduces the bug.
+2. Verify it fails.
+3. Fix the bug.
+4. Verify the test passes.
+5. Commit the test and fix together.
+
+## Running Tests
+
+Before committing, run the relevant test suite:
+
+```powershell
+npx vitest run                              # all unit/integration tests
+npx vitest run src/test/specific.test.ts    # single test file
+npm run cypress:run                          # all Cypress E2E tests
+```
+
+## Coverage Expectations
+
+- New files should have >80% line coverage.
+- Don't chase 100% on existing code, but don't decrease coverage.
+- Error paths and edge cases matter more than happy-path coverage.

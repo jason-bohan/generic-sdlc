@@ -1,0 +1,57 @@
+node_modules/
+dist/
+.meitheal/
+src-tauri/target/
+src-tauri/gen/
+
+*.log
+*.log.err
+*.tmp
+*.backup
+debug_json.txt
+
+.lasair-status.json
+.lasair-messages.json
+.*-status.json
+.*-messages.json
+
+.env
+.meitheal.config.json
+.meitheal/
+.meitheal/mock/
+.meitheal/ollama-state.json
+.claude/
+!.claude/settings.json
+!.claude/mcp.json
+.token-ledger.json
+**/test/.token-ledger.json
+.agent-spawns.log
+.build-complete-notify.json
+.agent-output/
+.watcher-errors.log
+.vite/
+.DS_Store
+Thumbs.db
+
+# Test artifacts
+cypress/screenshots/
+cypress/videos/
+.reviewer-comments.json
+
+# Local tools
+tools/openrouter-proxy/
+
+# ML training artifacts (large files, output dir is a junction to C:\ml\models\meitheal\output)
+ml/unsloth/.venv/
+ml/unsloth/output/
+ml/unsloth/unsloth_compiled_cache/
+ml/unsloth/**/__pycache__/
+ml/unsloth/**/*.pyc
+.aider*
+
+# Training dataset output
+aider_dataset.jsonl
+.collect-state.json
+.meta-learning.jsonl
+.meta-routing.json
+.skill-library.json

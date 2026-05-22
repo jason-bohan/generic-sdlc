@@ -1,0 +1,19 @@
+meta {
+  name: Send Teams Notification
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/api/notify
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "title": "Test Notification",
+    "message": "This is a test from Bruno",
+    "color": "6366f1"
+  }
+}

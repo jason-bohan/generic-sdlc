@@ -1,0 +1,111 @@
+---
+description: Wrap-up procedure for completing a story — PR, Agility, all agent resets
+alwaysApply: false
+---
+
+# Story Wrap-Up Procedure
+
+This is the standard wrap-up procedure. It runs automatically when any story-owner agent reaches `"complete"` phase (triggered by agent-autostart.md). It can also be invoked manually if the user says "wrap up", "close it out", or similar.
+
+Do NOT re-discover MCP tool schemas; use the exact calls below.
+
+Agent **IDs**: `frontend`, `backend`, `qa`, `ux`, `reviewer`, `devops`. Dashboard labels (Lasair, Brehon, Vigil, etc.) may differ — reset files by agent ID filenames (`.frontend-status.json`, etc.).
+
+## 1. Find the story owner and PR
+
+Scan ALL status files to find who owns the story and which agents participated:
+
+```powershell
+Get-ChildItem ".*-status.json" | ForEach-Object { Write-Host $_.Name; Get-Content $_ }
+```
+
+- The **story owner** is the agent whose file has a non-null `storyNumber` and a `prs[]` array (often `frontend`, `ux`, or `devops` in Mode A, or occasionally `reviewer` when owning implementation work).
+- Also note which agents have `assignedPR` — support agents (`reviewer`, `devops` build gate) need resetting too
+- Extract the `pullRequestId` from the owner's `prs[0].id` or a support agent's `assignedPR.id`
+
+If no status file has an active story, fall back to the branch name: `feat/B-XXXXX-*` or `feature/<agent>/B-XXXXX-*` → `B-XXXXX`
+
+## 2. Set PR to auto-complete
+
+```
+CallMcpTool: user-Azure DevOps / repo_update_pull_request
+{
+  "repositoryId": "Meitheal",
+  "project": "Mosaic",
+  "pullRequestId": <id>,
+  "autoComplete": true,
+  "mergeStrategy": "Squash",
+  "deleteSourceBranch": true
+}
+```
+
+## 3. Close the story in Agility
+
+Try the local API first:
+```powershell
+$body = @{ number = "<storyNumber>"; status = "Released" } | ConvertTo-Json -Compress
+Invoke-RestMethod -Uri "http://localhost:3847/api/agility/story-status" -Method Post -Body $body -ContentType "application/json" -TimeoutSec 5
+```
+If it fails (404, timeout), that's OK — the story auto-transitions when the PR merges.
+
+Note: The Agility MCP `update_story_field` does NOT support a `status` field. Don't try it.
+
+## 4. Reset ALL involved agents
+
+Reset every agent that participated — not just the story owner.
+
+### Story-owner agents (`frontend`, `ux`, `devops` Mode A, …)
+
+These have `storyNumber`, `tasks[]`, `prs[]`. Reset to:
+```json
+{
+  "storyNumber": null,
+  "storyName": null,
+  "currentPhase": "idle",
+  "currentTask": null,
+  "startedAt": null,
+  "tokens": { "cloud": { "input": 0, "output": 0 }, "ollama": { "input": 0, "output": 0 } },
+  "tasks": [],
+  "prs": [],
+  "cypress": { "lastRun": null, "total": 0, "passed": 0, "failed": 0, "skipped": 0, "failures": [] },
+  "events": []
+}
+```
+
+`ux` also has `collaborators` and `designSpec` — include those as `[]` and `null`.
+
+### Support agents (`reviewer`, `devops` as build gate)
+
+These have `assignedPR`. Reset to:
+
+**Reviewer (`reviewer`):**
+```json
+{
+  "assignedPR": null,
+  "currentPhase": "idle",
+  "requestedAt": null,
+  "events": []
+}
+```
+
+**DevOps build gate (`devops`):**
+```json
+{
+  "currentPhase": "idle",
+  "assignedPR": null,
+  "events": []
+}
+```
+
+### Clear all message files
+
+```powershell
+Get-ChildItem ".*-messages.json" | ForEach-Object { Set-Content $_ "[]" }
+```
+
+## 5. Confirm to user
+
+Report:
+- PR number, link, and merge strategy
+- Story status (released or will auto-transition on merge)
+- Which agents were reset (**by agent ID**, and mention dashboard display names only if helpful)

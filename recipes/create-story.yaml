@@ -1,0 +1,105 @@
+version: "1.0.0"
+title: "Create Agility Story"
+description: >
+  Analyze codebase, generate enriched story fields using AI reasoning,
+  and create the story in Agility with all fields populated.
+
+extensions:
+  - type: builtin
+    name: developer
+    bundled: true
+    description: "Built-in developer tools including analyze"
+  - type: stdio
+    name: agility
+    cmd: node
+    args:
+      - "tools/mcp-agility/index.js"
+    env_keys:
+      - AGILITY_API_KEY
+      - AGILITY_BASE_URL
+    timeout: 60
+    description: "Agility (VersionOne) MCP for story creation"
+
+parameters:
+  - key: title
+    input_type: string
+    requirement: required
+    description: "Story title"
+  - key: description
+    input_type: string
+    requirement: optional
+    default: ""
+    description: "Brief story description"
+  - key: estimate
+    input_type: string
+    requirement: optional
+    default: ""
+    description: "Story point estimate"
+  - key: team
+    input_type: string
+    requirement: optional
+    default: ""
+    description: "Agility team name"
+  - key: owner
+    input_type: string
+    requirement: optional
+    default: ""
+    description: "Owner full name"
+  - key: classOfService
+    input_type: string
+    requirement: required
+    description: "Agility Class of Service name (e.g. Standard, Expedite)"
+  - key: workspaceDir
+    input_type: string
+    requirement: optional
+    default: "."
+    description: "Absolute path to the target codebase"
+  - key: scope
+    input_type: string
+    requirement: optional
+    default: "Ninja Turtles"
+    description: "Agility scope/project name"
+  - key: parent
+    input_type: string
+    requirement: optional
+    default: "General"
+    description: "Agility parent theme name or OID"
+  - key: category
+    input_type: string
+    requirement: optional
+    default: "Roadmap Features"
+    description: "Story category name"
+
+prompt: |
+  Create an Agility story titled "{{ title }}" in scope "{{ scope }}".
+  Class of Service: "{{ classOfService }}".
+  {% if description %}Description: {{ description }}{% endif %}
+  {% if estimate %}Estimate: {{ estimate }} points{% endif %}
+  {% if team %}Team: {{ team }}{% endif %}
+  {% if owner %}Owner: {{ owner }}{% endif %}
+  Follow the instructions below exactly.
+
+instructions: |
+  Create an Agility story in 4 steps. Be concise — do not explain, just act.
+
+  ## Step 1 — Analyze codebase
+  Run `analyze` on "{{ workspaceDir }}" with max_depth=2.
+
+  ## Step 2 — Generate story fields
+  Using the analysis and title "{{ title }}"{% if description %} (description: "{{ description }}"){% endif %}, produce:
+  - **description**: HTML with <h2>Summary</h2><h3>Problem</h3><h3>Solution</h3>. Name real files found in Step 1.
+  - **acceptanceCriteria**: HTML <ul><li> testable criteria (3–6 items).
+  - **frontend**: HTML <ul><li> frontend files to change, or null.
+  - **backend**: HTML <ul><li> backend changes, or null.
+  - **qa**: HTML <ul><li> QA steps, or null.
+
+  ## Step 3 — Create story
+  Call `create_story` with:
+  - name: "{{ title }}", scope: "{{ scope }}", parent: "{{ parent }}", category: "{{ category }}"
+  {% if team %}- team: "{{ team }}"{% endif %}{% if owner %}, owners: ["{{ owner }}"]{% endif %}{% if estimate %}, estimate: {{ estimate }}{% endif %}
+  - classOfService: "{{ classOfService }}"
+  - description, acceptanceCriteria, frontend, backend, qa from Step 2
+
+  ## Step 4 — Output result
+  Print ONLY this JSON (nothing else):
+  {"success":true,"number":"<story number>","name":"{{ title }}","url":"<story url>","enriched":true}

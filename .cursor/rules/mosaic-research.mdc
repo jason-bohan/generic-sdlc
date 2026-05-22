@@ -1,0 +1,120 @@
+---
+description: Research Mosaic codebase, wiki, and coding standards
+alwaysApply: false
+---
+
+# Mosaic Research & Standards
+
+All Meitheal agents can research the Mosaic codebase, Azure DevOps wiki, and coding standards when working on Mosaic stories. Use these resources to follow the team's conventions.
+
+## Finding the Mosaic Workspace
+
+**IMPORTANT**: The Mosaic workspace path is NOT hardcoded. Read it from the config:
+
+1. Read `.meitheal.config.json`
+2. Get `projects.mosaic.workspacePath` — this is the root of the Mosaic repo on this machine
+3. All paths below are relative to that root
+
+If the path is missing or invalid, call `GET /api/project/standards?project=mosaic` to auto-discover standards and paths.
+
+**The workspace path MUST be set correctly in `.meitheal.config.json` during setup (`.\bin\setup.ps1`). If it is wrong, agents cannot read Mosaic standards or code.**
+
+## Coding Standards (Read Before Writing Code)
+
+Mosaic has Cursor rules at these paths relative to `{workspacePath}`. Read the relevant ones before implementing or reviewing:
+
+| Standard | Relative Path |
+|---|---|
+| **Angular/TypeScript** | `src/Mosaic.Web/.cursor/rules/angular-standards.mdc` |
+| **.NET/C# API** | `src/.cursor/rules/.net-standards.mdc` |
+| **Code Review** | `src/.cursor/rules/code-review.mdc` |
+| **PR Template** | `src/Mosaic.Web/.cursor/rules/pr-template.mdc` |
+| **GraphQL** | `src/Mosaic.Web/.cursor/rules/graphql.mdc` |
+| **TypeScript** | `src/Mosaic.Web/.cursor/rules/typescript.mdc` |
+| **Unit Tests** | `src/Mosaic.Web/.cursor/rules/unit-tests.mdc` |
+| **SCSS/Stylelint** | `src/Mosaic.Web/.cursor/rules/scss-stylelint.mdc` |
+| **HTML Formatting** | `src/Mosaic.Web/.cursor/rules/html-formatting.mdc` |
+| **Hub Architecture** | `src/Mosaic.Web/.cursor/rules/hub-architecture.mdc` |
+| **Design System** | `src/Mosaic.Web/.cursor/rules/zeroheight-design-system.mdc` |
+| **Figma Design System** | `src/Mosaic.Web/.cursor/rules/figma-design-system-rules.mdc` |
+| **Avoid `any`** | `src/Mosaic.Web/.cursor/rules/avoid-any-type.mdc` |
+| **Observable→Promise** | `src/Mosaic.Web/.cursor/rules/observable-topromise-conversion.mdc` |
+| **Git Conventions** | `src/Mosaic.Web/.cursor/rules/git.mdc` |
+| **Notification Migration** | `src/Mosaic.Web/.cursor/rules/notification-migration-rules.mdc` |
+| **.NET Extract Methods** | `src/.cursor/rules/hub-api-extract-entity-methods-to-service.mdc` |
+| **C# String Comparison** | `src/.cursor/rules/csharp-string-comparison-line-endings.mdc` |
+| **C# Filesystem** | `src/.cursor/rules/csharp-platform-independent-filesystem.mdc` |
+| **C# Newline** | `src/.cursor/rules/csharp-newline-replacement.mdc` |
+| **C# Command Handler** | `src/.cursor/rules/csharp-command-handler-base-class.mdc` |
+
+Or call `GET /api/project/standards?project=mosaic` to get the full list of discovered rules with absolute paths for this machine.
+
+## Mosaic Skills (Nx Workspace)
+
+Mosaic has Cursor skills for workspace operations (paths relative to `{workspacePath}`):
+
+| Skill | Relative Path |
+|---|---|
+| **Nx Workspace** | `src/Mosaic.Web/.cursor/skills/nx-workspace/SKILL.md` |
+| **Nx Run Tasks** | `src/Mosaic.Web/.cursor/skills/nx-run-tasks/SKILL.md` |
+| **Nx Generators** | `src/Mosaic.Web/.cursor/skills/nx-generate/SKILL.md` |
+| **Nx Plugins** | `src/Mosaic.Web/.cursor/skills/nx-plugins/SKILL.md` |
+| **Monitor CI** | `src/Mosaic.Web/.cursor/skills/monitor-ci/SKILL.md` |
+
+Read the relevant skill before running Nx commands in the Mosaic workspace.
+
+## Azure DevOps Wiki
+
+Search and read the Mosaic wiki for environment details, setup procedures, architecture docs, and team conventions.
+
+### Search
+
+Use Azure DevOps MCP `search_wiki`:
+
+```json
+{ "searchText": "cypress setup", "project": ["Mosaic"], "wiki": ["Fusion.wiki"] }
+```
+
+### Read a Page by URL
+
+Use Azure DevOps MCP `wiki_get_page_content`:
+
+```json
+{ "url": "https://oursundayvisitor.visualstudio.com/Mosaic/_wiki/wikis/Fusion.wiki/99/Servers" }
+```
+
+### Browse Wiki Structure
+
+Use Azure DevOps MCP `wiki_get_page`:
+
+```json
+{ "wikiIdentifier": "Fusion.wiki", "project": "Mosaic", "path": "/", "recursionLevel": "OneLevel" }
+```
+
+### Key Wiki Pages
+
+- **Servers/Environments**: `/99/Servers`
+- **Cypress Setup**: `/360/Starting-Running-the-Cypress-Test-Suite-for-Developers-(Windows)`
+- **Standards**: `/280/Standards`
+
+## Search Mosaic Code on ADO
+
+Use Azure DevOps MCP `search_code` to find patterns in the remote repo:
+
+```json
+{ "searchText": "OsvAuthorize", "project": "Mosaic", "repository": ["Mosaic"] }
+```
+
+## Mosaic Codebase (Local)
+
+Read `projects.mosaic.workspacePath` from `.meitheal.config.json` for the repo root. Key paths relative to it:
+
+| Area | Relative Path |
+|---|---|
+| **Angular frontend** | `src/Mosaic.Web/` |
+| **.NET backend** | `src/` (C# projects) |
+| **Cypress tests** | `integration_test/` |
+| **Cypress support layer** | `integration_test/cypress/support/` |
+| **AGENTS.md** | `src/Mosaic.Web/AGENTS.md` |
+
+When working on a Mosaic story, read the relevant standards, check existing code for patterns, and search the wiki if you need environment or infrastructure details.

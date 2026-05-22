@@ -1,0 +1,43 @@
+---
+description: Clean code principles - file size limits, single responsibility, no god files
+globs: "**/*.{ts,tsx}"
+alwaysApply: false
+---
+
+# Clean Code Standards
+
+## File Size Limits
+
+- **Hard limit**: No file over 400 lines. If a file exceeds this, refactor before adding more code.
+- **Target**: Most files should be under 250 lines.
+- `src/server/app.ts` (2500+ lines) and `src/dashboard/AgentDetail.tsx` (1600+ lines) are known violations. Every PR should reduce them, never grow them.
+
+## Single Responsibility
+
+Each file/module owns one thing:
+
+- **Route files**: One file per API domain (e.g., `routes/reviewer.ts`, `routes/scheduler.ts`, `routes/workflow.ts`). Not one `app.ts` with every endpoint.
+- **React components**: One component per file. If a component has sub-components, extract them to sibling files.
+- **Hooks**: Custom hooks go in their own files under `src/dashboard/hooks/`.
+- **Styles**: If a component's style object exceeds 30 properties, extract to a `.styles.ts` file.
+
+## Extracting from God Files
+
+When touching `app.ts` or `AgentDetail.tsx`:
+
+1. If adding a new endpoint, create it in a dedicated route file and import/mount it.
+2. If adding UI to AgentDetail, extract it as a standalone component.
+3. If adding a helper/utility, put it in `src/shared/` or `src/server/` as its own module.
+4. Never add more than 20 net lines to a file already over 400 lines without extracting something.
+
+## Function Complexity
+
+- Max 30 lines per function. Extract helpers for anything longer.
+- Max 3 levels of nesting. Use early returns and guard clauses.
+- No inline anonymous functions over 5 lines - name them or extract them.
+
+## Naming
+
+- Files: `kebab-case.ts` for modules, `PascalCase.tsx` for React components.
+- Exports: Named exports preferred over default exports (except React page components).
+- No abbreviations in public APIs (`pr` is fine, `rslvWtRts` is not).

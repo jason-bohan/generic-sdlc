@@ -1,0 +1,20 @@
+meta {
+  name: Review Complete
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/api/handoff/review-complete
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "prId": 42,
+    "verdict": "approved",
+    "storyNumber": "B-12345",
+    "branch": "feat/B-12345-password-reset"
+  }
+}

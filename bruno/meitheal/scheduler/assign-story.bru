@@ -1,0 +1,21 @@
+meta {
+  name: Assign Story
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/api/scheduler/assign
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "agentId": "{{agentId}}",
+    "storyNumber": "B-12345",
+    "storyName": "Add password reset flow",
+    "storyDescription": "<p>Add a forgot password flow to the login page.</p>",
+    "teamId": "Team:1234"
+  }
+}

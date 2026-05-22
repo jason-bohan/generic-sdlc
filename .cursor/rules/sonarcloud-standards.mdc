@@ -1,0 +1,139 @@
+---
+description: SonarCloud coding standards — prevent common warnings
+globs: "**/*.{ts,tsx}"
+alwaysApply: false
+---
+
+# SonarCloud Standards
+
+Follow these rules to keep SonarCloud warnings at zero.
+
+## Node imports (S7772)
+
+Use the `node:` protocol prefix for Node.js built-in modules:
+
+```typescript
+// Bad
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
+
+// Good
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+```
+
+Applies to: `fs`, `path`, `url`, `readline`, `crypto`, `os`, `child_process`, `stream`, `util`, `events`
+
+## Read-only props (S6759)
+
+Always wrap React component props with `Readonly<>`:
+
+```typescript
+// Bad
+function MyComponent({ name, onClick }: { name: string; onClick: () => void }) {}
+
+// Good
+function MyComponent({ name, onClick }: Readonly<{ name: string; onClick: () => void }>) {}
+```
+
+## Number globals (S7773)
+
+Use `Number.parseInt` and `Number.parseFloat` instead of bare globals:
+
+```typescript
+// Bad
+parseInt(value, 10);
+parseFloat(value);
+
+// Good
+Number.parseInt(value, 10);
+Number.parseFloat(value);
+```
+
+## No nested ternaries (S3358)
+
+Extract nested ternary operations into variables or helper functions:
+
+```typescript
+// Bad
+const color = active ? (hovered ? 'green' : 'blue') : 'gray';
+
+// Good
+const activeColor = hovered ? 'green' : 'blue';
+const color = active ? activeColor : 'gray';
+```
+
+## No array index keys (S6479)
+
+Use unique identifiers for React `key` props, not array indices:
+
+```typescript
+// Bad
+items.map((item, i) => <li key={i}>{item.name}</li>)
+
+// Good
+items.map((item) => <li key={item.id}>{item.name}</li>)
+```
+
+## No zero fractions (S7748)
+
+Don't use `.0` on whole numbers:
+
+```typescript
+// Bad
+const opacity = 1.0;
+
+// Good
+const opacity = 1;
+```
+
+## Use globalThis (S7764)
+
+Prefer `globalThis` over `window`:
+
+```typescript
+// Bad
+window.addEventListener('resize', handler);
+
+// Good
+globalThis.addEventListener('resize', handler);
+```
+
+## Use new Array() (S7723)
+
+```typescript
+// Bad
+Array(5).fill(null)
+
+// Good
+new Array(5).fill(null)
+```
+
+## Batch array pushes (S7778)
+
+```typescript
+// Bad
+arr.push(a);
+arr.push(b);
+arr.push(c);
+
+// Good
+arr.push(a, b, c);
+```
+
+## Cognitive complexity (S3776)
+
+Keep function complexity at or below 15. Extract helper functions to reduce nesting.
+
+## Accessibility (S1082, S6848, S6853)
+
+- Clickable `<div>` elements need `role="button"`, `tabIndex={0}`, and `onKeyDown`
+- Form `<label>` elements must have a matching `htmlFor` attribute
+
+## Redundant fragments (S6749)
+
+Don't wrap a single child in `<>...</>`.
+
+## React Three Fiber (S6747)
+
+R3F props like `position`, `rotation`, `args`, `castShadow`, `intensity`, `roughness`, `metalness`, `emissive` are valid — SonarLint flags them as false positives. These warnings are suppressed at the project level.

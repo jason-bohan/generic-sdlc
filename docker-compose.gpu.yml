@@ -1,0 +1,23 @@
+# Optional GPU override — include this when an NVIDIA GPU is available.
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+# bin/docker-up.ps1 adds this automatically when nvidia-smi is detected.
+
+services:
+  ollama:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  meshllm:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

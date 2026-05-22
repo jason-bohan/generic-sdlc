@@ -1,0 +1,133 @@
+﻿{
+  "executionMode": "local",
+  "externalMode": "live",
+  "cursorAiEnabled": true,
+  "activeProject": "sdlc-framework",
+  "projects": {
+    "sdlc-framework": {
+      "organization": "your-azure-devops-org",
+      "azureProject": "YourProject",
+      "repositoryId": "YourRepo",
+      "targetBranch": "main",
+      "pipelineId": 646,
+      "reviewerIds": [],
+      "branchPattern": "feat/{storyNumber}-{slug}",
+      "teamPrefixes": {},
+      "workspacePath": "c:\\repos\\YourRepo",
+      "prUrlBase": "https://your-org.visualstudio.com/YourProject/_git/YourRepo/pullrequest",
+      "scope": "Your Team",
+      "team": "Your Team",
+      "owners": ["Your Name"]
+    },
+    "YourProject": {
+      "organization": "your-azure-devops-org",
+      "azureProject": "YourProject",
+      "repositoryId": "c268771c-65f3-43e4-a9d5-adfc4267c47d",
+      "targetBranch": "master",
+      "pipelineId": 350,
+      "reviewerIds": [],
+      "branchPattern": "{teamPrefix}{env}/{storyNumber}_{slug}",
+      "workspacePath": "c:\\repos\\YourProject",
+      "teamPrefixes": {
+        "Team:2001": "chipmunks/",
+        "Team:2002": "ninjas/",
+        "Team:2003": "ducks/",
+        "Team:2004": "integrators/",
+        "Team:2005": "istari/",
+        "Team:2006": "planeteers/",
+        "Team:2007": "avengers/",
+        "Team:2008": "arm/",
+        "Team:2009": "devops/"
+      },
+      "environments": [
+        "Alatar", "Alvin", "Chip", "Cowabunga", "Dale", "Donatello",
+        "Gadget", "Hulk", "Isaac", "Jupiter", "Krang", "Leonardo",
+        "Loki", "Mallory", "Minion", "Nosedive", "Pallando", "Pizza",
+        "Raphael", "Saturn", "Shredder", "Simon", "Splinter", "Theo",
+        "Thor", "Wildwing"
+      ],
+      "prUrlBase": "https://your-org.visualstudio.com/YourProject/_git/YourProject/pullrequest",
+      "scope": "Your Team",
+      "team": "Your Team",
+      "owners": ["Your Name"]
+    }
+  },
+  "project": {
+    "organization": "your-azure-devops-org",
+    "azureProject": "YourProject",
+    "repositoryId": "YourRepo",
+    "scope": "Your Team",
+    "parent": "General",
+    "parentOid": "Theme:000000",
+    "category": "Roadmap Features",
+    "team": "Your Team",
+    "owners": ["Your Name"],
+    "ownersLastFirst": ["Last, First"],
+    "prUrlBase": "https://your-org.visualstudio.com/YourProject/_git/YourRepo/pullrequest"
+  },
+  "scheduler": {
+    "mode": "notify",
+    "driver": "cursor",
+    "loopProvider": {
+      "baseUrl": "http://localhost:11434/v1",
+      "model": "qwen3:14b",
+      "apiKey": "",
+      "maxTokens": 4096,
+      "temperature": 0.2
+    },
+    "genericDriver": {
+      "command": "my-agent-cli",
+      "args": ["-p", "{promptFile}", "--workspace", "{workspaceDir}", "--model", "{model}"]
+    },
+    "agents": {
+      "frontend": {
+        "enabled": true,
+        "autoStart": false,
+        "stepMode": false,
+        "stepModePhases": ["analyzing", "generating-code", "validating", "creating-pr", "watching-reviews", "addressing-feedback", "running-cypress"],
+        "adoPat": ""
+      },
+      "backend": {
+        "enabled": false,
+        "autoStart": false,
+        "stepMode": false
+      },
+      "qa": {
+        "enabled": false,
+        "autoStart": false,
+        "stepMode": false
+      },
+      "ux": {
+        "enabled": false,
+        "autoStart": false,
+        "stepMode": false
+      },
+      "reviewer": {
+        "enabled": true,
+        "autoStart": true,
+        "stepMode": false,
+        "role": "reviewer",
+        "watchesTeamsChannel": "Agent Activity",
+        "adoPat": ""
+      },
+      "devops": {
+        "enabled": true,
+        "autoStart": true,
+        "stepMode": false,
+        "role": "devops",
+        "watchesPipeline": true,
+        "adoPat": ""
+      }
+    }
+  },
+  "notifications": {
+    "teams": {
+      "webhookUrl": "",
+      "channels": {
+        "agentActivity": "Agent Activity",
+        "prReviews": "PR Reviews"
+      },
+      "notifyOn": ["creating-pr", "complete", "error", "pending-approval"]
+    }
+  }
+}

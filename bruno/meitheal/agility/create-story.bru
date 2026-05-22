@@ -1,0 +1,27 @@
+meta {
+  name: Create Story
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/api/agility/create-story
+  body: json
+  auth: none
+}
+
+docs {
+  Live Agility path: team and owner are VersionOne OIDs. classOfService is required. For local backlog only, use create-story-local.bru (source local) instead.
+}
+
+body:json {
+  {
+    "name": "As a user, I want to reset my password",
+    "description": "Add a forgot password flow to the login page",
+    "estimate": 3,
+    "team": "Team:1234",
+    "owner": "Member:5678",
+    "classOfService": "Standard",
+    "workspaceDir": "{{workspaceDir}}"
+  }
+}

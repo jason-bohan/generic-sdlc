@@ -1,0 +1,11 @@
+meta {
+  name: Mock V1 - Get Stories (local MCP testing)
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{baseUrl}}/mock-v1/rest-1.v1/Data/Story?sel=Name,Number,Status.Name&where=AssetState='64'
+  body: none
+  auth: none
+}

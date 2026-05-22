@@ -1,0 +1,30 @@
+﻿# Optional override for publishing a local MeshLLM model to the mesh.
+# bin/docker-up.ps1 adds this file when -MeshLLMModel is provided.
+
+services:
+  server:
+    environment:
+      MESHLLM_IMAGE: ${MESHLLM_IMAGE:-sdlc-framework-mesh-llm:cuda}
+      MESHLLM_MODEL_ARG: ${MESHLLM_MODEL_ARG:---model}
+      MESHLLM_MODEL: ${MESHLLM_MODEL}
+      MESHLLM_MODEL_DIR: ${MESHLLM_MODEL_DIR:-.}
+
+  meshllm:
+    image: ${MESHLLM_IMAGE:-sdlc-framework-mesh-llm:cuda}
+    pull_policy: never
+    environment:
+      APP_MODE: model
+      MESH_HEADLESS: ${MESHLLM_HEADLESS:-1}
+    volumes:
+      # Used only when MESHLLM_MODEL is rewritten to /models/<file> by docker-up.ps1.
+      - ${MESHLLM_MODEL_DIR:-.}:/models:ro
+    command:
+      - --auto
+      - ${MESHLLM_MODEL_ARG:---model}
+      - ${MESHLLM_MODEL:?Set MESHLLM_MODEL or pass -MeshLLMModel to bin/docker-up.ps1}
+      - --port
+      - "9337"
+      - --console
+      - "3131"
+      - --listen-all
+      - --headless

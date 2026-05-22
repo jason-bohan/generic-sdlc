@@ -1,0 +1,11 @@
+meta {
+  name: Get Agent Status
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/status?agentId={{agentId}}
+  body: none
+  auth: none
+}

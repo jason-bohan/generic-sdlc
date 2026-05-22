@@ -1,0 +1,17 @@
+meta {
+  name: Trigger RAG Reindex
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/ollama/reindex
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "workspaceDir": "C:/repos/YourProject"
+  }
+}

@@ -1,0 +1,23 @@
+meta {
+  name: Chat (with trigger matching)
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/api/chat
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "agentId": "{{agentId}}",
+    "message": {
+      "id": "msg-001",
+      "from": "user",
+      "message": "pause after next step",
+      "timestamp": "2025-01-01T00:00:00.000Z"
+    }
+  }
+}

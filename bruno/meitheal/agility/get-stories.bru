@@ -1,0 +1,18 @@
+meta {
+  name: Get Stories
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/api/agility/stories
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "teamId": "Team:1234",
+    "statusFilter": ["In Progress", "Backlog"]
+  }
+}
