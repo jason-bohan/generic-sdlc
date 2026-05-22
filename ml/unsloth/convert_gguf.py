@@ -27,7 +27,7 @@ QUANTIZATION   = "q4_k_m"
 
 def main():
     print("=" * 60)
-    print("Meitheal GGUF Conversion (from merged model)")
+    print("SDLC Framework GGUF Conversion (from merged model)")
     print("=" * 60)
 
     if not MERGED_DIR.exists():

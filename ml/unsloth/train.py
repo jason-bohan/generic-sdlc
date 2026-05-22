@@ -1,5 +1,5 @@
 """
-Meitheal Unsloth QLoRA Fine-Tuning Pipeline
+SDLC Framework Unsloth QLoRA Fine-Tuning Pipeline
 Target: Qwen3:8B on RTX 3500 Ada (12GB VRAM)
 Training config: 4-bit QLoRA with gradient checkpointing
 """
@@ -60,7 +60,7 @@ def format_conversation(example):
 
 def main():
     print("=" * 60)
-    print("Meitheal Unsloth QLoRA Fine-Tuning")
+    print("SDLC Framework Unsloth QLoRA Fine-Tuning")
     print("=" * 60)
     print(f"GPU: {torch.cuda.get_device_name(0)}")
     print(f"VRAM: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB")

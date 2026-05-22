@@ -1,5 +1,5 @@
 """
-trainer-service.py  —  Meitheal continuous training loop.
+trainer-service.py  —  SDLC Framework continuous training loop.
 
 Watches the aider_dataset.jsonl for new examples. When enough have
 accumulated (MIN_NEW_EXAMPLES), runs the full pipeline:
@@ -8,7 +8,7 @@ accumulated (MIN_NEW_EXAMPLES), runs the full pipeline:
 
 Run from the repo root in the ml/unsloth venv:
 
-    cd C:/repos/Meitheal
+    cd C:/repos/SDLC Framework
     .venv\\Scripts\\activate   (or ml\\unsloth\\.venv\\Scripts\\activate)
     python ml/unsloth/trainer-service.py [--once] [--force]
 
@@ -41,7 +41,7 @@ LOG_FILE       = ML_DIR / "output" / "trainer.log"
 MODELFILE_TMPL = ML_DIR / "Modelfile.template"
 MODELFILE_OUT  = ML_DIR / "Modelfile"
 
-OLLAMA_MODEL_NAME = "meitheal-tuned"
+OLLAMA_MODEL_NAME = "sdlc-framework-tuned"
 MIN_NEW_EXAMPLES  = 50    # retrain when this many new examples accumulate
 CHECK_INTERVAL_S  = 1800  # how often to check (30 min)
 SKIP_DPO          = False  # set True to skip DPO step (faster, less stable)
@@ -234,13 +234,13 @@ def should_run(state: dict, force: bool) -> bool:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Meitheal continuous trainer service")
+    parser = argparse.ArgumentParser(description="SDLC Framework continuous trainer service")
     parser.add_argument("--once",  action="store_true", help="Run pipeline once and exit")
     parser.add_argument("--force", action="store_true", help="Skip threshold check and run now")
     args = parser.parse_args()
 
     LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
-    log.info("Meitheal trainer service starting")
+    log.info("SDLC Framework trainer service starting")
     log.info(f"Dataset : {DATASET_FILE}")
     log.info(f"GGUF dir: {ML_DIR / 'output' / 'gguf'}")
     log.info(f"Ollama  : {OLLAMA_MODEL_NAME}")

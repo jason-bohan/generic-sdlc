@@ -1,6 +1,6 @@
-# Fine-tuned Qwen3-8B LoRA model for Meitheal story generation.
+# Fine-tuned Qwen3-8B LoRA model for SDLC Framework story generation.
 # Run from the repo root after export_gguf.py has produced the GGUF:
-#   ollama create meitheal-tuned -f Modelfile.tuned
+#   ollama create sdlc-framework-tuned -f Modelfile.tuned
 FROM ml/unsloth/output/merged.Q4_K_M.gguf
 
 SYSTEM """

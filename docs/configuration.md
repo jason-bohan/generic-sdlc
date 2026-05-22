@@ -123,7 +123,7 @@ Each project profile must have a `workspacePath` pointing to the local repo chec
 }
 ```
 
-**This must be set correctly.** The setup script (`.\bin\setup.ps1`) prompts for it, or set it manually. Agents use workspace paths to:
+**This must be set correctly.** The setup script (`npm run setup`) prompts for it, or set it manually. Agents use workspace paths to:
 
 - Read coding standards (`.cursor/rules/*.mdc`) from the target project
 - Read Cursor skills (`.cursor/skills/*/SKILL.md`) for Nx and tooling guidance
@@ -209,7 +209,7 @@ MCP servers are configured in `.cursor/mcp.json` (Cursor) and `.claude/mcp.json`
 - **Azure DevOps MCP** — installed on-demand via `npx @azure-devops/mcp`.
 - **Goose Developer MCP** — requires Goose CLI on PATH.
 
-No manual MCP configuration needed — run `.\bin\setup.ps1` and fill in `.env`.
+No manual MCP configuration needed on Windows when using the legacy PowerShell setup — run `.\bin\setup.ps1` and fill in `.env`. On macOS/Linux, run `npm run setup`; it creates the same project files and reports any optional tool configuration you still need to complete.
 
 ---
 
@@ -229,22 +229,25 @@ No manual MCP configuration needed — run `.\bin\setup.ps1` and fill in `.env`.
 
 ## Setup Script
 
-```powershell
-.\bin\setup.ps1
+```bash
+npm run setup
 ```
 
 Handles:
 1. Verifying Node.js 22+
-2. Checking for / installing Goose CLI
-3. Checking for / installing Ollama + pulling `qwen3:14b`
-4. Checking for / installing Cursor CLI (`agent`)
-5. Checking for / installing Harlequin (SQLite TUI)
-6. `npm install` (installs MCP server deps via `postinstall`)
-7. Installing MCP server dependencies
-8. Creating `.env` from `.env.example` (prompts for Agility + ADO credentials)
-9. Creating `.sdlc-framework.config.json` from example template
-10. **Configuring project workspace paths** — validates each project's `workspacePath`, prompts for corrections, auto-discovers YourProject coding standards and Cypress specs
-11. Adding `bin/` to PowerShell `$PROFILE`
+2. Checking for optional Goose, Ollama, Claude Code, and Harlequin CLIs
+3. Detecting an agent driver
+4. `npm install` (installs MCP server deps via `postinstall`)
+5. Creating `.env` from `.env.example`
+6. Creating `.sdlc-framework.config.json` from the example template
+7. **Configuring project workspace paths** — validates each project's `workspacePath` and prompts for corrections
+8. Optionally adding `bin/` to your shell profile
+
+For noninteractive setup, use:
+
+```bash
+npm run setup -- --yes
+```
 
 ### Updating
 

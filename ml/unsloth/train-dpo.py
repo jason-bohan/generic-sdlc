@@ -53,7 +53,7 @@ GRAD_ACCUM    = 8       # effective batch = 8
 
 def main():
     print("=" * 60)
-    print("Meitheal DPO Fine-Tuning")
+    print("SDLC Framework DPO Fine-Tuning")
     print("=" * 60)
 
     if not SFT_ADAPTER.exists():

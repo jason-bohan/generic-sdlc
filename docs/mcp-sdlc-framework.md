@@ -10,7 +10,7 @@ Located at `tools/mcp-sdlc-framework/index.js`.
 
 ### Goose
 
-The setup script (`bin/setup.ps1`) configures this automatically. If you need to add it manually, add to your Goose `config.yaml` extensions block:
+The legacy Windows setup script (`bin/setup.ps1`) configures this automatically. On macOS/Linux, run `npm run setup` for the project files, then add this manually to your Goose `config.yaml` extensions block if Goose does not already have it:
 
 ```yaml
 sdlc-framework:
@@ -18,16 +18,16 @@ sdlc-framework:
   type: stdio
   name: SDLC Framework
   description: SDLC Framework SDLC orchestration — assign stories, monitor agents, manage workflows, search Agility backlog
-  cmd: C:\path\to\node.exe
+  cmd: /path/to/node
   args:
-    - C:\repos\SDLC Framework\tools\mcp-sdlc-framework\index.js
+    - /path/to/sdlc-framework/tools/mcp-sdlc-framework/index.js
   envs:
     SDLC_FRAMEWORK_BASE_URL: http://localhost:3001
   env_keys: []
   timeout: 30
 ```
 
-> **Note:** Use the full path to `node.exe` — Goose does not inherit your shell's PATH. Find it with `(Get-Command node).Source` in PowerShell, or check `%LOCALAPPDATA%\nvs\node\22.x\x64\node.exe` if using nvs.
+> **Note:** Use the full path to Node — Goose may not inherit your shell's PATH. Find it with `which node` on macOS/Linux or `(Get-Command node).Source` in PowerShell.
 
 ### Cursor / Claude Code
 
@@ -38,7 +38,7 @@ Add to `.cursor/mcp.json` or your Claude Code MCP config:
   "mcpServers": {
     "sdlc-framework": {
       "command": "node",
-      "args": ["C:\\repos\\SDLC Framework\\tools\\mcp-sdlc-framework\\index.js"],
+      "args": ["/path/to/sdlc-framework/tools/mcp-sdlc-framework/index.js"],
       "env": {
         "SDLC_FRAMEWORK_BASE_URL": "http://localhost:3001"
       }
@@ -49,9 +49,9 @@ Add to `.cursor/mcp.json` or your Claude Code MCP config:
 
 ### Install dependencies
 
-Dependencies are installed automatically by `npm install` (via `postinstall`) and by `bin/setup.ps1`. To install manually:
+Dependencies are installed automatically by `npm install` (via `postinstall`) and by `npm run setup`. To install manually:
 
-```powershell
+```bash
 cd tools/mcp-sdlc-framework
 npm install --production
 ```

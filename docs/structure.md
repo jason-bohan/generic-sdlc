@@ -2,8 +2,9 @@
 
 ```
 sdlc-framework/
-├── bin/                        # PowerShell scripts
-│   ├── setup.ps1               # First-run setup (deps, .env, PATH)
+├── bin/                        # Setup and automation scripts
+│   ├── setup.sh                # POSIX wrapper for cross-platform setup
+│   ├── setup.ps1               # Legacy Windows setup (deps, .env, PATH)
 │   ├── update.ps1              # Update checker (Node, Goose, Ollama, Rust)
 │   └── run-agent.ps1           # Autonomous agent driver
 │

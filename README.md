@@ -70,10 +70,11 @@ Adapter examples shipped today include Digital.ai Agility/VersionOne for plannin
 
 ### Setup
 
-```powershell
+```bash
 # Clone and install
 git clone <repo-url> && cd SDLC Framework
-.\bin\setup.ps1     # installs deps, creates .env, configures PATH, checks Ollama
+nvs use 22
+npm run setup       # installs deps, creates .env/config, checks optional tools
 ```
 
 The setup script will prompt for **workspace paths** — where your project repos live on disk. These are critical: agents use them to read coding standards, browse project structure, and run tests.
@@ -124,7 +125,7 @@ Multiple visual themes are available (Far Out, Lumon, Retro Carpet, Modern, Simp
 
 ### `.sdlc-framework.config.json`
 
-Copy from `.sdlc-framework.config.example.json` or let `.\bin\setup.ps1` generate it.
+Copy from `.sdlc-framework.config.example.json`, or let `npm run setup` generate it.
 
 ```json
 {
@@ -245,8 +246,10 @@ All modes track token usage per work item in a SQLite ledger visible from the da
 
 ## Scripts & Tools
 
-```powershell
-.\bin\setup.ps1                # First-run setup
+```bash
+npm run setup                  # First-run setup on macOS, Linux, or Windows
+./bin/setup.sh                 # Same setup flow for POSIX shells
+.\bin\setup.ps1                # Legacy Windows PowerShell setup
 .\bin\run-agent.ps1 -AgentId frontend   # Run an agent autonomously
 .\bin\audit-story.ps1          # Audit work-item status across agents
 .\bin\migrate-agent-files.ps1  # Rename legacy status files to role-based names
@@ -276,7 +279,7 @@ SDLC Framework ships a first-class [MCP server](docs/mcp-sdlc-framework.md) (`to
 - `"Switch to local mode before this long run"` → `set_execution_mode`
 - `"Are there any stuck workflows?"` → `list_workflows` + `get_agent_status`
 
-The setup script (`bin/setup.ps1`) configures the Goose extension and local Ollama provider automatically.
+The legacy Windows setup script (`bin/setup.ps1`) configures the Goose extension and local Ollama provider automatically. The cross-platform setup (`npm run setup`) checks for those tools and creates the project files, but leaves tool-specific provider configuration to the tool CLIs.
 
 See [MCP: SDLC Framework SDLC Orchestration](docs/mcp-sdlc-framework.md) for the full tool reference.
 

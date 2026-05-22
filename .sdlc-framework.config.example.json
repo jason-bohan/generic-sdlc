@@ -1,4 +1,4 @@
-﻿{
+{
   "executionMode": "local",
   "externalMode": "live",
   "cursorAiEnabled": true,
@@ -13,40 +13,8 @@
       "reviewerIds": [],
       "branchPattern": "feat/{storyNumber}-{slug}",
       "teamPrefixes": {},
-      "workspacePath": "c:\\repos\\YourRepo",
+      "workspacePath": "",
       "prUrlBase": "https://your-org.visualstudio.com/YourProject/_git/YourRepo/pullrequest",
-      "scope": "Your Team",
-      "team": "Your Team",
-      "owners": ["Your Name"]
-    },
-    "YourProject": {
-      "organization": "your-azure-devops-org",
-      "azureProject": "YourProject",
-      "repositoryId": "c268771c-65f3-43e4-a9d5-adfc4267c47d",
-      "targetBranch": "master",
-      "pipelineId": 350,
-      "reviewerIds": [],
-      "branchPattern": "{teamPrefix}{env}/{storyNumber}_{slug}",
-      "workspacePath": "c:\\repos\\YourProject",
-      "teamPrefixes": {
-        "Team:2001": "chipmunks/",
-        "Team:2002": "ninjas/",
-        "Team:2003": "ducks/",
-        "Team:2004": "integrators/",
-        "Team:2005": "istari/",
-        "Team:2006": "planeteers/",
-        "Team:2007": "avengers/",
-        "Team:2008": "arm/",
-        "Team:2009": "devops/"
-      },
-      "environments": [
-        "Alatar", "Alvin", "Chip", "Cowabunga", "Dale", "Donatello",
-        "Gadget", "Hulk", "Isaac", "Jupiter", "Krang", "Leonardo",
-        "Loki", "Mallory", "Minion", "Nosedive", "Pallando", "Pizza",
-        "Raphael", "Saturn", "Shredder", "Simon", "Splinter", "Theo",
-        "Thor", "Wildwing"
-      ],
-      "prUrlBase": "https://your-org.visualstudio.com/YourProject/_git/YourProject/pullrequest",
       "scope": "Your Team",
       "team": "Your Team",
       "owners": ["Your Name"]
@@ -67,7 +35,7 @@
   },
   "scheduler": {
     "mode": "notify",
-    "driver": "cursor",
+    "driver": "generic",
     "loopProvider": {
       "baseUrl": "http://localhost:11434/v1",
       "model": "qwen3:14b",
@@ -87,21 +55,9 @@
         "stepModePhases": ["analyzing", "generating-code", "validating", "creating-pr", "watching-reviews", "addressing-feedback", "running-cypress"],
         "adoPat": ""
       },
-      "backend": {
-        "enabled": false,
-        "autoStart": false,
-        "stepMode": false
-      },
-      "qa": {
-        "enabled": false,
-        "autoStart": false,
-        "stepMode": false
-      },
-      "ux": {
-        "enabled": false,
-        "autoStart": false,
-        "stepMode": false
-      },
+      "backend": { "enabled": false, "autoStart": false, "stepMode": false },
+      "qa": { "enabled": false, "autoStart": false, "stepMode": false },
+      "ux": { "enabled": false, "autoStart": false, "stepMode": false },
       "reviewer": {
         "enabled": true,
         "autoStart": true,
