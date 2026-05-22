@@ -1,0 +1,91 @@
+{
+  "name": "golden-agile-backlog",
+  "description": "Generic agile backlog preset for professional VerbatimDev demos.",
+  "teams": [
+    { "id": "team-platform", "name": "Platform" },
+    { "id": "team-experience", "name": "Experience" },
+    { "id": "team-quality", "name": "Quality" }
+  ],
+  "workItems": [
+    {
+      "id": "preset-story-1001",
+      "number": "VB-1001",
+      "title": "Create searchable transcript library",
+      "description": "<p>Users need a transcript library that supports keyword search, speaker filtering, and quick navigation to source moments.</p>",
+      "status": "Ready",
+      "type": "story",
+      "teamId": "team-experience",
+      "team": "Experience",
+      "estimate": 8,
+      "priority": "High",
+      "classOfService": "Standard",
+      "acceptanceCriteria": "<ul><li>Search results highlight matching terms</li><li>Speaker and date filters can be combined</li><li>Selecting a result opens the transcript at the matching timestamp</li></ul>",
+      "lanes": {
+        "frontend": "Build the searchable transcript list, filter controls, and timestamp deep-link behavior.",
+        "backend": "Add transcript search endpoint with speaker and date filters plus paged results.",
+        "qa": "Verify combined filters, empty states, and timestamp navigation across at least 500 seeded transcript lines."
+      },
+      "source": "mock"
+    },
+    {
+      "id": "preset-story-1002",
+      "number": "VB-1002",
+      "title": "Generate meeting action items from transcript segments",
+      "description": "<p>Project managers need a reviewed action-item summary generated from meeting transcript segments.</p>",
+      "status": "Backlog",
+      "type": "feature",
+      "teamId": "team-platform",
+      "team": "Platform",
+      "estimate": 13,
+      "priority": "High",
+      "classOfService": "Fixed Date",
+      "acceptanceCriteria": "<ul><li>Action items include owner, due date, source quote, and confidence</li><li>Low-confidence items require human review</li><li>Reviewed items can be exported as markdown</li></ul>",
+      "lanes": {
+        "frontend": "Add review queue controls and export affordance.",
+        "backend": "Create summary job model, transcript-segment prompt context, and review status persistence.",
+        "qa": "Test deterministic fixture output, low-confidence review flow, and markdown export."
+      },
+      "source": "mock"
+    },
+    {
+      "id": "preset-bug-1003",
+      "number": "VB-1003",
+      "title": "Fix speaker labels drifting after transcript edits",
+      "description": "<p>Manual transcript edits can leave downstream speaker labels attached to the wrong text block.</p>",
+      "status": "In Progress",
+      "type": "bug",
+      "teamId": "team-quality",
+      "team": "Quality",
+      "estimate": 5,
+      "priority": "Medium",
+      "classOfService": "Expedite",
+      "acceptanceCriteria": "<ul><li>Speaker labels remain stable after insert, split, and merge edits</li><li>Audit trail records the edit operation</li><li>Existing transcript exports are not reordered</li></ul>",
+      "lanes": {
+        "frontend": "Preserve visible speaker attribution while editing transcript blocks.",
+        "backend": "Normalize transcript block IDs during split and merge operations.",
+        "qa": "Run regression scenarios for insert, split, merge, undo, and export."
+      },
+      "source": "mock"
+    },
+    {
+      "id": "preset-story-1004",
+      "number": "VB-1004",
+      "title": "Add role-based sharing for transcript collections",
+      "description": "<p>Teams need to share transcript collections with viewer, commenter, and editor permissions.</p>",
+      "status": "Backlog",
+      "type": "story",
+      "teamId": "team-platform",
+      "team": "Platform",
+      "estimate": 8,
+      "priority": "Medium",
+      "classOfService": "Standard",
+      "acceptanceCriteria": "<ul><li>Collection owners can invite users by email</li><li>Permissions are enforced by API and UI</li><li>Revoked users lose access immediately</li></ul>",
+      "lanes": {
+        "frontend": "Build member list, invite flow, and permission selector.",
+        "backend": "Add collection permission model and authorization checks.",
+        "qa": "Verify each role against list, detail, export, and mutation endpoints."
+      },
+      "source": "mock"
+    }
+  ]
+}

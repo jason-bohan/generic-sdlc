@@ -179,7 +179,19 @@ OLLAMA_HOST=http://localhost:11434
 LOCAL_LLM_MODEL=qwen3:8b
 SDLC_API_PORT=3001
 SDLC_EXTERNAL_MODE=   # set to "mock" for local testing
+PM_PROVIDER=          # set to "mock" to use the generic mock project tracker
+DEMO_PRESET=          # optional preset name from data/presets, e.g. golden-agile-backlog
 ```
+
+### Demo Presets
+
+Use demo presets when you need a repeatable backlog for demos without building a configuration UI. Presets live in `data/presets/*.json` and map to the generic `WorkItem` provider model.
+
+```bash
+PM_PROVIDER=mock DEMO_PRESET=golden-agile-backlog npm run server
+```
+
+`DEMO_PRESET` accepts either a bare preset name, resolved as `data/presets/<name>.json`, or a JSON path. The committed `golden-agile-backlog` preset seeds a VerbatimDev-style agile backlog with stories, bug work, teams, acceptance criteria, and frontend/backend/QA lanes.
 
 ### Azure DevOps PAT Scopes
 

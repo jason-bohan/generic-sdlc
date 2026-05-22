@@ -17,7 +17,7 @@ export async function resolveProjectTracker(rootDir: string, configFile: string)
     const provider = (process.env.PM_PROVIDER ?? 'agility').toLowerCase();
     if (provider === 'mock') {
         const { MockProjectTracker } = await import('./mock');
-        return new MockProjectTracker();
+        return new MockProjectTracker(rootDir);
     }
     // Default: Agility/VersionOne — delegates to existing v1Fetch infrastructure
     const { AgilityProjectTracker } = await import('./agility');

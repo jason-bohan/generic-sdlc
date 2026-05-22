@@ -2,6 +2,7 @@ import type { IProjectTracker, FetchStoriesOptions } from '../IProjectTracker';
 import type { ICodeReview, CreatePROptions } from '../ICodeReview';
 import type { INotifications } from '../INotifications';
 import type { Team, WorkItem, WorkItemSummary, PREvent, NotificationPayload } from '../types';
+import { MockDataGenerator } from '../../demo-presets';
 
 const MOCK_TEAMS: Team[] = [
     { id: 'team-1', name: 'Alpha' },
@@ -54,10 +55,22 @@ const MOCK_ITEMS: WorkItem[] = [
 
 export class MockProjectTracker implements IProjectTracker {
     readonly providerName = 'mock';
-    private items = MOCK_ITEMS.map(i => ({ ...i }));
+    private readonly teams: Team[];
+    private items: WorkItem[];
+
+    constructor(rootDir = process.cwd(), presetName = process.env.DEMO_PRESET) {
+        if (presetName) {
+            const preset = new MockDataGenerator().load(rootDir, presetName);
+            this.teams = preset.teams?.map(team => ({ ...team })) ?? MOCK_TEAMS.map(team => ({ ...team }));
+            this.items = preset.workItems.map(item => ({ ...item, lanes: item.lanes ? { ...item.lanes } : undefined }));
+            return;
+        }
+        this.teams = MOCK_TEAMS.map(team => ({ ...team }));
+        this.items = MOCK_ITEMS.map(item => ({ ...item, lanes: item.lanes ? { ...item.lanes } : undefined }));
+    }
 
     async getTeams(): Promise<Team[]> {
-        return MOCK_TEAMS;
+        return this.teams.map(team => ({ ...team }));
     }
 
     async getStories(opts: FetchStoriesOptions = {}): Promise<WorkItemSummary[]> {
