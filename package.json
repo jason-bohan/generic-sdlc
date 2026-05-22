@@ -5,6 +5,7 @@
     "description": "SDLC Framework — Multi-agent cooperative workgroup for Cursor",
     "scripts": {
         "server": "tsx --watch src/server/index.ts",
+        "setup": "node scripts/setup.cjs",
         "dashboard": "vite --config vite.config.ts",
         "dashboard:build": "vite build --config vite.config.ts",
         "dev": "concurrently -k -n api,dash \"npm run server\" \"node scripts/wait-dev-api.cjs && npm run dashboard\"",

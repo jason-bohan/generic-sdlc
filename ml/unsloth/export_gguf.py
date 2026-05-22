@@ -1,5 +1,5 @@
 """
-Standalone GGUF export for Meitheal fine-tuned Qwen3-8B.
+Standalone GGUF export for SDLC Framework fine-tuned Qwen3-8B.
 
 Run this after train.py has produced a LoRA adapter in output/lora-adapter/.
 
@@ -82,7 +82,7 @@ ADAPTER_DIR = _resolve_adapter_dir()
 
 def main():
     print("=" * 60)
-    print("Meitheal GGUF Export")
+    print("SDLC Framework GGUF Export")
     print("=" * 60)
     print(f"Adapter : {ADAPTER_DIR}")
     print(f"Output  : {GGUF_DIR}")

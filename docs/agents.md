@@ -94,7 +94,7 @@ Each agent has its own skill file (`skills/<agent>/SKILL.md`) that defines its i
 
 ### Path Resolution
 
-Agents never use hardcoded paths. They read `projects.<name>.workspacePath` from `.sdlc-framework.config.json` to locate external project repos. This path **must be set correctly during setup** (`.\bin\setup.ps1`) — see [Configuration](configuration.md) for details.
+Agents never use hardcoded paths. They read `projects.<name>.workspacePath` from `.sdlc-framework.config.json` to locate external project repos. This path **must be set correctly during setup** (`npm run setup`) — see [Configuration](configuration.md) for details.
 
 The fallback `GET /api/project/standards?project=YourProject` auto-discovers all rules, skills, and key paths at runtime, but reading from config saves tokens.
 

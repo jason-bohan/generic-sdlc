@@ -1,5 +1,5 @@
 """
-Benchmark: Base qwen3:8b vs Unsloth fine-tuned model on Meitheal agent tasks.
+Benchmark: Base qwen3:8b vs Unsloth fine-tuned model on SDLC Framework agent tasks.
 Measures: response quality (scored), latency, and tokens/second.
 Requires Ollama running with both models available.
 """
@@ -30,8 +30,8 @@ import json as json_module
 
 OLLAMA_HOST = "http://localhost:11434"
 BASE_MODEL = "qwen3:8b"
-TUNED_MODEL = "meitheal-tuned:latest"
-CUSTOM_MODEL = "meitheal-local:latest"
+TUNED_MODEL = "sdlc-framework-tuned:latest"
+CUSTOM_MODEL = "sdlc-framework-local:latest"
 OUTPUT_DIR = Path(__file__).parent / "output"
 
 BENCHMARK_PROMPTS = [
@@ -221,7 +221,7 @@ def run_benchmark(models: list[str]) -> dict:
 
 
 def main():
-    print("Meitheal Model Benchmark")
+    print("SDLC Framework Model Benchmark")
     print("=" * 60)
 
     # Check which models are available
