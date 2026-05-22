@@ -1,6 +1,5 @@
 node_modules/
 dist/
-.meitheal/
 src-tauri/target/
 src-tauri/gen/
 
@@ -17,9 +16,11 @@ debug_json.txt
 
 .env
 .meitheal.config.json
-.meitheal/
-.meitheal/mock/
-.meitheal/ollama-state.json
+.sdlc-framework.config.json
+.sdlc-framework/
+scripts/__pycache__/
+**/__pycache__/
+**/*.pyc
 .claude/
 !.claude/settings.json
 !.claude/mcp.json
@@ -41,12 +42,10 @@ cypress/videos/
 # Local tools
 tools/openrouter-proxy/
 
-# ML training artifacts (large files, output dir is a junction to C:\ml\models\meitheal\output)
+# ML training artifacts
 ml/unsloth/.venv/
 ml/unsloth/output/
 ml/unsloth/unsloth_compiled_cache/
-ml/unsloth/**/__pycache__/
-ml/unsloth/**/*.pyc
 .aider*
 
 # Training dataset output
