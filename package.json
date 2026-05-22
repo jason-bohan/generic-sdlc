@@ -24,6 +24,7 @@
         "docker:test": "powershell -NoProfile -ExecutionPolicy Bypass -File ./bin/docker-test.ps1",
         "docker:test:unit": "powershell -NoProfile -ExecutionPolicy Bypass -File ./bin/docker-test.ps1 -UnitOnly",
         "docker:test:e2e": "powershell -NoProfile -ExecutionPolicy Bypass -File ./bin/docker-test.ps1 -CypressOnly",
+        "notify:spy": "tsx scripts/teams-webhook-spy.ts",
         "pr:watch": "tsx scripts/pr-watcher.ts",
         "plan": "tsx scripts/plan-generator.ts",
         "tui": "tsx src/tui/index.tsx",
