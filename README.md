@@ -20,7 +20,7 @@ The API is intentionally integration-agnostic. SDLC Framework models generic SDL
 4. On approval, the **DevOps** agent monitors the configured CI/build adapter
 5. On build pass, the change is completed and the work-item owner wraps up
 
-The entire pipeline is observable from a real-time dashboard (2D card view or 3D isometric office) and controllable via step mode, execution modes, and per-agent configuration.
+The entire pipeline is observable from a real-time dashboard and controllable via step mode, execution modes, and per-agent configuration.
 
 Adapter examples shipped today include Digital.ai Agility/VersionOne for planning, Azure DevOps for review/build automation, Microsoft Teams notifications, local mock state, Ollama, MeshLLM, and OpenRouter-compatible model routing. These are implementations, not the public API shape.
 
@@ -105,12 +105,9 @@ sdlc-framework --test     # with mock integrations (no live planning/review/noti
 
 ## Dashboard
 
-Two views, switchable from the settings gear:
+The **Simple Floor** is a 2D card grid with agent status, phase badges, work-item keys, model pickers, inline chat, and action buttons.
 
-- **Simple Floor** — 2D card grid with agent status, phase badges, work-item keys, model pickers, inline chat, and action buttons. This is the primary working view.
-- **3D Office** — Interactive isometric office (React Three Fiber) with agent desks, a server room, design studio, and break room. Click desks to zoom in.
-
-Both views support:
+It supports:
 - Real-time agent status polling
 - Inline agent renaming (double-click)
 - Work-item assignment from the configured planning adapter
@@ -291,7 +288,7 @@ See [MCP: SDLC Framework SDLC Orchestration](docs/mcp-sdlc-framework.md) for the
 |----------|----------|
 | [Agents & SDLC Pipeline](docs/agents.md) | Pipeline, execution modes, scheduler, step mode, notification adapters, knowledge sources |
 | [Local AI, Ollama & MeshLLM](docs/local-ai.md) | Model selection, Modelfile, MeshLLM, RAG indexer, fine-tuning, boot sequence |
-| [Dashboard](docs/dashboard.md) | 3D office, Simple Floor, themes, stats bar |
+| [Dashboard](docs/dashboard.md) | Simple Floor, themes, stats bar |
 | [API Reference](docs/api.md) | All endpoints with example payloads |
 | [MCP: SDLC Framework Orchestration](docs/mcp-sdlc-framework.md) | Goose/Claude Code MCP setup, all tools, usage examples |
 | [Developer Tools](docs/developer-tools.md) | Scalar API docs, Bruno, Harlequin, TUI, scripts |
