@@ -1,0 +1,10 @@
+# Code owners for generic-sdlc
+# These users will be automatically requested for review on PRs that modify these files
+
+# Default owner for all files
+* @jason-bohan
+
+# Specific path owners (add more as needed)
+/src/ @jason-bohan
+/tests/ @jason-bohan
+/docs/ @jason-bohan
