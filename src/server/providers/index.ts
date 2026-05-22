@@ -1,3 +1,5 @@
+import type { NotificationPayload } from './types';
+
 export type { WorkItem, WorkItemSummary, Team, PREvent, NotificationPayload } from './types';
 export type { IProjectTracker, FetchStoriesOptions } from './IProjectTracker';
 export type { ICodeReview, CreatePROptions } from './ICodeReview';
@@ -32,12 +34,18 @@ export async function resolveCodeReview(rootDir: string, configFile: string) {
     return new AzureDevOpsCodeReview(rootDir, configFile);
 }
 
-export async function resolveNotifications() {
+export async function resolveNotifications(rootDir: string) {
     const provider = (process.env.NOTIFY_PROVIDER ?? 'teams').toLowerCase();
     if (provider === 'mock' || provider === 'none') {
         const { MockNotifications } = await import('./mock');
         return new MockNotifications();
     }
     const { TeamsNotifications } = await import('./teams');
-    return new TeamsNotifications();
+    return new TeamsNotifications(rootDir);
+}
+
+/** Convenience wrapper: resolve the notifier for rootDir and send in one call. */
+export async function notify(rootDir: string, payload: NotificationPayload): Promise<boolean> {
+    const notifier = await resolveNotifications(rootDir);
+    return notifier.send(payload);
 }

@@ -3,7 +3,7 @@ import { resolve } from 'path';
 import { getProjectProfile } from '../project-config';
 import { spawnAgent } from '../spawn-agent';
 import { isGlobalStepMode } from '../stepMode';
-import { sendTeamsNotification } from '../teams-notify';
+import { notify } from '../providers';
 import { skillSubdirForAgentId } from '../../shared/agentSkillDirs';
 import { resolveAgentDisplayName } from '../agent-display-names';
 import { dbUpsertWorkflowArtifact } from '../db';
@@ -102,7 +102,7 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                     tasks: [reviewTask],
                     events: [{ timestamp: now, type: 'info', message: `PR #${prId} assigned for review by ${agentId}${storyNumber ? ` (story ${storyNumber})` : ''}` }] }, null, 2));
                 reviewerDeskAssigned = true;
-                await sendTeamsNotification(rootDir, `🔀 PR Created: #${prId}`, `**${resolveAgentDisplayName(agentId, rootDir)}** created PR [#${prId}](${prUrlFull})${storyNumber ? ` for story **${storyNumber}**` : ''}. Awaiting **${resolveAgentDisplayName('reviewer', rootDir)}** review.\n\n${prTitle || ''}`, 'D97706');
+                await notify(rootDir, { title: `🔀 PR Created: #${prId}`, body: `**${resolveAgentDisplayName(agentId, rootDir)}** created PR [#${prId}](${prUrlFull})${storyNumber ? ` for story **${storyNumber}**` : ''}. Awaiting **${resolveAgentDisplayName('reviewer', rootDir)}** review.\n\n${prTitle || ''}`, color: 'D97706' });
                 teamsNotified = true;
                 // Only auto-spawn reviewer when step mode is off for both the creator workflow and reviewer desk.
                 if (!globalStepModeOn && !creatorStepMode && !isAgentStepMode('reviewer', rootDir)) {

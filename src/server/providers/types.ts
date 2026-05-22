@@ -55,4 +55,6 @@ export interface NotificationPayload {
     agentId?: string;
     storyNumber?: string;
     level?: 'info' | 'success' | 'warning' | 'error';
+    /** Provider-specific theme color (e.g. hex string for Teams MessageCard). Ignored by non-Teams providers. */
+    color?: string;
 }

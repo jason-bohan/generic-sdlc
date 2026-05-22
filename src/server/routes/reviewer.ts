@@ -6,7 +6,7 @@ import { getSchedulerWorkflowMode } from '../schedulerMode';
 import { getActiveProjectName, getProjectProfile } from '../project-config';
 import { spawnAgent } from '../spawn-agent';
 import { isGlobalStepMode } from '../stepMode';
-import { sendTeamsNotification } from '../teams-notify';
+import { notify } from '../providers';
 import { skillSubdirForAgentId } from '../../shared/agentSkillDirs';
 import { resolveAgentDisplayName } from '../agent-display-names';
 import { readBody, json, cors } from '../router';
@@ -211,7 +211,7 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                 events: [...priorEvents, { timestamp: now, type: 'info', message: `PR #${prId} picked up for review${pr.sourceBranch ? ` from ${pr.sourceBranch}` : ''}.` }] }, null, 2));
             undismissPrFromReviewerDesk(rootDir, prId);
 
-            await sendTeamsNotification(rootDir, `${resolveAgentDisplayName('reviewer', rootDir)} picked up PR #${prId}`, `**${resolveAgentDisplayName('reviewer', rootDir)}** picked up [PR #${prId}](${pr.url}) for review.\n\n${pr.title}`, 'f59e0b');
+            await notify(rootDir, { title: `${resolveAgentDisplayName('reviewer', rootDir)} picked up PR #${prId}`, body: `**${resolveAgentDisplayName('reviewer', rootDir)}** picked up [PR #${prId}](${pr.url}) for review.\n\n${pr.title}`, color: 'f59e0b' });
 
             const globalStepModeOn = isGlobalStepMode(resolve(rootDir, '.sdlc-framework.config.json'));
             const reviewerStepModeOn = isAgentStepMode('reviewer', rootDir);

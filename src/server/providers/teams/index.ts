@@ -9,14 +9,11 @@ import type { NotificationPayload } from '../types';
 export class TeamsNotifications implements INotifications {
     readonly providerName = 'teams';
 
+    constructor(private rootDir: string) {}
+
     async send(payload: NotificationPayload): Promise<boolean> {
         const { sendTeamsNotification } = await import('../../teams-notify');
-        return sendTeamsNotification({
-            title: payload.title,
-            body: payload.body,
-            url: payload.url,
-            agentId: payload.agentId,
-            level: payload.level,
-        });
+        await sendTeamsNotification(this.rootDir, payload.title, payload.body, payload.color);
+        return true;
     }
 }

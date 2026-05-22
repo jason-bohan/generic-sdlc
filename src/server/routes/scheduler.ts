@@ -8,7 +8,7 @@ import { getActiveProject, getActiveProjectName, getProjectProfile } from '../pr
 import { spawnAgent } from '../spawn-agent';
 import { isGlobalStepMode } from '../stepMode';
 import { startWorkflow, startPhaseRun } from '../orchestrator';
-import { sendTeamsNotification } from '../teams-notify';
+import { notify } from '../providers';
 import { skillSubdirForAgentId } from '../../shared/agentSkillDirs';
 import { resolveAgentDisplayName } from '../agent-display-names';
 import { dbGetWorkflowItemByStory } from '../db';
@@ -387,7 +387,7 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
             } catch (workflowErr) {
                 console.warn('[scheduler] workflow state mirror failed:', workflowErr);
             }
-            sendTeamsNotification(rootDir, `📋 Story Assigned: ${storyNumber}`, `**${storyName || storyNumber}** assigned to **${resolveAgentDisplayName(agentId, rootDir)}**. ${immediate ? 'Workflow starting.' : 'Awaiting approval.'}`, immediate ? '6366f1' : 'f59e0b');
+            void notify(rootDir, { title: `📋 Story Assigned: ${storyNumber}`, body: `**${storyName || storyNumber}** assigned to **${resolveAgentDisplayName(agentId, rootDir)}**. ${immediate ? 'Workflow starting.' : 'Awaiting approval.'}`, color: immediate ? '6366f1' : 'f59e0b' });
             json(res, { ok: true, phase: status.currentPhase, workflow });
         } catch (e: unknown) { json(res, { error: e instanceof Error ? e.message : String(e) }, 500); }
     });

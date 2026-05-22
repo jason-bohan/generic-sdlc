@@ -7,7 +7,7 @@ import { getProjectProfile } from '../project-config';
 import { cleanupStoryWorktrees, resolveWorktreeRepoRoots } from '../worktree-cleanup';
 import { spawnAgent } from '../spawn-agent';
 import { isGlobalStepMode } from '../stepMode';
-import { sendTeamsNotification } from '../teams-notify';
+import { notify } from '../providers';
 import { skillSubdirForAgentId } from '../../shared/agentSkillDirs';
 import { resolveAgentDisplayName } from '../agent-display-names';
 import { dbUpsertWorkflowArtifact } from '../db';
@@ -68,12 +68,12 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                     voteOnPr(prId, 'Approved', undefined, statusProjectKey).catch(e => console.error('[handoff] ADO vote failed:', e));
                 }
                 if (result.target === 'devops' && !storyOwnerInStepMode && !isAgentStepMode('devops', rootDir)) {
-                    await sendTeamsNotification(rootDir, `PR #${prId} Approved`, `**${resolveAgentDisplayName('reviewer', rootDir)}** approved ${prLink}${storyNumber ? ` (story ${storyNumber})` : ''}. Handing off to **${resolveAgentDisplayName('devops', rootDir)}** for CI build.`, '22c55e');
-                    await sendTeamsNotification(rootDir, `${resolveAgentDisplayName('devops', rootDir)}: build gate — PR #${prId}`, `**${resolveAgentDisplayName('devops', rootDir)}** — \`.devops-status.json\` is **pending-build**. Run Pipeline Workflow Mode B.`, '06b6d4');
+                    await notify(rootDir, { title: `PR #${prId} Approved`, body: `**${resolveAgentDisplayName('reviewer', rootDir)}** approved ${prLink}${storyNumber ? ` (story ${storyNumber})` : ''}. Handing off to **${resolveAgentDisplayName('devops', rootDir)}** for CI build.`, color: '22c55e' });
+                    await notify(rootDir, { title: `${resolveAgentDisplayName('devops', rootDir)}: build gate — PR #${prId}`, body: `**${resolveAgentDisplayName('devops', rootDir)}** — \`.devops-status.json\` is **pending-build**. Run Pipeline Workflow Mode B.`, color: '06b6d4' });
                     try { agentSpawned = spawnAgent('devops', `Build gate for PR #${prId}. Read skills/${skillSubdirForAgentId('devops')}/SKILL.md Mode B and .devops-status.json.`, rootDir, getAgentModel('devops', rootDir)).spawned; } catch (e) { console.error('[handoff] devops spawn failed:', e); }
                 }
             } else if (!targetInStepMode) {
-                await sendTeamsNotification(rootDir, `Changes Requested: PR #${prId}`, `**${resolveAgentDisplayName('reviewer', rootDir)}** requested changes on ${prLink}${storyNumber ? ` (story ${storyNumber})` : ''}.${resolvedCommentCount ? ` ${resolvedCommentCount} comment(s).` : ''}`, 'ef4444');
+                await notify(rootDir, { title: `Changes Requested: PR #${prId}`, body: `**${resolveAgentDisplayName('reviewer', rootDir)}** requested changes on ${prLink}${storyNumber ? ` (story ${storyNumber})` : ''}.${resolvedCommentCount ? ` ${resolvedCommentCount} comment(s).` : ''}`, color: 'ef4444' });
                 if (targetAgent) { try { agentSpawned = spawnAgent(targetAgent, `Changes requested on PR #${prId}. Read your skill and status file, then address the review feedback.`, rootDir, getAgentModel(targetAgent, rootDir)).spawned; } catch (e) { console.error('[handoff] spawn failed:', e); } }
             }
             try {
@@ -160,7 +160,7 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
             const title = buildResult === 'passed' ? `Build Passed: PR #${prId}` : `Build Failed: PR #${prId}`;
             const devopsName = resolveAgentDisplayName('devops', rootDir);
             const msg = buildResult === 'passed' ? `**${devopsName}** - Build${buildId ? ` #${buildId}` : ''} passed for ${buildPrLink}.` : `**${devopsName}** - Build${buildId ? ` #${buildId}` : ''} failed for ${buildPrLink}.`;
-            if (tryClaimBuildCompleteNotification(rootDir, prId, buildId, buildResult)) await sendTeamsNotification(rootDir, title, msg, color);
+            if (tryClaimBuildCompleteNotification(rootDir, prId, buildId, buildResult)) await notify(rootDir, { title, body: msg, color });
             let agentSpawned = false;
             if (buildResult === 'passed' && !result.hasIncompleteTasks && !isMockExternalMode(configFile)) {
                 const ownerForWorktrees = findStoryOwnerByPrId(rootDir, prId);
@@ -252,7 +252,7 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
             if (!storyNumber) { json(res, { error: 'storyNumber is required' }, 400); return; }
             const schedCfg = getSchedulerConfig(rootDir);
             const result = applyDesignReady(rootDir, { storyNumber, storyName, designSpec, targetAgent, execMode: getExecMode(configFile), workflowMode: getSchedulerWorkflowMode(schedCfg) });
-            await sendTeamsNotification(rootDir, `Design Spec Ready: ${storyNumber}`, `**${resolveAgentDisplayName('ux', rootDir)}** — Design spec for **${storyName || storyNumber}** is ready. **${resolveAgentDisplayName(result.targetAgent, rootDir)}** assigned for implementation.`, 'ec4899');
+            await notify(rootDir, { title: `Design Spec Ready: ${storyNumber}`, body: `**${resolveAgentDisplayName('ux', rootDir)}** — Design spec for **${storyName || storyNumber}** is ready. **${resolveAgentDisplayName(result.targetAgent, rootDir)}** assigned for implementation.`, color: 'ec4899' });
             let designSpawned = false;
             if (!isAgentStepMode(result.targetAgent, rootDir)) {
                 try { designSpawned = spawnAgent(result.targetAgent, `Design spec ready for story ${storyNumber}. Read your skill and .${result.targetAgent}-status.json to begin implementation.`, rootDir, getAgentModel(result.targetAgent, rootDir)).spawned; } catch (e) { console.error('[handoff] spawn failed:', e); }
@@ -274,13 +274,13 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
             let agentSpawned = false;
             if (result.bothApproved) {
                 if (!isAgentStepMode('devops', rootDir)) {
-                    await sendTeamsNotification(rootDir, `PR #${prId} Fully Approved`, `Both **${resolveAgentDisplayName('reviewer', rootDir)}** (code) and **${resolveAgentDisplayName('ux', rootDir)}** (design) approved PR #${prId}. Handing off to **${resolveAgentDisplayName('devops', rootDir)}** for CI build.`, '22c55e');
+                    await notify(rootDir, { title: `PR #${prId} Fully Approved`, body: `Both **${resolveAgentDisplayName('reviewer', rootDir)}** (code) and **${resolveAgentDisplayName('ux', rootDir)}** (design) approved PR #${prId}. Handing off to **${resolveAgentDisplayName('devops', rootDir)}** for CI build.`, color: '22c55e' });
                     try { agentSpawned = spawnAgent('devops', `Build gate for PR #${prId}. Read skills/${skillSubdirForAgentId('devops')}/SKILL.md Mode B and .devops-status.json.`, rootDir, getAgentModel('devops', rootDir)).spawned; } catch (e) { console.error('[handoff] devops spawn failed:', e); }
                 }
             } else if (verdict === 'changes-requested') {
                 const targetInStepMode = result.target && result.target !== 'unknown' && isAgentStepMode(result.target, rootDir);
                 if (!targetInStepMode) {
-                    await sendTeamsNotification(rootDir, `Design Changes Requested: PR #${prId}`, `**${resolveAgentDisplayName('ux', rootDir)}** requested design changes on PR #${prId}.${comments ? ` ${comments}` : ''}`, 'ec4899');
+                    await notify(rootDir, { title: `Design Changes Requested: PR #${prId}`, body: `**${resolveAgentDisplayName('ux', rootDir)}** requested design changes on PR #${prId}.${comments ? ` ${comments}` : ''}`, color: 'ec4899' });
                     if (result.target && result.target !== 'unknown') {
                         try { agentSpawned = spawnAgent(result.target, `Design changes requested on PR #${prId}. Read your skill and status file, then address the design feedback.`, rootDir, getAgentModel(result.target, rootDir)).spawned; } catch (e) { console.error('[handoff] spawn failed:', e); }
                     }

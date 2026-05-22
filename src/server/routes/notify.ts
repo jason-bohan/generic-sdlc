@@ -1,6 +1,6 @@
 ﻿import { resolve } from 'path';
 import { resolveWorktreeRepoRoots, sweepWorktrees } from '../worktree-cleanup';
-import { sendTeamsNotification } from '../teams-notify';
+import { notify } from '../providers';
 import { openApiSpec } from '../openapi';
 import { readBody, json, cors } from '../router';
 import type { UseFn } from './types';
@@ -44,7 +44,7 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
         const body = await readBody(req);
         try {
             const { title, message, color } = JSON.parse(body);
-            await sendTeamsNotification(rootDir, title || 'SDLC Framework', message || '', color);
+            await notify(rootDir, { title: title || 'SDLC Framework', body: message || '', color });
             json(res, { ok: true });
         } catch (e: unknown) { json(res, { error: e instanceof Error ? e.message : String(e) }, 500); }
     });
