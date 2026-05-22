@@ -63,7 +63,7 @@ describe('getActiveProject', () => {
     it('loads from projects section using activeProject key', () => {
         writeConfig({
             activeProject: 'YourProject',
-            projects: { sdlc-framework: SDLC_FRAMEWORK_PROFILE, YourProject: SECONDARY_PROFILE },
+            projects: { 'sdlc-framework': SDLC_FRAMEWORK_PROFILE, YourProject: SECONDARY_PROFILE },
         });
         const profile = getActiveProject(CONFIG_PATH);
         expect(profile.targetBranch).toBe('master');
@@ -74,7 +74,7 @@ describe('getActiveProject', () => {
 
     it('falls back to first project if activeProject key is missing', () => {
         writeConfig({
-            projects: { sdlc-framework: SDLC_FRAMEWORK_PROFILE, YourProject: SECONDARY_PROFILE },
+            projects: { 'sdlc-framework': SDLC_FRAMEWORK_PROFILE, YourProject: SECONDARY_PROFILE },
         });
         const profile = getActiveProject(CONFIG_PATH);
         expect(profile.targetBranch).toBe('main');
@@ -102,7 +102,7 @@ describe('getProjectProfile', () => {
     it('loads a named project even when another project is active', () => {
         writeConfig({
             activeProject: 'sdlc-framework',
-            projects: { sdlc-framework: SDLC_FRAMEWORK_PROFILE, YourProject: SECONDARY_PROFILE },
+            projects: { 'sdlc-framework': SDLC_FRAMEWORK_PROFILE, YourProject: SECONDARY_PROFILE },
         });
         const profile = getProjectProfile(CONFIG_PATH, 'YourProject');
         expect(profile.targetBranch).toBe('master');
@@ -112,7 +112,7 @@ describe('getProjectProfile', () => {
     it('falls back to the active project when the named project is unknown', () => {
         writeConfig({
             activeProject: 'YourProject',
-            projects: { sdlc-framework: SDLC_FRAMEWORK_PROFILE, YourProject: SECONDARY_PROFILE },
+            projects: { 'sdlc-framework': SDLC_FRAMEWORK_PROFILE, YourProject: SECONDARY_PROFILE },
         });
         const profile = getProjectProfile(CONFIG_PATH, 'unknown');
         expect(profile.targetBranch).toBe('master');
@@ -127,7 +127,7 @@ describe('getActiveProjectName', () => {
     it('returns activeProject key from config', () => {
         writeConfig({
             activeProject: 'YourProject',
-            projects: { sdlc-framework: SDLC_FRAMEWORK_PROFILE, YourProject: SECONDARY_PROFILE },
+            projects: { 'sdlc-framework': SDLC_FRAMEWORK_PROFILE, YourProject: SECONDARY_PROFILE },
         });
         expect(getActiveProjectName(CONFIG_PATH)).toBe('YourProject');
     });
@@ -140,7 +140,7 @@ describe('listProjectNames', () => {
 
     it('returns all project keys', () => {
         writeConfig({
-            projects: { sdlc-framework: SDLC_FRAMEWORK_PROFILE, YourProject: SECONDARY_PROFILE },
+            projects: { 'sdlc-framework': SDLC_FRAMEWORK_PROFILE, YourProject: SECONDARY_PROFILE },
         });
         expect(listProjectNames(CONFIG_PATH)).toEqual(['sdlc-framework', 'YourProject']);
     });

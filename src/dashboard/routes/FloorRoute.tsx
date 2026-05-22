@@ -1,17 +1,11 @@
 import { useNavigate } from '@tanstack/react-router';
-import { lazy, Suspense } from 'react';
 import SimpleFloor from '../SimpleFloor';
-import { useTheme } from '../ThemeProvider';
 import { useDashboard } from '../DashboardContext';
 import { AGENT_ROSTER } from '../types';
 import type { AgentProfile } from '../types';
-import { appShellStyles as s } from '../app-shell-styles';
-
-const Floor3D = lazy(() => import('../floor3d/Floor3D'));
 
 export function FloorRoute() {
     const navigate = useNavigate();
-    const { current: theme } = useTheme();
     const {
         statuses,
         displayNames,
@@ -58,13 +52,5 @@ export function FloorRoute() {
         worktreeHue: worktreeInfo?.accentHue,
     };
 
-    if (theme.id === 'simple') {
-        return <SimpleFloor {...floorProps} />;
-    }
-
-    return (
-        <Suspense fallback={<div style={s.loading}><p style={s.loadingText}>Loading 3D floor…</p></div>}>
-            <Floor3D {...floorProps} />
-        </Suspense>
-    );
+    return <SimpleFloor {...floorProps} />;
 }

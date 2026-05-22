@@ -255,14 +255,14 @@ export async function createStoryBalanced(
     agentId = 'frontend',
 ): Promise<StoryResult> {
     const workspaceDir = params.workspaceDir || rootDir || process.cwd();
-    const sdlc-frameworkDir = rootDir || process.cwd();
+    const frameworkDir = rootDir || process.cwd();
 
     // RAG: semantic context from the actual workspace — falls back to static tree scan
     let repoContext = '';
     if (isEmbeddingReady()) {
         const query = [params.name, params.description].filter(Boolean).join(' ');
         try {
-            repoContext = await ragQuery(workspaceDir, sdlc-frameworkDir, query, ollamaHost) ?? '';
+            repoContext = await ragQuery(workspaceDir, frameworkDir, query, ollamaHost) ?? '';
         } catch { /* fall through */ }
     }
     if (!repoContext) {
@@ -396,13 +396,13 @@ export async function enrichStoryFields(
     const ollamaHost = opts.ollamaHost || 'http://localhost:11434';
     const agentId = opts.agentId || 'frontend';
     const workspaceDir = params.workspaceDir || opts.rootDir || process.cwd();
-    const sdlc-frameworkDir = opts.rootDir || process.cwd();
+    const frameworkDir = opts.rootDir || process.cwd();
 
     let repoContext = '';
     if (isEmbeddingReady()) {
         const query = [params.name, params.description].filter(Boolean).join(' ');
         try {
-            repoContext = await ragQuery(workspaceDir, sdlc-frameworkDir, query, ollamaHost) ?? '';
+            repoContext = await ragQuery(workspaceDir, frameworkDir, query, ollamaHost) ?? '';
         } catch { /* fall through to static scan */ }
     }
     if (!repoContext) {

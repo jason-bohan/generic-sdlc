@@ -151,14 +151,14 @@ function cosineSim(a: number[], b: number[]): number {
 
 // ─── Index persistence ───────────────────────────────────────────────────────
 
-function indexPath(workspaceDir: string, sdlc-frameworkDir: string): string {
+function indexPath(workspaceDir: string, frameworkDir: string): string {
     const hash = createHash('md5').update(workspaceDir).digest('hex').slice(0, 8);
-    return resolve(sdlc-frameworkDir, `.sdlc-framework`, `rag-${hash}.json`);
+    return resolve(frameworkDir, `.sdlc-framework`, `rag-${hash}.json`);
 }
 
-function loadIndex(workspaceDir: string, sdlc-frameworkDir: string): RagIndex | null {
+function loadIndex(workspaceDir: string, frameworkDir: string): RagIndex | null {
     try {
-        const raw = readFileSync(indexPath(workspaceDir, sdlc-frameworkDir), 'utf-8');
+        const raw = readFileSync(indexPath(workspaceDir, frameworkDir), 'utf-8');
         const idx: RagIndex = JSON.parse(raw);
         const age = Date.now() - new Date(idx.builtAt).getTime();
         if (age > INDEX_TTL_MS) return null;   // stale
@@ -167,11 +167,11 @@ function loadIndex(workspaceDir: string, sdlc-frameworkDir: string): RagIndex | 
     } catch { return null; }
 }
 
-function saveIndex(idx: RagIndex, sdlc-frameworkDir: string): void {
+function saveIndex(idx: RagIndex, frameworkDir: string): void {
     try {
-        const dir = resolve(sdlc-frameworkDir, '.sdlc-framework');
+        const dir = resolve(frameworkDir, '.sdlc-framework');
         if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-        writeFileSync(indexPath(idx.workspaceDir, sdlc-frameworkDir), JSON.stringify(idx));
+        writeFileSync(indexPath(idx.workspaceDir, frameworkDir), JSON.stringify(idx));
     } catch { /* non-fatal */ }
 }
 
@@ -179,14 +179,14 @@ function saveIndex(idx: RagIndex, sdlc-frameworkDir: string): void {
 
 /**
  * Build (or load cached) a vector index for `workspaceDir`.
- * `sdlc-frameworkDir` is the SDLC Framework root (__dirname from vite.config) where .sdlc-framework/ lives.
+ * `frameworkDir` is the SDLC Framework root (__dirname from vite.config) where .sdlc-framework/ lives.
  */
 export async function buildRagIndex(
     workspaceDir: string,
-    sdlc-frameworkDir: string,
+    frameworkDir: string,
     ollamaHost: string,
 ): Promise<RagIndex | null> {
-    const cached = loadIndex(workspaceDir, sdlc-frameworkDir);
+    const cached = loadIndex(workspaceDir, frameworkDir);
     if (cached) {
         log.info(`Loaded cached index for ${workspaceDir} (${cached.chunks.length} chunks)`);
         return cached;
@@ -218,7 +218,7 @@ export async function buildRagIndex(
         embeddingModel: EMBEDDING_MODEL,
         chunks,
     };
-    saveIndex(idx, sdlc-frameworkDir);
+    saveIndex(idx, frameworkDir);
     log.info(`Index built: ${chunks.length} chunks from ${files.length} files`);
     return idx;
 }
@@ -229,14 +229,14 @@ export async function buildRagIndex(
  */
 export async function ragQuery(
     workspaceDir: string,
-    sdlc-frameworkDir: string,
+    frameworkDir: string,
     query: string,
     ollamaHost: string,
     topK = TOP_K,
 ): Promise<string | null> {
     let idx: RagIndex | null;
     try {
-        idx = await buildRagIndex(workspaceDir, sdlc-frameworkDir, ollamaHost);
+        idx = await buildRagIndex(workspaceDir, frameworkDir, ollamaHost);
     } catch { return null; }
     if (!idx || idx.chunks.length === 0) return null;
 

@@ -1,0 +1,11 @@
+{
+    "scheduler": {
+        "loopProvider": {
+            "model": "unsloth/Qwen3-8B-GGUF@main:Q4_K_M",
+            "baseUrl": "http://localhost:9337/v1"
+        }
+    },
+    "cursorAiEnabled": false,
+    "claudeAiEnabled": false,
+    "externalMode": "mock"
+}

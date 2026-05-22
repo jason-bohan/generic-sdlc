@@ -56,9 +56,9 @@ export function getActiveRunners(): string[] {
     return [...runners.keys()];
 }
 
-function buildSystemPrompt(agentId: string, sdlc-frameworkDir: string): string {
+function buildSystemPrompt(agentId: string, frameworkDir: string): string {
     const skillDir = skillSubdirForAgentId(agentId);
-    const skillFile = resolve(sdlc-frameworkDir, 'skills', skillDir, 'SKILL.md');
+    const skillFile = resolve(frameworkDir, 'skills', skillDir, 'SKILL.md');
     const skillContent = existsSync(skillFile)
         ? readFileSync(skillFile, 'utf-8')
         : `You are the ${agentId} agent in the SDLC Framework SDLC automation platform.`;
@@ -120,7 +120,7 @@ function _spawnTailTerminal(agentId: string, logFile: string, model: string): vo
 export function startRunner(
     agentId: string,
     prompt: string,
-    sdlc-frameworkDir: string,
+    frameworkDir: string,
     workspaceDir: string,
     configPath: string,
     opts?: { showTerminal?: boolean },
@@ -128,7 +128,7 @@ export function startRunner(
     stopRunner(agentId);
 
     const providerConfig = readLoopProviderConfig(configPath);
-    const statusFile = resolve(sdlc-frameworkDir, `.${agentId}-status.json`);
+    const statusFile = resolve(frameworkDir, `.${agentId}-status.json`);
     const storyNumber = readStoryNumber(statusFile);
     const currentPhase = readCurrentPhase(statusFile);
 
@@ -161,7 +161,7 @@ export function startRunner(
     }
 
     const provider = new OpenAICompatibleProvider(providerConfig);
-    const runner = new AgentRunner(agentId, provider, workspaceDir, sdlc-frameworkDir, configPath, {
+    const runner = new AgentRunner(agentId, provider, workspaceDir, frameworkDir, configPath, {
         sessionId,
         initialMessages,
         onCheckpoint: (messages) => {
@@ -172,7 +172,7 @@ export function startRunner(
     });
 
     // Output log — same location the dashboard polls
-    const outputDir = resolve(sdlc-frameworkDir, '.agent-output');
+    const outputDir = resolve(frameworkDir, '.agent-output');
     mkdirSync(outputDir, { recursive: true });
     const sessionTs = new Date().toISOString().replace(/[:.]/g, '-');
     const logFile = resolve(outputDir, `${agentId}-${sessionTs}.log`);
@@ -185,7 +185,7 @@ export function startRunner(
 
     if (opts?.showTerminal) _spawnTailTerminal(agentId, logFile, providerConfig.model);
 
-    const spawnLog = resolve(sdlc-frameworkDir, '.agent-spawns.log');
+    const spawnLog = resolve(frameworkDir, '.agent-spawns.log');
     appendFileSync(spawnLog, `${new Date().toISOString()} | ${agentId} | loop | session=${sessionId} model=${providerConfig.model} | "${prompt.slice(0, 120)}"\n`);
 
     // Update status file: isRunning, sessionId, driver
@@ -241,7 +241,7 @@ export function startRunner(
 
     runners.set(agentId, runner);
 
-    const systemPrompt = buildSystemPrompt(agentId, sdlc-frameworkDir);
+    const systemPrompt = buildSystemPrompt(agentId, frameworkDir);
     const fullPrompt = `Workspace: ${workspaceDir}\n\n${prompt}`;
 
     runner.run(systemPrompt, fullPrompt).catch((e: unknown) => {

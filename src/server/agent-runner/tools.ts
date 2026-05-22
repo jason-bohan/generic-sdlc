@@ -190,8 +190,8 @@ function safePath(
 // Tool executors
 // ---------------------------------------------------------------------------
 
-function toolReadFile(args: Record<string, unknown>, workspaceDir: string, sdlc-frameworkDir: string): string {
-    const check = safePath(String(args.path ?? ''), workspaceDir, [workspaceDir, sdlc-frameworkDir]);
+function toolReadFile(args: Record<string, unknown>, workspaceDir: string, frameworkDir: string): string {
+    const check = safePath(String(args.path ?? ''), workspaceDir, [workspaceDir, frameworkDir]);
     if (!check.ok) return `Error: ${check.error}`;
     if (!existsSync(check.resolved)) return `Error: file not found: ${check.resolved}`;
     try {
@@ -207,9 +207,9 @@ function toolReadFile(args: Record<string, unknown>, workspaceDir: string, sdlc-
 function toolWriteFile(
     args: Record<string, unknown>,
     workspaceDir: string,
-    sdlc-frameworkDir: string,
+    frameworkDir: string,
 ): string {
-    const check = safePath(String(args.path ?? ''), workspaceDir, [workspaceDir, sdlc-frameworkDir]);
+    const check = safePath(String(args.path ?? ''), workspaceDir, [workspaceDir, frameworkDir]);
     if (!check.ok) return `Error: ${check.error}`;
     const content = String(args.content ?? '');
     try {
@@ -221,8 +221,8 @@ function toolWriteFile(
     }
 }
 
-function toolListDirectory(args: Record<string, unknown>, workspaceDir: string, sdlc-frameworkDir: string): string {
-    const check = safePath(String(args.path ?? '.'), workspaceDir, [workspaceDir, sdlc-frameworkDir]);
+function toolListDirectory(args: Record<string, unknown>, workspaceDir: string, frameworkDir: string): string {
+    const check = safePath(String(args.path ?? '.'), workspaceDir, [workspaceDir, frameworkDir]);
     if (!check.ok) return `Error: ${check.error}`;
     const path = check.resolved;
     const recursive = args.recursive === true;
@@ -257,14 +257,14 @@ function toolListDirectory(args: Record<string, unknown>, workspaceDir: string, 
 function toolRunCommand(
     args: Record<string, unknown>,
     workspaceDir: string,
-    sdlc-frameworkDir: string,
+    frameworkDir: string,
     configPath: string,
 ): Promise<string> {
     const command = String(args.command ?? '');
     const argsList = Array.isArray(args.args) ? (args.args as string[]) : [];
     let cwd = workspaceDir;
     if (args.cwd) {
-        const cwdCheck = safePath(String(args.cwd), workspaceDir, [workspaceDir, sdlc-frameworkDir]);
+        const cwdCheck = safePath(String(args.cwd), workspaceDir, [workspaceDir, frameworkDir]);
         if (!cwdCheck.ok) return Promise.resolve(`Error: ${cwdCheck.error}`);
         cwd = cwdCheck.resolved;
     }
@@ -274,7 +274,7 @@ function toolRunCommand(
     // so `git push`, `az`, etc. are blocked when running under mock/test mode.
     const env: NodeJS.ProcessEnv = { ...process.env };
     if (isMockExternalMode(configPath)) {
-        const mockBin = ensureMockShims(sdlc-frameworkDir);
+        const mockBin = ensureMockShims(frameworkDir);
         env.PATH = `${mockBin};${env.PATH || ''}`;
         env.SDLC_FRAMEWORK_MOCK_MODE = '1';
     }
@@ -300,11 +300,11 @@ function toolRunCommand(
     });
 }
 
-function toolSearchInFiles(args: Record<string, unknown>, workspaceDir: string, sdlc-frameworkDir: string): string {
+function toolSearchInFiles(args: Record<string, unknown>, workspaceDir: string, frameworkDir: string): string {
     const pattern = String(args.pattern ?? '').toLowerCase();
     let dir = workspaceDir;
     if (args.directory) {
-        const dirCheck = safePath(String(args.directory), workspaceDir, [workspaceDir, sdlc-frameworkDir]);
+        const dirCheck = safePath(String(args.directory), workspaceDir, [workspaceDir, frameworkDir]);
         if (!dirCheck.ok) return `Error: ${dirCheck.error}`;
         dir = dirCheck.resolved;
     }
@@ -349,10 +349,10 @@ function toolSearchInFiles(args: Record<string, unknown>, workspaceDir: string, 
 function toolUpdateStatus(
     args: Record<string, unknown>,
     workspaceDir: string,
-    sdlc-frameworkDir: string,
+    frameworkDir: string,
     agentId: string,
 ): string {
-    const statusFile = resolve(sdlc-frameworkDir, `.${agentId}-status.json`);
+    const statusFile = resolve(frameworkDir, `.${agentId}-status.json`);
     try {
         const existing = existsSync(statusFile)
             ? parseJsonUtf8File(statusFile) as Record<string, unknown>
@@ -375,7 +375,7 @@ function toolUpdateStatus(
         });
 
         writeFileSync(statusFile, JSON.stringify(updated, null, 2));
-        emitStatusChange(agentId, buildStatusBroadcast(updated, agentId, true, sdlc-frameworkDir));
+        emitStatusChange(agentId, buildStatusBroadcast(updated, agentId, true, frameworkDir));
         return `Status updated: phase=${args.phase}`;
     } catch (e) {
         return `Error updating status: ${e instanceof Error ? e.message : String(e)}`;
@@ -390,19 +390,19 @@ export async function executeToolCall(
     name: string,
     args: unknown,
     workspaceDir: string,
-    sdlc-frameworkDir: string,
+    frameworkDir: string,
     agentId: string,
     configPath: string,
 ): Promise<string> {
     const a = (args && typeof args === 'object' ? args : {}) as Record<string, unknown>;
 
     switch (name) {
-        case 'read_file':       return toolReadFile(a, workspaceDir, sdlc-frameworkDir);
-        case 'write_file':      return toolWriteFile(a, workspaceDir, sdlc-frameworkDir);
-        case 'list_directory':  return toolListDirectory(a, workspaceDir, sdlc-frameworkDir);
-        case 'run_command':     return toolRunCommand(a, workspaceDir, sdlc-frameworkDir, configPath);
-        case 'search_in_files': return toolSearchInFiles(a, workspaceDir, sdlc-frameworkDir);
-        case 'update_status':   return toolUpdateStatus(a, workspaceDir, sdlc-frameworkDir, agentId);
+        case 'read_file':       return toolReadFile(a, workspaceDir, frameworkDir);
+        case 'write_file':      return toolWriteFile(a, workspaceDir, frameworkDir);
+        case 'list_directory':  return toolListDirectory(a, workspaceDir, frameworkDir);
+        case 'run_command':     return toolRunCommand(a, workspaceDir, frameworkDir, configPath);
+        case 'search_in_files': return toolSearchInFiles(a, workspaceDir, frameworkDir);
+        case 'update_status':   return toolUpdateStatus(a, workspaceDir, frameworkDir, agentId);
         default:                return `Unknown tool: ${name}`;
     }
 }

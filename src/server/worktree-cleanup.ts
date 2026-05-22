@@ -33,9 +33,9 @@ function gitOut(args: string[], cwd: string): string {
 }
 
 /** SDLC Framework workspace and optional target codebase (see project profile workspacePath). */
-export function resolveWorktreeRepoRoots(sdlc-frameworkRoot: string, configPath: string): string[] {
+export function resolveWorktreeRepoRoots(frameworkRoot: string, configPath: string): string[] {
     const roots = new Set<string>();
-    const main = resolve(sdlc-frameworkRoot);
+    const main = resolve(frameworkRoot);
     roots.add(main);
     try {
         const profile = getActiveProject(configPath);

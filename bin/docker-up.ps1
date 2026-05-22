@@ -51,6 +51,18 @@ function Test-DockerRunning {
     try { docker info 2>$null | Out-Null; return $LASTEXITCODE -eq 0 } catch { return $false }
 }
 
+function Test-DockerImage {
+    param([Parameter(Mandatory = $true)][string]$Image)
+    $previousErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        docker image inspect $Image *> $null
+        return $LASTEXITCODE -eq 0
+    } finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+}
+
 if (-not (Test-DockerRunning)) {
     $dockerDesktopPaths = @(
         'C:\Program Files\Docker\Docker\Docker Desktop.exe',
@@ -94,8 +106,7 @@ try {
 # ── Build MeshLLM image on host if needed (requires BuildKit on host) ─────────
 if ($MeshLLM) {
     $meshImage = 'sdlc-framework-mesh-llm:client'
-    docker image inspect $meshImage 2>$null | Out-Null
-    if ($LASTEXITCODE -ne 0) {
+    if (-not (Test-DockerImage $meshImage)) {
         Write-Host "  Building MeshLLM client image (first run — may take a few minutes)…" -ForegroundColor DarkGray
         docker build -t $meshImage -f docker/Dockerfile.client --build-arg CMD=console https://github.com/Mesh-LLM/mesh-llm.git#main
         if ($LASTEXITCODE -ne 0) { Write-Error "MeshLLM image build failed"; exit 1 }
@@ -107,8 +118,7 @@ if ($MeshLLM) {
 if ($MeshLLMModel) {
     $composeFiles += @('-f', 'docker-compose.meshllm-local.yml')
     $env:MESHLLM_IMAGE = 'sdlc-framework-mesh-llm:cuda'
-    docker image inspect $env:MESHLLM_IMAGE 2>$null | Out-Null
-    if ($LASTEXITCODE -ne 0) {
+    if (-not (Test-DockerImage $env:MESHLLM_IMAGE)) {
         Write-Host "  Building MeshLLM CUDA runtime image…" -ForegroundColor DarkGray
         docker build -t $env:MESHLLM_IMAGE -f docker/Dockerfile.meshllm-cuda .
         if ($LASTEXITCODE -ne 0) { Write-Error "MeshLLM CUDA image build failed"; exit 1 }
@@ -150,13 +160,13 @@ $serverPort = if ($serverBinding) { ($serverBinding -split ':')[1] } else { $nul
 $ollamaPort = if ($ollamaBinding) { ($ollamaBinding -split ':')[1] } else { $null }
 
 # ── Persist ports for other tooling ──────────────────────────────────────────
-$sdlc-frameworkDir = Join-Path $worktreeRoot '.sdlc-framework'
-if (-not (Test-Path $sdlc-frameworkDir)) { New-Item -ItemType Directory $sdlc-frameworkDir -Force | Out-Null }
-$portsFile = Join-Path $sdlc-frameworkDir 'docker-ports.json'
+$sdlcFrameworkDir = Join-Path $worktreeRoot '.sdlc-framework'
+if (-not (Test-Path $sdlcFrameworkDir)) { New-Item -ItemType Directory $sdlcFrameworkDir -Force | Out-Null }
+$portsFile = Join-Path $sdlcFrameworkDir 'docker-ports.json'
 @{ serverPort = [int]$serverPort; ollamaPort = [int]$ollamaPort; projectName = $projectName } |
     ConvertTo-Json | Set-Content $portsFile -Encoding UTF8
 # Write .dev-port so Vite auto-detects the dynamic port without needing SDLC_API_PORT
-Set-Content (Join-Path $sdlc-frameworkDir '.dev-port') $serverPort -NoNewline -Encoding UTF8
+Set-Content (Join-Path $sdlcFrameworkDir '.dev-port') $serverPort -NoNewline -Encoding UTF8
 
 # ── Ensure sdlc-tuned model exists (seed from Modelfile for new users) ────
 $modelExists = docker compose @composeFiles exec -T ollama ollama list 2>$null | Select-String 'sdlc-tuned'

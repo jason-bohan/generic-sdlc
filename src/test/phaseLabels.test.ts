@@ -54,16 +54,6 @@ describe('PHASE_LABELS completeness', () => {
         }
     });
 
-    it('Floor3D HUD uses shared PHASE_LABELS from phase-labels', async () => {
-        const fs = await import('fs');
-        const source = fs.readFileSync('src/dashboard/floor3d/HudPanels.tsx', 'utf-8');
-        expect(
-            /from ['"]\.\.\/phase-labels['"]/.test(source),
-            'HudPanels must import PHASE_LABELS from ../phase-labels',
-        ).toBe(true);
-        expect(source.includes('PHASE_LABELS['), 'HudPanels must use PHASE_LABELS for phase display').toBe(true);
-    });
-
     it('DashboardContext drives phase notifications via hooks/usePolling', async () => {
         const fs = await import('fs');
         const source = fs.readFileSync('src/dashboard/DashboardContext.tsx', 'utf-8');

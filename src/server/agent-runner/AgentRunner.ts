@@ -33,7 +33,7 @@ export class AgentRunner extends EventEmitter {
         public readonly agentId: string,
         private readonly provider: OpenAICompatibleProvider,
         private readonly workspaceDir: string,
-        private readonly sdlc-frameworkDir: string,
+        private readonly frameworkDir: string,
         private readonly configPath: string,
         opts?: {
             sessionId?: string;
@@ -127,7 +127,7 @@ export class AgentRunner extends EventEmitter {
                             toolCall.function.name,
                             parsedArgs,
                             this.workspaceDir,
-                            this.sdlc-frameworkDir,
+                            this.frameworkDir,
                             this.agentId,
                             this.configPath,
                         );

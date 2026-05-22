@@ -62,19 +62,19 @@ const DEBOUNCE_MS = 150;
 const debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
 let watchedDir: string | null = null;
 
-export function startStatusFileWatcher(sdlc-frameworkDir: string): void {
-    if (watchedDir === sdlc-frameworkDir) return;
+export function startStatusFileWatcher(frameworkDir: string): void {
+    if (watchedDir === frameworkDir) return;
     if (watchedDir) stopStatusFileWatcher();
-    watchedDir = sdlc-frameworkDir;
+    watchedDir = frameworkDir;
 
     for (const agentId of AGENT_IDS) {
-        const file = resolve(sdlc-frameworkDir, `.${agentId}-status.json`);
+        const file = resolve(frameworkDir, `.${agentId}-status.json`);
         watchFile(file, { interval: 800, persistent: false }, () => {
             const existing = debounceTimers.get(agentId);
             if (existing) clearTimeout(existing);
             debounceTimers.set(agentId, setTimeout(() => {
                 debounceTimers.delete(agentId);
-                _emitFromFile(agentId, file, sdlc-frameworkDir);
+                _emitFromFile(agentId, file, frameworkDir);
             }, DEBOUNCE_MS));
         });
     }
@@ -91,13 +91,13 @@ export function stopStatusFileWatcher(): void {
     watchedDir = null;
 }
 
-function _emitFromFile(agentId: string, file: string, sdlc-frameworkDir: string): void {
+function _emitFromFile(agentId: string, file: string, frameworkDir: string): void {
     try {
         const raw = existsSync(file)
             ? parseJsonUtf8File(file) as Record<string, unknown>
             : getDefaultStatus(agentId) as Record<string, unknown>;
         const active = getActiveAgents();
         const isRunning = agentId in active;
-        emitStatusChange(agentId, buildStatusBroadcast(raw, agentId, isRunning, sdlc-frameworkDir));
+        emitStatusChange(agentId, buildStatusBroadcast(raw, agentId, isRunning, frameworkDir));
     } catch { /* status file temporarily incomplete during write */ }
 }
