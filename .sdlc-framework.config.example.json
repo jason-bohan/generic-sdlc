@@ -60,7 +60,7 @@
       "ux": { "enabled": false, "autoStart": false, "stepMode": false },
       "reviewer": {
         "enabled": true,
-        "autoStart": true,
+        "autoStart": false,
         "stepMode": false,
         "role": "reviewer",
         "watchesTeamsChannel": "Agent Activity",
@@ -68,7 +68,7 @@
       },
       "devops": {
         "enabled": true,
-        "autoStart": true,
+        "autoStart": false,
         "stepMode": false,
         "role": "devops",
         "watchesPipeline": true,

@@ -38,7 +38,7 @@ function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
     cwd: options.cwd || root,
     stdio: options.stdio || 'inherit',
-    shell: false,
+    shell: isWindows,
     env: process.env,
   });
   if (result.status !== 0) {
@@ -178,12 +178,20 @@ function nodeMajor() {
   return Number(process.versions.node.split('.')[0]);
 }
 
+function isCursorInstalled() {
+  if (commandExists('cursor-agent')) return true;
+  // Verify 'agent' is actually Cursor's agent CLI, not an unrelated command
+  const localAppData = process.env.LOCALAPPDATA || '';
+  const shimCmd = path.join(localAppData, 'cursor-agent', 'bin', 'agent.cmd');
+  const versionsDir = path.join(localAppData, 'cursor-agent', 'versions');
+  return fs.existsSync(shimCmd) || fs.existsSync(versionsDir);
+}
+
 function detectDriver() {
-  if (commandExists('agent')) return 'cursor';
-  if (commandExists('cursor-agent')) return 'cursor';
+  if (isCursorInstalled()) return 'cursor';
   if (commandExists('claude')) return 'claude-code';
   if (commandExists('goose')) return 'goose';
-  return 'generic';
+  return 'loop';
 }
 
 function configTemplatePath() {
