@@ -7,14 +7,14 @@ export interface AiProviderPolicy {
 
 export function isCursorAiEnabled(configPath: string): boolean {
     if (process.env.SDLC_FRAMEWORK_CURSOR_AI === '0') return false;
-    if (!existsSync(configPath)) return true;
+    if (!existsSync(configPath)) return false;
     try {
         const cfg = parseJsonUtf8File(configPath) as Record<string, any>;
         if (typeof cfg.cursorAiEnabled === 'boolean') return cfg.cursorAiEnabled;
         if (typeof cfg.ai?.cursorAiEnabled === 'boolean') return cfg.ai.cursorAiEnabled;
-        return true;
+        return false;
     } catch {
-        return true;
+        return false;
     }
 }
 
@@ -27,13 +27,13 @@ export function setCursorAiEnabled(configPath: string, enabled: boolean): AiProv
 
 export function isClaudeEnabled(configPath: string): boolean {
     if (process.env.SDLC_FRAMEWORK_CLAUDE_AI === '0') return false;
-    if (!existsSync(configPath)) return true;
+    if (!existsSync(configPath)) return false;
     try {
         const cfg = parseJsonUtf8File(configPath) as Record<string, any>;
         if (typeof cfg.claudeAiEnabled === 'boolean') return cfg.claudeAiEnabled;
-        return true;
+        return false;
     } catch {
-        return true;
+        return false;
     }
 }
 

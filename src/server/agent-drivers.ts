@@ -29,16 +29,16 @@ export interface DriverSpawnSpec {
 }
 
 export function readDriverConfig(configPath: string): AgentDriverConfig {
-    if (!existsSync(configPath)) return { type: 'cursor' };
+    if (!existsSync(configPath)) return { type: 'loop' };
     try {
         const cfg = parseJsonUtf8File(configPath);
         const raw = cfg.scheduler?.driver as string | undefined;
         const valid: AgentDriverType[] = ['cursor', 'claude-code', 'aider', 'goose', 'generic', 'loop'];
         return {
-            type: valid.includes(raw as AgentDriverType) ? (raw as AgentDriverType) : 'cursor',
+            type: valid.includes(raw as AgentDriverType) ? (raw as AgentDriverType) : 'loop',
             generic: cfg.scheduler?.genericDriver };
     } catch {
-        return { type: 'cursor' };
+        return { type: 'loop' };
     }
 }
 

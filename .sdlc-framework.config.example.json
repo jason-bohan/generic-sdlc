@@ -1,7 +1,7 @@
 {
   "executionMode": "local",
   "externalMode": "live",
-  "cursorAiEnabled": true,
+  "cursorAiEnabled": false,
   "activeProject": "sdlc-framework",
   "projects": {
     "sdlc-framework": {
