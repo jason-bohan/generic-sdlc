@@ -72,7 +72,9 @@ NOTIFY_PROVIDER=mock npm run server
 
 ## 3. Wiring up real Microsoft Teams
 
-### Option A — Microsoft 365 Developer Tenant (free, recommended for full fidelity)
+### Option A — Microsoft 365 Developer Tenant
+
+> **Note:** Microsoft tightened eligibility for the Developer Program sandbox in 2023. New accounts without an existing Azure/GitHub developer footprint are often declined. If you hit that wall, use Option C below instead.
 
 1. Enroll at **[developer.microsoft.com/microsoft-365/dev-program](https://developer.microsoft.com/microsoft-365/dev-program)**
 2. Set up an **Instant Sandbox** — you get a free E5 tenant with 25 user licenses and full Teams
@@ -85,6 +87,16 @@ Add an **Incoming Webhook** connector to any channel you own:
 
 1. Channel → **···** → **Connectors** → search **Incoming Webhook** → **Add**
 2. Name it (e.g. "SDLC Framework Dev") → **Create** → copy the URL
+
+### Option C — Microsoft 365 Business Basic free trial (recommended if Developer Program declined)
+
+Microsoft offers a 30-day free trial of Business Basic, which includes full Teams with connector support.
+
+1. Go to **[microsoft.com/microsoft-365/business/compare-all-plans](https://www.microsoft.com/microsoft-365/business/compare-all-plans)**
+2. Select **Microsoft 365 Business Basic** → **Try free for one month**
+3. Sign in with a personal Microsoft account and complete setup (~5 minutes)
+4. In Teams, add an **Incoming Webhook** connector to any channel (same steps as Option B)
+5. Cancel before day 30 to avoid charges
 
 ### Configure the webhook URL
 
