@@ -26,7 +26,7 @@ Usage:
   python scripts/multi-system.py push   --server http://localhost:8766 --name MyOrg
   python scripts/multi-system.py pull   --server http://localhost:8766
   python scripts/multi-system.py collab --server http://localhost:8766 \\
-      --task "Fix timeout in API client" --model meitheal-tuned
+      --task "Fix timeout in API client" --model SDLC Framework-tuned
   python scripts/multi-system.py trust  --system <id> --rate 0.91
   python scripts/multi-system.py status
 """
@@ -570,7 +570,7 @@ def main():
 
     push_p = sub.add_parser("push", help="Push local principles to remote system")
     push_p.add_argument("--server", default="http://localhost:8766")
-    push_p.add_argument("--name",   default="Meitheal")
+    push_p.add_argument("--name",   default="SDLC Framework")
 
     pull_p = sub.add_parser("pull", help="Pull principles from remote system")
     pull_p.add_argument("--server", default="http://localhost:8766")
@@ -580,7 +580,7 @@ def main():
     col.add_argument("--task",       required=True)
     col.add_argument("--server",     default="http://localhost:8766")
     col.add_argument("--mesh-url",   default="http://localhost:9337")
-    col.add_argument("--model",      default="meitheal-tuned")
+    col.add_argument("--model",      default="SDLC Framework-tuned")
     col.add_argument("--output",     default="")
 
     inj = sub.add_parser("inject", help="Build inject block from cached peer principles")

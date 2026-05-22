@@ -12,7 +12,7 @@ System snapshot (what can vary):
     "reward_weights":  {"correctness": 1.0, "diff_size": 0.3, "latency": 0.2},
     "agent_structure": ["backend-agent", "ui-agent"],
     "planning_depth":  2,
-    "model_pool":      ["meitheal-tuned", "qwen3:8b"],
+    "model_pool":      ["SDLC Framework-tuned", "qwen3:8b"],
   }
 
 Counterfactual = a variation of that snapshot.
@@ -186,7 +186,7 @@ def build_system_snapshot() -> dict:
     routing = sys_config.get("routing", {
         "high_risk_tasks": "claude-sonnet-4-6",
         "low_risk_tasks":  model_pool[0] if model_pool else "qwen3:8b",
-        "default":         model_pool[0] if model_pool else "meitheal-tuned",
+        "default":         model_pool[0] if model_pool else "SDLC Framework-tuned",
     })
 
     reward_weights = sys_config.get("reward_weights", {
@@ -210,7 +210,7 @@ def build_system_snapshot() -> dict:
         "routing":          routing,
         "reward_weights":   reward_weights,
         "agent_structure":  agent_structure,
-        "model_pool":       model_pool or ["meitheal-tuned", "qwen3:8b"],
+        "model_pool":       model_pool or ["SDLC Framework-tuned", "qwen3:8b"],
         "planning_depth":   sys_config.get("planning_depth", 2),
         "known_blind_spots": known_blind_spots[:3],
         "performance": {
@@ -278,7 +278,7 @@ def generate_heuristic_mutations(snapshot: dict) -> list[dict]:
     pool = base.get("model_pool", [])
     if len(pool) >= 2:
         routing["high_risk_tasks"] = pool[-1]  # strongest model at end of pool
-    routing["low_risk_tasks"] = pool[0] if pool else "meitheal-tuned"
+    routing["low_risk_tasks"] = pool[0] if pool else "SDLC Framework-tuned"
     m3["routing"]  = routing
     m3["_mutation"] = "escalate_high_risk_routing"
     candidates.append(m3)

@@ -528,7 +528,7 @@ def apply_strategy_change(strategy: str, self_snapshot: dict, peer_futures: list
         # Increase planning depth and try a new routing approach
         pd = min(pd + 1, 4)
         # Route high-risk tasks to strongest available model
-        models = config.get("model_pool", ["meitheal-tuned", "qwen3:8b"])
+        models = config.get("model_pool", ["SDLC Framework-tuned", "qwen3:8b"])
         if models:
             routing["high_risk_tasks"] = models[-1]
 

@@ -1,5 +1,5 @@
 /**
- * Waits until the Meitheal API accepts TCP connections on the dev port.
+ * Waits until the SDLC Framework API accepts TCP connections on the dev port.
  * Port resolution matches worktree-port.ts and vite.config.ts (.dev-port, main 3001, worktree hash).
  * Used by npm run dev so Vite does not proxy /api before the server is listening.
  */
@@ -18,9 +18,9 @@ function djb2(s) {
 }
 
 function deriveApiPort() {
-    if (process.env.MEITHEAL_API_PORT) return Number(process.env.MEITHEAL_API_PORT);
+    if (process.env.SDLC_API_PORT) return Number(process.env.SDLC_API_PORT);
     try {
-        const stored = fs.readFileSync(path.join(root, '.meitheal', '.dev-port'), 'utf-8').trim();
+        const stored = fs.readFileSync(path.join(root, '.sdlc-framework', '.dev-port'), 'utf-8').trim();
         if (stored) return Number(stored);
     } catch { /* not written yet */ }
     try {

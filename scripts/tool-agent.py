@@ -359,7 +359,7 @@ def main():
     parser.add_argument("--max-turns",  type=int, default=4,                    help="Max tool calls (default: 4)")
     parser.add_argument("--mesh-url",   default="http://localhost:9337",         help="MeshLLM URL")
     parser.add_argument("--ollama-url", default="http://localhost:11434",        help="Ollama URL")
-    parser.add_argument("--model",      default="meitheal-tuned",               help="Model for diagnosis + execution")
+    parser.add_argument("--model",      default="SDLC Framework-tuned",               help="Model for diagnosis + execution")
     parser.add_argument("--repo",       default=".",                             help="Repo directory")
     parser.add_argument("--diagnose-only", action="store_true",                 help="Run diagnosis only, don't call Aider")
     args = parser.parse_args()

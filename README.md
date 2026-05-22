@@ -1,26 +1,28 @@
 ﻿# SDLC Framework
 
-**SDLC Framework** is a multi-agent SDLC automation platform. Six autonomous AI agents collaborate on software projects end-to-end — from story creation through coding, PR review, CI, and merge — with zero human intervention or full step-by-step control.
+**SDLC Framework** is a multi-agent SDLC automation platform. Six autonomous AI agents collaborate on software projects end-to-end — from work-item intake through coding, review, CI, and release — with zero human intervention or full step-by-step control.
 
-Built on top of Azure DevOps and Agility (Digital.ai), SDLC Framework turns any AI-powered IDE workspace into a fully staffed engineering team. Works with **Cursor**, **Claude Code**, **Goose**, or any CLI-driven agent via a configurable driver.
+The API is intentionally integration-agnostic. SDLC Framework models generic SDLC primitives — work items, tasks, branches, review requests, builds, notifications, and releases — then maps them to adapters for tools such as Azure DevOps, Digital.ai Agility, GitHub, Jira, Teams, Slack, or local demo state. It works with **Cursor**, **Claude Code**, **Goose**, OpenAI-compatible loop providers, or any CLI-driven agent via a configurable driver.
 
 ---
 
 ## How It Works
 
 ```
-  Story ──→ Code ──→ PR ──→ Review ──→ Build ──→ Merge
+  Work Item ──→ Code ──→ Review Request ──→ Review ──→ Build ──→ Release
    (ux)   (frontend)  │    (reviewer)  (devops)    │
                        └──── feedback loop ─────────┘
 ```
 
-1. A **story** is created in Agility (Digital.ai) and assigned to an agent
-2. The agent reads the story, analyzes the codebase, generates code, and pushes a **feature branch**
-3. A **PR** is created in Azure DevOps — the reviewer agent picks it up automatically
-4. On approval, the **DevOps** agent monitors the CI build pipeline
-5. On build pass, the PR **auto-completes** and the story owner wraps up
+1. A **work item** is created or imported from the configured planning adapter and assigned to an agent
+2. The agent reads the work item, analyzes the codebase, generates code, and prepares a **change branch**
+3. A **review request** is created through the configured source-control adapter — the reviewer agent picks it up automatically
+4. On approval, the **DevOps** agent monitors the configured CI/build adapter
+5. On build pass, the change is completed and the work-item owner wraps up
 
 The entire pipeline is observable from a real-time dashboard (2D card view or 3D isometric office) and controllable via step mode, execution modes, and per-agent configuration.
+
+Adapter examples shipped today include Digital.ai Agility/VersionOne for planning, Azure DevOps for review/build automation, Microsoft Teams notifications, local mock state, Ollama, MeshLLM, and OpenRouter-compatible model routing. These are implementations, not the public API shape.
 
 ---
 
@@ -32,21 +34,21 @@ The entire pipeline is observable from a real-time dashboard (2D card view or 3D
 | `backend` | Cairn | Backend Engineer | Active |
 | `qa` | Vigil | QA Engineer | Active |
 | `ux` | Prism | UX / Design | Active |
-| `reviewer` | Brehon | PR Reviewer | Active |
+| `reviewer` | Brehon | Code Reviewer | Active |
 | `devops` | Cairde | DevOps | Active |
 
 **IDs are role-based and stable** — they appear in config keys, status files (`.frontend-status.json`), API payloads, and skill directories (`skills/frontend/SKILL.md`).
 
-**Display names are customizable.** The defaults above (Lasair, Cairn, Vigil, etc.) can be changed per-user in the dashboard (double-click an agent name) or in config via `scheduler.agents.<id>.displayName`. Custom names persist across sessions and propagate to Teams notifications, the TUI, and all dashboard views.
+**Display names are customizable.** The defaults above (Lasair, Cairn, Vigil, etc.) can be changed per-user in the dashboard (double-click an agent name) or in config via `scheduler.agents.<id>.displayName`. Custom names persist across sessions and propagate to notifications, the TUI, and all dashboard views.
 
 ### What Each Agent Does
 
-- **`frontend`** — Picks up stories from Agility, reads codebase context, generates Angular/TypeScript code, creates PRs. Supports step mode for phase-by-phase control.
-- **`reviewer`** — Auto-assigned when a PR is created. Reviews code, posts inline comments, approves or requests changes. Drives ADO vote API.
-- **`devops`** — Monitors Azure DevOps CI pipelines after PR approval. Reports build pass/fail, triggers PR completion on success.
+- **`frontend`** — Picks up assigned work items, reads codebase context, generates frontend code, and creates review-ready changes. Supports step mode for phase-by-phase control.
+- **`reviewer`** — Auto-assigned when a review request is created. Reviews code, posts inline comments, approves or requests changes through the configured review adapter.
+- **`devops`** — Monitors CI pipelines after review approval. Reports build pass/fail and triggers configured completion/release behavior on success.
 - **`ux`** — Produces design specs (`.ux-design-spec.md`) with Figma references, WCAG AA audits, and component breakdowns. Hands off to the frontend agent for implementation.
 - **`qa`** — Runs Cypress tests, triages failures, generates new test specs. Test results visible on the dashboard with per-spec pass/fail breakdowns.
-- **`backend`** — Picks up stories involving .NET / ASP.NET Core / C# backend work in the YourProject repo. Analyzes solution structure, generates code, runs `dotnet build` / `dotnet test`, and creates PRs.
+- **`backend`** — Picks up backend work items, analyzes service structure, generates code, runs the configured build/test commands, and creates review-ready changes.
 
 ---
 
@@ -56,7 +58,7 @@ The entire pipeline is observable from a real-time dashboard (2D card view or 3D
 
 | Requirement | Version | Notes |
 |------------|---------|-------|
-| **Node.js** | 22.x (`>=22.0.0 <24.0.0`) | Must match target project (YourProject) |
+| **Node.js** | 22.x (`>=22.0.0 <24.0.0`) | Must match the target workspace runtime |
 | **Cursor** | Latest (optional) | Default driver — MCP servers auto-configured via `.cursor/mcp.json` |
 | **Claude Code** | Latest (optional) | Alternative driver — set `scheduler.driver: "claude-code"` |
 | **Ollama** | Latest (optional) | Local AI — setup script installs if missing |
@@ -88,7 +90,7 @@ npm run dashboard   # Dashboard on port 3847 (proxies /api → 3001)
 
 # TUI (terminal interface)
 sdlc-framework
-sdlc-framework --test     # with mock integrations (no real ADO/Teams calls)
+sdlc-framework --test     # with mock integrations (no live planning/review/notification calls)
 ```
 
 ### Verify
@@ -105,17 +107,17 @@ sdlc-framework --test     # with mock integrations (no real ADO/Teams calls)
 
 Two views, switchable from the settings gear:
 
-- **Simple Floor** — 2D card grid with agent status, phase badges, story numbers, model pickers, inline chat, and action buttons. This is the primary working view.
+- **Simple Floor** — 2D card grid with agent status, phase badges, work-item keys, model pickers, inline chat, and action buttons. This is the primary working view.
 - **3D Office** — Interactive isometric office (React Three Fiber) with agent desks, a server room, design studio, and break room. Click desks to zoom in.
 
 Both views support:
 - Real-time agent status polling
 - Inline agent renaming (double-click)
-- Story assignment from Agility backlog
+- Work-item assignment from the configured planning adapter
 - Step mode toggle per agent
 - Cloud/local token usage tracking
 - Test result drill-down (QA agent)
-- PR status overview with links
+- Review-request status overview with links
 
 Multiple visual themes are available (Far Out, Lumon, Retro Carpet, Modern, Simple).
 
@@ -155,12 +157,12 @@ Copy from `.sdlc-framework.config.example.json` or let `.\bin\setup.ps1` generat
 
 | Setting | Values | Description |
 |---------|--------|-------------|
-| `executionMode` | `local` / `balanced` / `speed` | How story enrichment runs (Ollama, hybrid, or cloud) |
+| `executionMode` | `local` / `balanced` / `speed` | How work-item enrichment runs (Ollama, hybrid, or cloud) |
 | `cursorAiEnabled` | `true` / `false` | Server-side kill switch for Cursor AI usage; dashboard header can toggle it |
 | `scheduler.mode` | `immediate` / `notify` | Auto-start agents on assignment vs. require approval |
 | `scheduler.driver` | `cursor` / `claude-code` / `goose` / `generic` | Which IDE CLI agents are spawned through (default: `cursor`) |
 | `scheduler.agents.<id>.stepMode` | `true` / `false` | Pause agent after each phase for manual review |
-| `scheduler.agents.<id>.displayName` | any string | Custom name shown in dashboard and Teams |
+| `scheduler.agents.<id>.displayName` | any string | Custom name shown in dashboard and notifications |
 | `scheduler.agents.<id>.model` | model slug | Override which AI model the agent uses |
 | `projects.<name>.workspacePath` | absolute path | Where the project repo lives on your machine |
 
@@ -180,9 +182,9 @@ Created by setup. Key vars:
 
 | Variable | Purpose |
 |----------|---------|
-| `ADO_PAT` | Azure DevOps personal access token |
-| `AGILITY_TOKEN` | Digital.ai / VersionOne API token |
-| `TEAMS_WEBHOOK_URL` | Microsoft Teams incoming webhook |
+| `ADO_PAT` | Optional Azure DevOps adapter token |
+| `AGILITY_TOKEN` | Optional Digital.ai / VersionOne planning adapter token |
+| `TEAMS_WEBHOOK_URL` | Optional Microsoft Teams notification webhook |
 | `OLLAMA_HOST` | Ollama server URL (default `http://localhost:11434`) |
 | `MESHLLM_HOST` | Optional MeshLLM OpenAI-compatible server URL (default `http://localhost:9337`) |
 | `HF_HOME` | HuggingFace model cache for fine-tuning (optional, set by `ml/unsloth/setup-env.ps1`) |
@@ -196,26 +198,51 @@ Agents read from multiple knowledge layers — not just their own skill files:
 | Source | What It Provides |
 |--------|-----------------|
 | **Own Skill** (`skills/<id>/SKILL.md`) | Agent identity, phases, workflow, tools, handoff rules |
-| **YourProject Cursor Rules** | 22+ `.mdc` files: Angular, .NET, code review, PR templates, design system |
-| **YourProject Cursor Skills** | Nx workspace conventions, generators, task runners, CI monitoring |
-| **Azure DevOps Wiki** | Environment details, server info, Cypress setup, team conventions (via MCP) |
-| **ADO Code Search** | Search the remote YourProject repository for code patterns (via MCP) |
+| **Target Repo Rules** | `.mdc`, `AGENTS.md`, or project-local standards files: framework, review, change-management, and design-system conventions |
+| **Target Repo Skills** | Workspace conventions, generators, task runners, and CI monitoring notes |
+| **Knowledge/Wiki Adapters** | Environment details, server info, test setup, and team conventions from whichever knowledge source is configured |
+| **Code Search Adapters** | Local or remote code-search providers for reusable patterns |
 
 All paths resolve dynamically from `projects.<name>.workspacePath`. See [Agents & SDLC Pipeline](docs/agents.md#agent-knowledge-sources) for the full breakdown.
 
 ---
 
+## Demo Presets
+
+Professional demos should be repeatable without hardcoding one customer's tools into the API. Use seed profiles for demo data instead of building a bespoke configuration UI for every scenario.
+
+Recommended structure:
+
+```text
+demo-data/
+  presets/
+    enterprise-agility.json
+    startup-github.json
+    minimal-jira.json
+```
+
+Run a demo by selecting a preset at startup:
+
+```powershell
+$env:DEMO_PRESET = "enterprise-agility"
+npm run dev
+```
+
+A preset should map external concepts into the generic SDLC model: work items, tasks, people/teams, review requests, builds, notifications, and release states. Tool names belong in the adapter/preset layer; route handlers and dashboard copy should stay generic wherever possible.
+
+---
+
 ## Execution Modes
 
-Story creation supports three modes, selectable from the dashboard or config:
+Work-item creation supports three modes, selectable from the dashboard or config:
 
 | Mode | Engine | Description |
 |------|--------|-------------|
 | **Local** | Goose + Ollama | Fully local — Goose CLI orchestrates with Ollama SLM |
-| **Balanced** | Ollama + REST API | Ollama enriches story fields, REST API creates in Agility |
+| **Balanced** | Ollama + REST API | Ollama enriches work-item fields, REST API writes through the configured planning adapter |
 | **Speed** | Cursor Cloud AI | Cloud-powered enrichment via `cursor agent` CLI |
 
-All modes track token usage per-story in a SQLite ledger visible from the dashboard.
+All modes track token usage per work item in a SQLite ledger visible from the dashboard.
 
 ---
 
@@ -224,7 +251,7 @@ All modes track token usage per-story in a SQLite ledger visible from the dashbo
 ```powershell
 .\bin\setup.ps1                # First-run setup
 .\bin\run-agent.ps1 -AgentId frontend   # Run an agent autonomously
-.\bin\audit-story.ps1          # Audit story status across agents
+.\bin\audit-story.ps1          # Audit work-item status across agents
 .\bin\migrate-agent-files.ps1  # Rename legacy status files to role-based names
 .\bin\update.ps1               # Check for Node/Ollama/Goose updates
 .\bin\test-sdlc-pipeline.ps1   # End-to-end SDLC pipeline integration test
@@ -233,7 +260,7 @@ All modes track token usage per-story in a SQLite ledger visible from the dashbo
 ```powershell
 npm run btw                    # /btw inter-agent messaging CLI
 npm run ollama                 # Ollama delegator (generate, embedding, RAG)
-npm run pr:watch               # Watch Azure DevOps PRs for changes
+npm run pr:watch               # Watch configured review requests for changes
 npm run plan                   # Generate implementation plans
 npm run cypress:YourProject         # Run Cypress against YourProject project
 ```
@@ -247,8 +274,8 @@ SDLC Framework ships a first-class [MCP server](docs/mcp-sdlc-framework.md) (`to
 **What you can do from a Goose chat:**
 
 - `"What are all agents working on?"` → snapshot of all six agents in one call
-- `"Find a Future story for Istari about the export feature and kick it off"` → searches Agility, fetches detail, assigns to the right agent, and approves
-- `"Frontend is paused in step mode — push it to PR"` → `continue_agent` with a phase hint
+- `"Find a future work item about the export feature and kick it off"` → searches the planning adapter, fetches detail, assigns to the right agent, and approves
+- `"Frontend is paused in step mode — push it to review"` → `continue_agent` with a phase hint
 - `"Switch to local mode before this long run"` → `set_execution_mode`
 - `"Are there any stuck workflows?"` → `list_workflows` + `get_agent_status`
 
@@ -262,7 +289,7 @@ See [MCP: SDLC Framework SDLC Orchestration](docs/mcp-sdlc-framework.md) for the
 
 | Document | Contents |
 |----------|----------|
-| [Agents & SDLC Pipeline](docs/agents.md) | Pipeline, execution modes, scheduler, step mode, Teams, knowledge sources |
+| [Agents & SDLC Pipeline](docs/agents.md) | Pipeline, execution modes, scheduler, step mode, notification adapters, knowledge sources |
 | [Local AI, Ollama & MeshLLM](docs/local-ai.md) | Model selection, Modelfile, MeshLLM, RAG indexer, fine-tuning, boot sequence |
 | [Dashboard](docs/dashboard.md) | 3D office, Simple Floor, themes, stats bar |
 | [API Reference](docs/api.md) | All endpoints with example payloads |

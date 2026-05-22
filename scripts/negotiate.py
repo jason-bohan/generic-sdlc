@@ -14,7 +14,7 @@ Pipeline:
 
 Usage:
   python scripts/negotiate.py --task "Fix null ref in spawn-agent.ts" \\
-      --model-a meitheal-tuned --model-b qwen3:8b --reconciler qwen3:14b
+      --model-a SDLC Framework-tuned --model-b qwen3:8b --reconciler qwen3:14b
 
   python scripts/negotiate.py --task "..." --score-only
 """
@@ -184,7 +184,7 @@ def pick_best(candidates: list[tuple[str, str]]) -> tuple[str, str, float]:
 def main():
     parser = argparse.ArgumentParser(description="Multi-agent diff negotiation")
     parser.add_argument("--task",        required=True)
-    parser.add_argument("--model-a",     default="meitheal-tuned",       help="Primary agent model")
+    parser.add_argument("--model-a",     default="SDLC Framework-tuned",       help="Primary agent model")
     parser.add_argument("--model-b",     default="qwen3:8b",             help="Secondary agent model")
     parser.add_argument("--reconciler",  default="",                     help="Reconciler model (default: model-b)")
     parser.add_argument("--temp-a",      type=float, default=0.1)

@@ -273,7 +273,7 @@ class _Handler(BaseHTTPRequestHandler):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Meeting bridge — routes Teams agent tasks into the Meitheal pipeline"
+        description="Meeting bridge — routes Teams agent tasks into the SDLC Framework pipeline"
     )
     sub = parser.add_subparsers(dest="cmd", required=True)
 

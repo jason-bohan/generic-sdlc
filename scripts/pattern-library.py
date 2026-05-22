@@ -276,7 +276,7 @@ def main():
     a = sub.add_parser("add", help="Add a diff to the library")
     a.add_argument("--diff",        default="-",           help="Diff file path, git commit hash, or '-' for stdin")
     a.add_argument("--instruction", default="",            help="What the change is supposed to do")
-    a.add_argument("--repo",        default="Meitheal",    help="Source repo name tag")
+    a.add_argument("--repo",        default="SDLC Framework",    help="Source repo name tag")
 
     s = sub.add_parser("search", help="Find similar patterns")
     s.add_argument("query",         help="Search query (failure description or instruction)")
@@ -288,7 +288,7 @@ def main():
 
     imp = sub.add_parser("import", help="Bulk-import from aider_dataset.jsonl")
     imp.add_argument("dataset",       help="Path to aider_dataset.jsonl")
-    imp.add_argument("--repo",        default="Meitheal",  help="Source repo name tag")
+    imp.add_argument("--repo",        default="SDLC Framework",  help="Source repo name tag")
     imp.add_argument("--limit", type=int, default=10000,   help="Max examples to import")
 
     sub.add_parser("stats", help="Library statistics")

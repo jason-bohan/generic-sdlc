@@ -457,7 +457,7 @@ def main():
     parser.add_argument("--score-threshold", type=float, default=0.0,                  help="Min diff confidence to accept a step (0=disabled)")
     parser.add_argument("--mesh-url",       default="http://localhost:9337",            help="MeshLLM URL for execution")
     parser.add_argument("--ollama-url",     default="http://localhost:11434",           help="Ollama URL fallback")
-    parser.add_argument("--model",          default="meitheal-tuned",                  help="Executor model")
+    parser.add_argument("--model",          default="SDLC Framework-tuned",                  help="Executor model")
     parser.add_argument("--planner-url",    default="",                                help="OpenAI-compat URL for planner (optional; uses executor if omitted)")
     parser.add_argument("--planner-key",    default="",                                help="API key for planner URL")
     parser.add_argument("--planner-model",  default="anthropic/claude-sonnet-4",       help="Model to use for planning (default: claude-sonnet-4)")

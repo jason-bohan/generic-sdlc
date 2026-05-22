@@ -11,7 +11,7 @@ Node schema:
     "null_ref::add_null_guard": {
       "pattern":       "null_ref",
       "fix":           "add_null_guard",
-      "repos":         ["Meitheal", "billing-service"],
+      "repos":         ["SDLC Framework", "billing-service"],
       "success_count": 14,
       "total_count":   15,
       "success_rate":  0.933,
@@ -23,7 +23,7 @@ Storage: .knowledge-graph.json
 
 Usage:
   python scripts/knowledge-graph.py add --pattern null_ref --fix add_null_guard \\
-      --repo Meitheal --success true --instruction "Fix null ref in agent status"
+      --repo SDLC Framework --success true --instruction "Fix null ref in agent status"
   python scripts/knowledge-graph.py query "null reference in agent"
   python scripts/knowledge-graph.py inject "Fix null ref" --top-k 3
   python scripts/knowledge-graph.py promote --threshold 0.95
@@ -147,7 +147,7 @@ def main():
     add = sub.add_parser("add", help="Record a fix in the graph")
     add.add_argument("--pattern",     required=True)
     add.add_argument("--fix",         required=True)
-    add.add_argument("--repo",        default="Meitheal")
+    add.add_argument("--repo",        default="SDLC Framework")
     add.add_argument("--success",     type=lambda x: x.lower() == "true", required=True)
     add.add_argument("--instruction", default="")
     add.add_argument("--diff",        default="", help="Diff file path or excerpt")

@@ -21,7 +21,7 @@ Task schema:
 Usage:
   python scripts/cross-domain.py plan --task "API timeout causes blank screen" \\
       --layers backend,infra,frontend
-  python scripts/cross-domain.py run --task-file task.json --model meitheal-tuned
+  python scripts/cross-domain.py run --task-file task.json --model SDLC Framework-tuned
   python scripts/cross-domain.py score --results results.json
 """
 
@@ -257,7 +257,7 @@ def main():
     run_p.add_argument("--task-file", required=True,               help="JSON plan file from 'plan'")
     run_p.add_argument("--output",    default="",                  help="Write results JSON to file")
     run_p.add_argument("--mesh-url",  default="http://localhost:9337")
-    run_p.add_argument("--model",     default="meitheal-tuned")
+    run_p.add_argument("--model",     default="SDLC Framework-tuned")
 
     sc_p = sub.add_parser("score", help="Compute cross-domain reward for results")
     sc_p.add_argument("--results",   required=True, help="Results JSON file from 'run'")

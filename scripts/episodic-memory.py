@@ -19,7 +19,7 @@ Episode schema:
     "diff":          "...",
     "result":        "tests_passed",
     "confidence":    0.82,
-    "model_used":    "meitheal-tuned",
+    "model_used":    "SDLC Framework-tuned",
     "attempts":      1,
     "time_s":        8.4,
     "skills":        ["add_null_guard"],
@@ -33,7 +33,7 @@ Usage:
   python scripts/episodic-memory.py add \\
       --task "Fix null ref" --cluster null_ref --result tests_passed \\
       --diff path/to/fix.diff --files "src/server/spawn-agent.ts" \\
-      --model meitheal-tuned --time 8.4 --attempts 1
+      --model SDLC Framework-tuned --time 8.4 --attempts 1
 
   python scripts/episodic-memory.py search "null reference in agent status"
   python scripts/episodic-memory.py inject "Fix timeout in API client" --top-k 2

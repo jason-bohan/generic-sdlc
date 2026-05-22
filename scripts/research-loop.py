@@ -357,7 +357,7 @@ def main():
     run_p = sub.add_parser("run", help="Test pending hypotheses in simulation")
     run_p.add_argument("--limit",    type=int, default=2, help="Hypotheses to test")
     run_p.add_argument("--mesh-url", default="http://localhost:9337")
-    run_p.add_argument("--model",    default="meitheal-tuned")
+    run_p.add_argument("--model",    default="SDLC Framework-tuned")
 
     adp = sub.add_parser("adopt", help="Apply a confirmed discovery to the live system")
     adp.add_argument("--id", required=True)

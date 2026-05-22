@@ -364,7 +364,7 @@ def main():
     parser.add_argument("--test",         default="npx vitest run",              help="Test command (default: npx vitest run)")
     parser.add_argument("--mesh-url",     default="http://localhost:9337",        help="MeshLLM base URL (empty = skip)")
     parser.add_argument("--ollama-url",   default="http://localhost:11434",       help="Ollama base URL (fallback)")
-    parser.add_argument("--model",        default="meitheal-tuned",              help="Model name")
+    parser.add_argument("--model",        default="SDLC Framework-tuned",              help="Model name")
     parser.add_argument("--max-attempts", type=int, default=5,                   help="Max fix iterations (default: 5)")
     parser.add_argument("--commit-msg",   default="fix(auto)",                   help="Git commit message prefix")
     parser.add_argument("--repo",         default=".",                            help="Repo directory (default: cwd)")

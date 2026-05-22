@@ -175,7 +175,7 @@ def gate(
     diff: str,
     test_result: str = "unknown",
     url: str = "http://localhost:9337",
-    model: str = "meitheal-tuned",
+    model: str = "SDLC Framework-tuned",
     use_adversarial: bool = True,
     baseline_coverage: float = 1.0,
     post_coverage: float = 1.0,
@@ -234,7 +234,7 @@ def main():
     aud = sub.add_parser("audit", help="Run adversarial LLM evaluator")
     aud.add_argument("--diff",     required=True)
     aud.add_argument("--mesh-url", default="http://localhost:9337")
-    aud.add_argument("--model",    default="meitheal-tuned")
+    aud.add_argument("--model",    default="SDLC Framework-tuned")
 
     g = sub.add_parser("gate", help="Full alignment gate (rules + score + adversarial)")
     g.add_argument("--diff",         required=True)
@@ -242,7 +242,7 @@ def main():
     g.add_argument("--coverage",     type=float, default=1.0)
     g.add_argument("--baseline-cov", type=float, default=1.0)
     g.add_argument("--mesh-url",     default="http://localhost:9337")
-    g.add_argument("--model",        default="meitheal-tuned")
+    g.add_argument("--model",        default="SDLC Framework-tuned")
     g.add_argument("--no-adversarial", action="store_true")
 
     args = parser.parse_args()

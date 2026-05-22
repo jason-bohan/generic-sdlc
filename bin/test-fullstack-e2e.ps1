@@ -4,7 +4,7 @@
 
 .DESCRIPTION
   Simulates a full-stack story flowing through the entire SDLC:
-    1. A temp git repo mimicking Mosaic is created
+    1. A temp git repo mimicking YourProject is created
     2. Both frontend + backend agents are assigned the same story and spawned
     3. Agents work in parallel (read story, plan tasks, write code, create PRs)
     4. Reviewer handles both PRs (with API-driven fallback if agents skip /api/pr/created)
@@ -236,23 +236,23 @@ foreach ($f in @($statusFiles + $configFile + $spawnLog)) {
 # Save original config for patching
 $origConfig = Get-Content (Join-Path $root $configFile) -Raw | ConvertFrom-Json
 
-# Create temp git repo mimicking Mosaic
+# Create temp git repo mimicking YourProject
 Write-Step "Phase 0: Creating temp git repo"
 $tempBase = if ($env:TEMP) { $env:TEMP } elseif ($env:TMPDIR) { $env:TMPDIR } else { '/tmp' }
 $tempRepo = Join-Path $tempBase "sdlc-framework-e2e-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
 New-Item -ItemType Directory -Path $tempRepo -Force | Out-Null
-New-Item -ItemType Directory -Path "$tempRepo/src/Mosaic.Api" -Force | Out-Null
-New-Item -ItemType Directory -Path "$tempRepo/src/Mosaic.Api.Tests" -Force | Out-Null
+New-Item -ItemType Directory -Path "$tempRepo/src/YourProject.Api" -Force | Out-Null
+New-Item -ItemType Directory -Path "$tempRepo/src/YourProject.Api.Tests" -Force | Out-Null
 New-Item -ItemType Directory -Path "$tempRepo/.cursor/rules" -Force | Out-Null
 
 # Minimal .NET skeleton
 @"
 Microsoft Visual Studio Solution File, Format Version 12.00
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Mosaic.Api", "src\Mosaic.Api\Mosaic.Api.csproj", "{A1B2C3D4}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "YourProject.Api", "src\YourProject.Api\YourProject.Api.csproj", "{A1B2C3D4}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Mosaic.Api.Tests", "src\Mosaic.Api.Tests\Mosaic.Api.Tests.csproj", "{E5F6G7H8}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "YourProject.Api.Tests", "src\YourProject.Api.Tests\YourProject.Api.Tests.csproj", "{E5F6G7H8}"
 EndProject
-"@ | Set-Content "$tempRepo/Mosaic.sln"
+"@ | Set-Content "$tempRepo/YourProject.sln"
 
 @"
 <Project Sdk="Microsoft.NET.Sdk.Web">
@@ -261,14 +261,14 @@ EndProject
     <Nullable>enable</Nullable>
   </PropertyGroup>
 </Project>
-"@ | Set-Content "$tempRepo/src/Mosaic.Api/Mosaic.Api.csproj"
+"@ | Set-Content "$tempRepo/src/YourProject.Api/YourProject.Api.csproj"
 
 @"
 var builder = WebApplication.CreateBuilder(args);
 var app = builder.Build();
-app.MapGet("/", () => "Mosaic API");
+app.MapGet("/", () => "YourProject API");
 app.Run();
-"@ | Set-Content "$tempRepo/src/Mosaic.Api/Program.cs"
+"@ | Set-Content "$tempRepo/src/YourProject.Api/Program.cs"
 
 @"
 <Project Sdk="Microsoft.NET.Sdk">
@@ -280,7 +280,7 @@ app.Run();
     <PackageReference Include="xunit" Version="2.*" />
   </ItemGroup>
 </Project>
-"@ | Set-Content "$tempRepo/src/Mosaic.Api.Tests/Mosaic.Api.Tests.csproj"
+"@ | Set-Content "$tempRepo/src/YourProject.Api.Tests/YourProject.Api.Tests.csproj"
 
 @"
 # .NET Standards (Test Skeleton)
@@ -293,23 +293,23 @@ app.Run();
 Push-Location $tempRepo
 git init --initial-branch main 2>&1 | Out-Null
 git add -A 2>&1 | Out-Null
-git commit -m "Initial Mosaic skeleton for E2E test" 2>&1 | Out-Null
+git commit -m "Initial YourProject skeleton for E2E test" 2>&1 | Out-Null
 Pop-Location
 Write-Pass "Temp repo created at $tempRepo"
 
 # Patch config to point at temp repo and ensure mock mode
 Write-Step "Phase 0: Patching config"
 $patchedConfig = Get-Content (Join-Path $root $configFile) -Raw | ConvertFrom-Json
-$patchedConfig.projects.mosaic.workspacePath = $tempRepo
+$patchedConfig.projects.YourProject.workspacePath = $tempRepo
 $patchedConfig.externalMode = "mock"
-$patchedConfig.activeProject = "mosaic"
+$patchedConfig.activeProject = "YourProject"
 # Ensure both agents are enabled with step mode OFF for uninterrupted run
 $patchedConfig.scheduler.agents.backend.stepMode = $false
 $patchedConfig.scheduler.agents.backend.enabled = $true
 $patchedConfig.scheduler.agents.frontend.stepMode = $false
 $patchedConfig.scheduler.agents.frontend.enabled = $true
 Write-JsonFile (Join-Path $root $configFile) $patchedConfig
-Write-Pass "Config patched: mosaic workspace -> $tempRepo, mock mode, step mode OFF"
+Write-Pass "Config patched: YourProject workspace -> $tempRepo, mock mode, step mode OFF"
 
 # Clear spawn log
 $spawnLogPath = Join-Path $root $spawnLog
@@ -344,7 +344,7 @@ $feAssign = Post-Api "/api/scheduler/assign" @{
     agentId          = "frontend"
     storyNumber      = $testStory
     storyName        = $testStoryName
-    storyDescription = "Frontend portion: Add a Widgets dashboard page that fetches data from /api/widgets and displays it in a table. Use Angular components per Mosaic conventions."
+    storyDescription = "Frontend portion: Add a Widgets dashboard page that fetches data from /api/widgets and displays it in a table. Use Angular components per YourProject conventions."
 }
 if ($feAssign) {
     Assert-Equal $feAssign.ok $true "frontend assign ok"
@@ -391,7 +391,7 @@ if ($SkipAgentSpawn) {
     $beEvt1 = @{ timestamp = (Get-Date -Format "o"); type = "info"; message = "Story $testStory assigned." }
     $beEvt2 = @{ timestamp = (Get-Date -Format "o"); type = "success"; message = "Created 2 tasks, implemented widgets API, mock PR 101 created." }
     $beStatus = @{
-        projectKey       = "mosaic"
+        projectKey       = "YourProject"
         storyNumber      = $testStory
         storyName        = $testStoryName
         storyDescription = $testStoryDesc
@@ -415,7 +415,7 @@ if ($SkipAgentSpawn) {
     $feEvt1 = @{ timestamp = (Get-Date -Format "o"); type = "info"; message = "Story $testStory assigned." }
     $feEvt2 = @{ timestamp = (Get-Date -Format "o"); type = "success"; message = "Created 2 tasks, implemented widgets dashboard, mock PR 102 created." }
     $feStatus = @{
-        projectKey       = "mosaic"
+        projectKey       = "YourProject"
         storyNumber      = $testStory
         storyName        = $testStoryName
         currentPhase     = "watching-reviews"
@@ -435,13 +435,13 @@ if ($SkipAgentSpawn) {
     Push-Location $tempRepo
     git checkout -b "feat/FS-99001-widgets-api" 2>&1 | Out-Null
     @"
-namespace Mosaic.Api.Controllers;
+namespace YourProject.Api.Controllers;
 public class WidgetController {
     [HttpGet("/api/widgets")]
     public IEnumerable<Widget> Get() => new[] { new Widget("Test", 42) };
 }
 public record Widget(string Name, int Value);
-"@ | Set-Content "src/Mosaic.Api/WidgetController.cs"
+"@ | Set-Content "src/YourProject.Api/WidgetController.cs"
     git add -A 2>&1 | Out-Null
     git commit -m "feat(FS-99001): Add /api/widgets endpoint" 2>&1 | Out-Null
 
@@ -453,7 +453,7 @@ export class WidgetsDashboardComponent {
     widgets = [];
     async ngOnInit() { this.widgets = await fetch('/api/widgets').then(r => r.json()); }
 }
-"@ | Set-Content "src/Mosaic.Api/WidgetsDashboard.ts"
+"@ | Set-Content "src/YourProject.Api/WidgetsDashboard.ts"
     git add -A 2>&1 | Out-Null
     git commit -m "feat(FS-99001): Add Widgets dashboard page" 2>&1 | Out-Null
     git checkout main 2>&1 | Out-Null

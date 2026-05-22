@@ -530,27 +530,8 @@ if (Test-Path $configFile) {
         }
     }
 
-    # Auto-discover Mosaic standards if workspace path is valid
-    $mosaicPath = $config.projects.mosaic.workspacePath
-    if ($mosaicPath -and (Test-Path $mosaicPath)) {
-        $rulesFound = @()
-        $searchDirs = @($mosaicPath, (Join-Path $mosaicPath "src"), (Join-Path $mosaicPath "src\Mosaic.Web"))
-        foreach ($dir in $searchDirs) {
-            $rulesDir = Join-Path $dir ".cursor\rules"
-            if (Test-Path $rulesDir) {
-                $rulesFound += (Get-ChildItem -Path $rulesDir -Filter "*.mdc" -ErrorAction SilentlyContinue).Name
-            }
-        }
-        if ($rulesFound.Count -gt 0) {
-            Write-Host "  Found $($rulesFound.Count) Mosaic coding standards (.mdc rules)" -ForegroundColor Green
-        }
-
-        $cypressDir = Join-Path $mosaicPath "integration_test"
-        if (Test-Path $cypressDir) {
-            $specCount = (Get-ChildItem -Path (Join-Path $cypressDir "cypress\integration") -Recurse -Filter "*.spec.*" -ErrorAction SilentlyContinue).Count
-            Write-Host "  Found Mosaic Cypress suite: $specCount spec files" -ForegroundColor Green
-        }
-    }
+    # Add project-specific workspace discovery here if needed.
+    # Example: scan for .cursor/rules/*.mdc in each project workspace.
 } else {
     Write-Host "  .sdlc-framework.config.json not found — skipping workspace path setup." -ForegroundColor DarkGray
     Write-Host "  Run setup again after creating the config file." -ForegroundColor DarkGray

@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-Meitheal auto-finetune pipeline.
+SDLC Framework auto-finetune pipeline.
 
 Steps:
   1. Collect training data from git commits  (collect-training-data.py git)
   2. Prepare Unsloth dataset                 (prepare-unsloth-data.py)
   3. Run Unsloth fine-tuning                 (if unsloth available + GPU)
-  4. Rebuild Ollama model                    (ollama create meitheal-tuned:latest)
+  4. Rebuild Ollama model                    (ollama create SDLC Framework-tuned:latest)
 
 Run manually:  python scripts/finetune-trigger.py [--root /repo/root]
 """
@@ -72,7 +72,7 @@ def step_rebuild_ollama(root: str) -> bool:
 
     # Try direct ollama CLI first (native mode)
     if _cmd_exists("ollama"):
-        return run(["ollama", "create", "meitheal-tuned:latest", "-f", modelfile], cwd=root, label="Rebuild ollama model (native)")
+        return run(["ollama", "create", "SDLC Framework-tuned:latest", "-f", modelfile], cwd=root, label="Rebuild ollama model (native)")
 
     # Docker: exec into the ollama container
     # Modelfile is at /app/Modelfile since source is bind-mounted
@@ -89,7 +89,7 @@ def step_rebuild_ollama(root: str) -> bool:
 
     if container:
         return run(
-            ["docker", "exec", container, "ollama", "create", "meitheal-tuned:latest", "-f", "/app/Modelfile"],
+            ["docker", "exec", container, "ollama", "create", "SDLC Framework-tuned:latest", "-f", "/app/Modelfile"],
             cwd=root,
             label=f"Rebuild ollama model (docker exec {container})",
         )
@@ -104,7 +104,7 @@ def _cmd_exists(cmd: str) -> bool:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Meitheal auto-finetune pipeline")
+    parser = argparse.ArgumentParser(description="SDLC Framework auto-finetune pipeline")
     parser.add_argument("--root", default=os.getcwd(), help="Repo root directory")
     parser.add_argument("--skip-collect", action="store_true", help="Skip data collection step")
     parser.add_argument("--skip-prepare", action="store_true", help="Skip dataset preparation step")

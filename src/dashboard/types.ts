@@ -81,10 +81,8 @@ export interface TaskReconciliation {
     matchingTasks: Array<Pick<TaskItem, 'id' | 'name' | 'status' | 'category' | 'hours' | 'priority'>>;
 }
 
-const REPO_BASE = 'https://oursundayvisitor.visualstudio.com/YourProject/_git/SDLC Framework';
-
 export function getPrUrl(pr: PullRequest): string {
-    return pr.url || `${REPO_BASE}/pullrequest/${pr.id}`;
+    return pr.url || '#';
 }
 
 export interface CypressFailure {

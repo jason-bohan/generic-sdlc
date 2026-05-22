@@ -13,7 +13,7 @@ Storage: .meta-learning.jsonl  (append-only event log)
 Usage:
   # Record an attempt (called by fix-pipeline.py / plan-and-fix.py)
   python scripts/meta-learning.py record \\
-      --cluster null_ref --attempt 1 --success false --model meitheal-tuned \\
+      --cluster null_ref --attempt 1 --success false --model SDLC Framework-tuned \\
       --time 14.2 --score 0.43
 
   # Query routing recommendation for a cluster
@@ -42,7 +42,7 @@ ROUTING_FILE = Path(".meta-routing.json")
 
 # Models in preference order (cheapest/fastest first)
 MODEL_LADDER = [
-    "meitheal-tuned",
+    "SDLC Framework-tuned",
     "qwen3:8b",
     "qwen3:14b",
     "deepseek/deepseek-chat",

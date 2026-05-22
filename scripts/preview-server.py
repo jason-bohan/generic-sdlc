@@ -188,7 +188,7 @@ _HTML = r"""<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Meitheal Live Preview</title>
+<title>SDLC Framework Live Preview</title>
 <style>
   body { font-family: system-ui, sans-serif; background: #0d0d0d; color: #e0e0e0; margin: 0; padding: 0; }
   header { background: #1a1a2e; padding: 12px 20px; display: flex; align-items: center; gap: 12px; }
@@ -221,7 +221,7 @@ _HTML = r"""<!DOCTYPE html>
 </head>
 <body>
 <header>
-  <h1>Meitheal Live Preview</h1>
+  <h1>SDLC Framework Live Preview</h1>
   <span id="status-dot" style="color:#5ef5b0;font-size:0.8rem;">● live</span>
 </header>
 <div id="items"><div class="empty">Waiting for tasks from the meeting agent…</div></div>

@@ -38,7 +38,7 @@ CONFIG_FILE    = Path(".system-config.json")
 
 DEFAULT_CONFIG = {
     "routing": {
-        "default_model": "meitheal-tuned",
+        "default_model": "SDLC Framework-tuned",
         "cluster_overrides": {},          # cluster -> model
         "min_affinity_to_route": 0.3,
     },
@@ -162,7 +162,7 @@ Example:
   {{"type": "training_resample", "description": "Increase sampling for race_condition cluster",
     "change": {{"cluster": "race_condition", "weight": 2.0}}}},
   {{"type": "routing_change", "description": "Route null_ref to specialist model",
-    "change": {{"cluster": "null_ref", "model": "meitheal-tuned"}}}}
+    "change": {{"cluster": "null_ref", "model": "SDLC Framework-tuned"}}}}
 ]
 
 System performance report:
@@ -277,7 +277,7 @@ def main():
     tst = sub.add_parser("test", help="Test a proposal in simulation")
     tst.add_argument("--id",       type=int, required=True)
     tst.add_argument("--mesh-url", default="http://localhost:9337")
-    tst.add_argument("--model",    default="meitheal-tuned")
+    tst.add_argument("--model",    default="SDLC Framework-tuned")
 
     dep = sub.add_parser("deploy", help="Deploy a tested proposal")
     dep.add_argument("--id", type=int, required=True)

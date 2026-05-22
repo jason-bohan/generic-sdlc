@@ -287,7 +287,7 @@ def main():
     rec.add_argument("--files",       type=int, default=1,   help="Files changed")
     rec.add_argument("--tools",       type=int, default=0,   help="Tool calls made")
     rec.add_argument("--task",        default="")
-    rec.add_argument("--model",       default="meitheal-tuned")
+    rec.add_argument("--model",       default="SDLC Framework-tuned")
     rec.add_argument("--cluster",     default="unknown")
     rec.add_argument("--mesh-url",    default="http://localhost:9337")
     rec.add_argument("--llm-classify", action="store_true", help="Use LLM to classify behavior")

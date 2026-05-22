@@ -296,7 +296,7 @@ def main():
     parser.add_argument("--cluster",        default="",              help="Filter by cluster")
     parser.add_argument("--generate-tasks", action="store_true",     help="Synthesize tasks for --cluster")
     parser.add_argument("--adversarial",    action="store_true",     help="Mutate tasks with edge cases")
-    parser.add_argument("--model",          default="meitheal-tuned")
+    parser.add_argument("--model",          default="SDLC Framework-tuned")
     parser.add_argument("--mesh-url",       default="http://localhost:9337")
     parser.add_argument("--test",           default="npx vitest run")
     parser.add_argument("--repo",           default=".")

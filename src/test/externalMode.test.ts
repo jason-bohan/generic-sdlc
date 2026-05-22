@@ -46,7 +46,7 @@ describe('external mode', () => {
 
     it('recognizes Azure DevOps URLs as live PR URLs', () => {
         expect(isAzureDevOpsUrl('https://dev.azure.com/org/project/_git/repo/pullrequest/1')).toBe(true);
-        expect(isAzureDevOpsUrl('https://oursundayvisitor.visualstudio.com/YourProject/_git/YourProject/pullrequest/1')).toBe(true);
+        expect(isAzureDevOpsUrl('https://your-org.visualstudio.com/YourProject/_git/YourRepo/pullrequest/1')).toBe(true);
         expect(isAzureDevOpsUrl('mock://ado/pr/1')).toBe(false);
         expect(isAzureDevOpsUrl('https://example.com/pr/1')).toBe(false);
     });

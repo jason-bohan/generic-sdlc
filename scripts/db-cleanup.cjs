@@ -11,8 +11,8 @@ const { copyFileSync, existsSync, writeFileSync, readFileSync } = require('fs');
 const { resolve } = require('path');
 
 const ROOT = resolve(__dirname, '..');
-const DB_PATH = resolve(ROOT, '.meitheal', 'meitheal.db');
-const MOCK_STATE = resolve(ROOT, '.meitheal', 'mock', 'state.json');
+const DB_PATH = resolve(ROOT, '.SDLC Framework', 'SDLC Framework.db');
+const MOCK_STATE = resolve(ROOT, '.SDLC Framework', 'mock', 'state.json');
 const dryRun = process.argv.includes('--dry-run');
 
 if (!existsSync(DB_PATH)) {

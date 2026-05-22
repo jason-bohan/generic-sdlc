@@ -111,7 +111,7 @@ index 0000000..c4f28a3
 +  );
 +}
 """,
-    "pr_url":  "https://github.com/meitheal/meitheal/pull/42",
+    "pr_url":  "https://github.com/SDLC Framework/SDLC Framework/pull/42",
     "pr_title": "refactor(dashboard): extract AIHealth into dedicated component",
     "files_changed": 2,
     "lines_added": 24,
@@ -191,7 +191,7 @@ _HTML = r"""<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Meitheal — Meeting Demo</title>
+<title>SDLC Framework — Meeting Demo</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:system-ui,-apple-system,sans-serif;background:#0a0a14;color:#e0e0f0;min-height:100vh;display:flex;flex-direction:column}
@@ -257,7 +257,7 @@ button:active{transform:scale(0.97)}
 </head>
 <body>
 <header>
-  <h1>Meitheal</h1>
+  <h1>SDLC Framework</h1>
   <span class="demo-badge">Demo Mode</span>
   <span style="color:#556;font-size:0.8rem;margin-left:auto">conversation → code → PR</span>
 </header>
@@ -556,7 +556,7 @@ class DemoHandler(BaseHTTPRequestHandler):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Meitheal demo mode — hardcoded end-to-end demo, always works"
+        description="SDLC Framework demo mode — hardcoded end-to-end demo, always works"
     )
     parser.add_argument("--port",  type=int, default=9002)
     parser.add_argument("--live",  action="store_true",
@@ -573,7 +573,7 @@ def main():
     mode_label = "LIVE (real pipeline)" if args.live else "SIMULATED (safe)"
 
     print()
-    print("  Meitheal — Demo Mode")
+    print("  SDLC Framework — Demo Mode")
     print("  " + "─" * 40)
     print(f"  Scenario : {SCENARIO['title']}")
     print(f"  Mode     : {mode_label}")

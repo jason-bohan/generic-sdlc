@@ -23,7 +23,7 @@ export function mount(use: UseFn): void {
         if (req.method !== 'GET') { res.statusCode = 405; res.end(); return; }
         try {
             const r = await fetch('https://openrouter.ai/api/v1/models', {
-                headers: { 'HTTP-Referer': 'https://github.com/oursundayvisitor/SDLC Framework' },
+                headers: { 'HTTP-Referer': 'https://github.com/jason-bohan/generic-sdlc' },
                 signal: AbortSignal.timeout(12000),
             });
             if (!r.ok) { json(res, { error: `OpenRouter ${r.status}: ${await r.text().then(t => t.slice(0, 200))}` }, 502); return; }
@@ -56,7 +56,7 @@ export function mount(use: UseFn): void {
             if (!model?.trim()) { json(res, { error: 'model required' }, 400); return; }
             const headers: Record<string, string> = {
                 'Content-Type': 'application/json',
-                'HTTP-Referer': 'https://github.com/oursundayvisitor/SDLC Framework',
+                'HTTP-Referer': 'https://github.com/jason-bohan/generic-sdlc',
             };
             if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
             const start = Date.now();

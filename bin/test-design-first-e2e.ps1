@@ -219,15 +219,15 @@ foreach ($f in @($statusFiles + $configFile + $spawnLog)) {
 Write-Step "Phase 0: Creating temp git repo"
 $tempRepo = Join-Path $env:TEMP "sdlc-framework-design-e2e-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
 New-Item -ItemType Directory -Path $tempRepo -Force | Out-Null
-New-Item -ItemType Directory -Path "$tempRepo/src/Mosaic.Api" -Force | Out-Null
-New-Item -ItemType Directory -Path "$tempRepo/src/Mosaic.Web/app/user-profile" -Force | Out-Null
+New-Item -ItemType Directory -Path "$tempRepo/src/YourProject.Api" -Force | Out-Null
+New-Item -ItemType Directory -Path "$tempRepo/src/YourProject.Web/app/user-profile" -Force | Out-Null
 New-Item -ItemType Directory -Path "$tempRepo/.cursor/rules" -Force | Out-Null
 
 @"
 Microsoft Visual Studio Solution File, Format Version 12.00
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Mosaic.Api", "src\Mosaic.Api\Mosaic.Api.csproj", "{A1B2C3D4}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "YourProject.Api", "src\YourProject.Api\YourProject.Api.csproj", "{A1B2C3D4}"
 EndProject
-"@ | Set-Content "$tempRepo/Mosaic.sln"
+"@ | Set-Content "$tempRepo/YourProject.sln"
 
 @"
 <Project Sdk="Microsoft.NET.Sdk.Web">
@@ -236,14 +236,14 @@ EndProject
     <Nullable>enable</Nullable>
   </PropertyGroup>
 </Project>
-"@ | Set-Content "$tempRepo/src/Mosaic.Api/Mosaic.Api.csproj"
+"@ | Set-Content "$tempRepo/src/YourProject.Api/YourProject.Api.csproj"
 
 @"
 var builder = WebApplication.CreateBuilder(args);
 var app = builder.Build();
-app.MapGet("/", () => "Mosaic API");
+app.MapGet("/", () => "YourProject API");
 app.Run();
-"@ | Set-Content "$tempRepo/src/Mosaic.Api/Program.cs"
+"@ | Set-Content "$tempRepo/src/YourProject.Api/Program.cs"
 
 @"
 # .NET Standards (Test Skeleton)
@@ -254,16 +254,16 @@ app.Run();
 Push-Location $tempRepo
 git init --initial-branch main 2>&1 | Out-Null
 git add -A 2>&1 | Out-Null
-git commit -m "Initial Mosaic skeleton for design-first E2E test" 2>&1 | Out-Null
+git commit -m "Initial YourProject skeleton for design-first E2E test" 2>&1 | Out-Null
 Pop-Location
 Write-Pass "Temp repo created at $tempRepo"
 
 # Patch config
 Write-Step "Phase 0: Patching config"
 $patchedConfig = Get-Content (Join-Path $root $configFile) -Raw | ConvertFrom-Json
-$patchedConfig.projects.mosaic.workspacePath = $tempRepo
+$patchedConfig.projects.YourProject.workspacePath = $tempRepo
 $patchedConfig.externalMode = "mock"
-$patchedConfig.activeProject = "mosaic"
+$patchedConfig.activeProject = "YourProject"
 $patchedConfig.scheduler.agents.ux.stepMode = $false
 $patchedConfig.scheduler.agents.ux.enabled = $true
 $patchedConfig.scheduler.agents.backend.stepMode = $false
@@ -360,7 +360,7 @@ New User Profile page with avatar, bio, and settings sections.
     $uxEvt1 = @{ timestamp = (Get-Date -Format "o"); type = "info"; message = "Story $testStory assigned." }
     $uxEvt2 = @{ timestamp = (Get-Date -Format "o"); type = "success"; message = "Design spec written to .ux-design-spec.md" }
     $uxSimStatus = @{
-        projectKey    = "mosaic"
+        projectKey    = "YourProject"
         storyNumber   = $testStory
         storyName     = $testStoryName
         currentPhase  = "spec-ready"
@@ -474,7 +474,7 @@ if ($SkipAgentSpawn) {
     $feEvt1 = @{ timestamp = (Get-Date -Format "o"); type = "info"; message = "Story $testStory assigned from UX design." }
     $feEvt2 = @{ timestamp = (Get-Date -Format "o"); type = "success"; message = "Implemented UserAvatar, ProfileCard. Mock PR $fePrId created." }
     $feSimStatus = @{
-        projectKey        = "mosaic"
+        projectKey        = "YourProject"
         storyNumber       = $testStory
         storyName         = $testStoryName
         currentPhase      = "watching-reviews"
@@ -499,7 +499,7 @@ if ($SkipAgentSpawn) {
     $beEvt1 = @{ timestamp = (Get-Date -Format "o"); type = "info"; message = "Story $testStory assigned from UX design." }
     $beEvt2 = @{ timestamp = (Get-Date -Format "o"); type = "success"; message = "Implemented UserProfileController, DTO. Mock PR $bePrId created." }
     $beSimStatus = @{
-        projectKey        = "mosaic"
+        projectKey        = "YourProject"
         storyNumber       = $testStory
         storyName         = $testStoryName
         currentPhase      = "watching-reviews"
@@ -524,20 +524,20 @@ if ($SkipAgentSpawn) {
 import { Component } from '@angular/core';
 @Component({ selector: 'app-user-profile', template: '<div class="profile"><app-user-avatar></app-user-avatar></div>' })
 export class UserProfileComponent {}
-"@ | Set-Content "src/Mosaic.Web/app/user-profile/user-profile.component.ts"
+"@ | Set-Content "src/YourProject.Web/app/user-profile/user-profile.component.ts"
     git add -A 2>&1 | Out-Null
     git commit -m "feat(DS-99001): Add User Profile UI components" 2>&1 | Out-Null
 
     git checkout main 2>&1 | Out-Null
     git checkout -b "feat/DS-99001-profile-api" 2>&1 | Out-Null
     @"
-namespace Mosaic.Api.Controllers;
+namespace YourProject.Api.Controllers;
 public class UserProfileController {
     [HttpGet("/api/user-profile")]
     public UserProfile Get() => new("Test User", "Developer");
 }
 public record UserProfile(string Name, string Role);
-"@ | Set-Content "src/Mosaic.Api/UserProfileController.cs"
+"@ | Set-Content "src/YourProject.Api/UserProfileController.cs"
     git add -A 2>&1 | Out-Null
     git commit -m "feat(DS-99001): Add User Profile API endpoint" 2>&1 | Out-Null
     git checkout main 2>&1 | Out-Null

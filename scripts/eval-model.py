@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-eval-model.py  —  Evaluate meitheal-tuned vs Claude on held-out Aider diff examples.
+eval-model.py  —  Evaluate SDLC Framework-tuned vs Claude on held-out Aider diff examples.
 
 Metrics (per example):
   format_ok   — output starts with valid diff header (--- / +++ / @@)
@@ -189,10 +189,10 @@ def load_eval_set(dataset: Path, fraction: float, max_n: int) -> list[dict]:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Evaluate meitheal-tuned vs Claude on held-out examples")
+    parser = argparse.ArgumentParser(description="Evaluate SDLC Framework-tuned vs Claude on held-out examples")
     parser.add_argument("--n",             type=int,   default=20,           help="Max examples to evaluate")
     parser.add_argument("--eval-fraction", type=float, default=0.2,          help="Fraction of dataset held out for eval")
-    parser.add_argument("--our-model",     default="meitheal-tuned",         help="Ollama model name for 'our' model")
+    parser.add_argument("--our-model",     default="SDLC Framework-tuned",         help="Ollama model name for 'our' model")
     parser.add_argument("--ollama-url",    default="http://localhost:11434",  help="Ollama base URL")
     parser.add_argument("--mesh-url",      default=None,                     help="If set, use MeshLLM at this URL instead of Ollama")
     parser.add_argument("--no-claude",     action="store_true",              help="Skip Claude comparison")

@@ -310,7 +310,7 @@ def main():
     exc.add_argument("--item",     type=int, required=True, help="Item number (1-based)")
     exc.add_argument("--dry-run",  action="store_true")
     exc.add_argument("--mesh-url", default="http://localhost:9337")
-    exc.add_argument("--model",    default="meitheal-tuned")
+    exc.add_argument("--model",    default="SDLC Framework-tuned")
 
     fb = sub.add_parser("feedback", help="Record whether a roadmap item improved things")
     fb.add_argument("--item",     type=int, required=True)

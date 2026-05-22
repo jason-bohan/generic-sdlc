@@ -8,9 +8,9 @@ fine-tuning is delegated to trainer-service.py). Best performers survive.
 
 Pool schema:
   {
-    "meitheal-v2": {
-      "model_id":        "meitheal-v2",
-      "base_model":      "meitheal-v1",
+    "SDLC Framework-v2": {
+      "model_id":        "SDLC Framework-v2",
+      "base_model":      "SDLC Framework-v1",
       "status":          "active",    # active | candidate | retired
       "avg_reward":      0.83,
       "success_rate":    0.91,
@@ -25,10 +25,10 @@ Storage: .model-pool.json
 
 Usage:
   python scripts/model-evolution.py pool
-  python scripts/model-evolution.py record --model meitheal-tuned --success true --reward 0.8
+  python scripts/model-evolution.py record --model SDLC Framework-tuned --success true --reward 0.8
   python scripts/model-evolution.py evolve
-  python scripts/model-evolution.py promote --model meitheal-v2
-  python scripts/model-evolution.py benchmark --model meitheal-tuned --eval eval.jsonl
+  python scripts/model-evolution.py promote --model SDLC Framework-v2
+  python scripts/model-evolution.py benchmark --model SDLC Framework-tuned --eval eval.jsonl
 """
 
 import argparse

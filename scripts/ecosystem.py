@@ -2,7 +2,7 @@
 """
 ecosystem.py  —  Ecosystem-level coordination: multiple orgs/systems evolving together.
 
-Runs an HTTP coordination server that lets multiple instances of the Meitheal
+Runs an HTTP coordination server that lets multiple instances of the SDLC Framework
 system publish abstracted state snapshots and receive global trend signals.
 No raw code or diffs are shared — only statistical aggregates and normalized patterns.
 

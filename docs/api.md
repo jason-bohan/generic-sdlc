@@ -2,6 +2,8 @@
 
 The SDLC Framework API server runs on port 3001 (`npm run server`). The Vite dashboard proxies all `/api/*` requests there automatically.
 
+The API is integration-agnostic: route handlers work with generic SDLC concepts such as work items, tasks, review requests, builds, notifications, and model calls. Some route names are kept for adapter compatibility (`/api/agility/*`, `/api/ado/*`), but callers should treat those payloads as generic planning or review/build operations that can be backed by Digital.ai Agility, Azure DevOps, GitHub, Jira, mock demo state, or another adapter.
+
 Use the **Bruno collection** at `bruno/sdlc-framework/` to explore endpoints interactively — open it in Bruno with the `local` environment selected.
 
 ## Base URL
@@ -48,23 +50,27 @@ Returns the current status for an agent.
 
 ---
 
-## Agility
+## Planning / Work Items
+
+These endpoints read and write work-item data through the configured planning adapter. The `/api/agility/*` paths are legacy compatibility routes; their response shapes should stay generic enough to map to other planning systems.
+
+Legacy payload keys such as `storyNumber`, `storyName`, and `storyDescription` currently represent the generic work-item key, title, and description. New adapters should translate those names at the boundary instead of leaking a tool-specific model through the rest of the system.
 
 ### `GET /api/agility/teams`
-Returns all active Agility teams.
+Returns active teams from the configured planning adapter.
 
 ### `GET /api/agility/class-of-service`
-Returns available class-of-service values.
+Returns available class-of-service or priority values from the configured planning adapter.
 
 ### `POST /api/agility/stories`
-Returns stories for a team, optionally filtered by status.
+Returns work items for a team, optionally filtered by status.
 
 ```json
 { "teamId": "Team:1234", "statusFilter": ["In Progress", "Backlog"] }
 ```
 
 ### `POST /api/agility/create-story`
-Creates a story in Agility with LLM-enriched fields.
+Creates a work item through the planning adapter with optional LLM-enriched fields.
 
 ```json
 {
@@ -79,7 +85,7 @@ Creates a story in Agility with LLM-enriched fields.
 ```
 
 ### `POST /api/agility/story-status`
-Updates a story's status (e.g. mark as Released/Done).
+Updates a work item's status, such as `Released` or `Done`.
 
 ```json
 { "number": "B-12345", "status": "Released" }
@@ -90,7 +96,7 @@ Updates a story's status (e.g. mark as Released/Done).
 ## Scheduler
 
 ### `POST /api/scheduler/assign`
-Assigns a story to an agent. Writes the agent status file and optionally auto-starts.
+Assigns a work item to an agent. Writes the agent status file and optionally auto-starts.
 
 ```json
 {
@@ -117,7 +123,7 @@ Advances an agent paused in step mode to its next phase.
 ```
 
 ### `POST /api/scheduler/create-task`
-Creates a task in Agility and appends it to the agent's status file.
+Creates a task through the planning adapter and appends it to the agent's status file.
 
 ```json
 { "agentId": "frontend", "storyNumber": "B-12345", "name": "Implement component", "estimate": 2 }
@@ -135,7 +141,7 @@ Updates a task's status.
 ## Tokens
 
 ### `GET /api/tokens/ledger`
-Returns the full token ledger (all stories). Add `?story=B-12345` to filter by story.
+Returns the full token ledger for all work items. Add `?story=B-12345` to filter by the current legacy story/work-item key.
 
 ### `POST /api/tokens/update`
 Records token usage for an agent and phase.
@@ -156,14 +162,14 @@ Shorthand for cloud token update.
 ## Handoff
 
 ### `POST /api/handoff/review-complete`
-Signals that Brehon has finished reviewing a PR.
+Signals that Brehon has finished reviewing a review request.
 
 ```json
 { "prId": 42, "verdict": "approved", "storyNumber": "B-12345", "branch": "feat/B-12345" }
 ```
 
 ### `POST /api/handoff/build-complete`
-Signals that a CI build finished (called by Cairde or ADO webhook).
+Signals that a CI build finished, either from the DevOps agent or a configured build-adapter webhook.
 
 ```json
 { "prId": 42, "result": "passed", "buildId": 1001 }
@@ -246,11 +252,11 @@ Returns the current `.sdlc-framework.config.json`.
 Returns available project profiles.
 
 ### `POST /api/notify`
-Sends a Teams notification.
+Sends a notification through the configured notification adapter.
 
 ```json
 { "title": "Test", "message": "Hello from Bruno", "color": "6366f1" }
 ```
 
 ### `POST /api/ado/vote-pr`
-Casts a vote on an Azure DevOps PR (approve/reject).
+Casts a vote on a review request through the Azure DevOps compatibility adapter.

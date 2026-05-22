@@ -2,7 +2,7 @@
 """
 extract-aider-dataset.py
 
-Mines the Meitheal git history and produces a JSONL training dataset for
+Mines the SDLC Framework git history and produces a JSONL training dataset for
 fine-tuning a diff-producing coding agent with Unsloth + Aider.
 
 Each record:
@@ -13,7 +13,7 @@ Each record:
   }
 
 Usage:
-  cd C:/repos/Meitheal
+  cd C:/repos/SDLC Framework
   python scripts/extract-aider-dataset.py [--output aider_dataset.jsonl] [--since 2024-01-01]
 """
 

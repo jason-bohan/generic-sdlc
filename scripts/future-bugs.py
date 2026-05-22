@@ -26,7 +26,7 @@ Usage:
   python scripts/future-bugs.py generate --count 20 --mode template
   python scripts/future-bugs.py generate --count 5  --mode adversarial \\
       --mesh-url http://localhost:9337 --model qwen3:14b
-  python scripts/future-bugs.py run --limit 10 --model meitheal-tuned
+  python scripts/future-bugs.py run --limit 10 --model SDLC Framework-tuned
   python scripts/future-bugs.py stats
 """
 
@@ -324,7 +324,7 @@ def main():
 
     run_p = sub.add_parser("run", help="Run sim-batch on generated scenarios")
     run_p.add_argument("--limit",    type=int, default=10)
-    run_p.add_argument("--model",    default="meitheal-tuned")
+    run_p.add_argument("--model",    default="SDLC Framework-tuned")
     run_p.add_argument("--mesh-url", default="http://localhost:9337")
 
     sub.add_parser("stats", help="Show generation statistics")

@@ -171,7 +171,7 @@ describe('mock server E2E', () => {
                 agentId: 'frontend',
                 prId: 123,
                 prTitle: 'Live Azure PR should not be accepted',
-                prUrl: 'https://oursundayvisitor.visualstudio.com/YourProject/_git/YourProject/pullrequest/123',
+                prUrl: 'https://dev.azure.com/your-org/YourProject/_git/YourRepo/pullrequest/123',
                 storyNumber: 'B-17001',
                 branch: 'codex/escaped-live-work',
                 projectKey: 'YourProject',

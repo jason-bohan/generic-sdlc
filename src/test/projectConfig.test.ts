@@ -30,7 +30,7 @@ const SDLC_FRAMEWORK_PROFILE: ProjectProfile = {
     teamPrefixes: {},
 };
 
-const MOSAIC_PROFILE: ProjectProfile = {
+const SECONDARY_PROFILE: ProjectProfile = {
     organization: 'yourcompany',
     azureProject: 'YourProject',
     repositoryId: 'c268771c-65f3-43e4-a9d5-adfc4267c47d',
@@ -63,7 +63,7 @@ describe('getActiveProject', () => {
     it('loads from projects section using activeProject key', () => {
         writeConfig({
             activeProject: 'YourProject',
-            projects: { sdlc-framework: SDLC_FRAMEWORK_PROFILE, YourProject: MOSAIC_PROFILE },
+            projects: { sdlc-framework: SDLC_FRAMEWORK_PROFILE, YourProject: SECONDARY_PROFILE },
         });
         const profile = getActiveProject(CONFIG_PATH);
         expect(profile.targetBranch).toBe('master');
@@ -74,7 +74,7 @@ describe('getActiveProject', () => {
 
     it('falls back to first project if activeProject key is missing', () => {
         writeConfig({
-            projects: { sdlc-framework: SDLC_FRAMEWORK_PROFILE, YourProject: MOSAIC_PROFILE },
+            projects: { sdlc-framework: SDLC_FRAMEWORK_PROFILE, YourProject: SECONDARY_PROFILE },
         });
         const profile = getActiveProject(CONFIG_PATH);
         expect(profile.targetBranch).toBe('main');
@@ -102,7 +102,7 @@ describe('getProjectProfile', () => {
     it('loads a named project even when another project is active', () => {
         writeConfig({
             activeProject: 'sdlc-framework',
-            projects: { sdlc-framework: SDLC_FRAMEWORK_PROFILE, YourProject: MOSAIC_PROFILE },
+            projects: { sdlc-framework: SDLC_FRAMEWORK_PROFILE, YourProject: SECONDARY_PROFILE },
         });
         const profile = getProjectProfile(CONFIG_PATH, 'YourProject');
         expect(profile.targetBranch).toBe('master');
@@ -112,7 +112,7 @@ describe('getProjectProfile', () => {
     it('falls back to the active project when the named project is unknown', () => {
         writeConfig({
             activeProject: 'YourProject',
-            projects: { sdlc-framework: SDLC_FRAMEWORK_PROFILE, YourProject: MOSAIC_PROFILE },
+            projects: { sdlc-framework: SDLC_FRAMEWORK_PROFILE, YourProject: SECONDARY_PROFILE },
         });
         const profile = getProjectProfile(CONFIG_PATH, 'unknown');
         expect(profile.targetBranch).toBe('master');
@@ -127,7 +127,7 @@ describe('getActiveProjectName', () => {
     it('returns activeProject key from config', () => {
         writeConfig({
             activeProject: 'YourProject',
-            projects: { sdlc-framework: SDLC_FRAMEWORK_PROFILE, YourProject: MOSAIC_PROFILE },
+            projects: { sdlc-framework: SDLC_FRAMEWORK_PROFILE, YourProject: SECONDARY_PROFILE },
         });
         expect(getActiveProjectName(CONFIG_PATH)).toBe('YourProject');
     });
@@ -140,7 +140,7 @@ describe('listProjectNames', () => {
 
     it('returns all project keys', () => {
         writeConfig({
-            projects: { sdlc-framework: SDLC_FRAMEWORK_PROFILE, YourProject: MOSAIC_PROFILE },
+            projects: { sdlc-framework: SDLC_FRAMEWORK_PROFILE, YourProject: SECONDARY_PROFILE },
         });
         expect(listProjectNames(CONFIG_PATH)).toEqual(['sdlc-framework', 'YourProject']);
     });
@@ -158,17 +158,17 @@ describe('resolveProjectBranch', () => {
     });
 
     it('builds YourProject-style branch: team/env/storyNumber_slug', () => {
-        const branch = resolveProjectBranch(MOSAIC_PROFILE, 'B-17010', 'Add dark mode toggle', 'Team:2001', 'Donatello');
+        const branch = resolveProjectBranch(SECONDARY_PROFILE, 'B-17010', 'Add dark mode toggle', 'Team:2001', 'Donatello');
         expect(branch).toBe('chipmunks/donatello/b-17010_add_dark_mode_toggle');
     });
 
     it('builds YourProject-style without env when not provided', () => {
-        const branch = resolveProjectBranch(MOSAIC_PROFILE, 'B-17010', 'Fix header layout', 'Team:2002');
+        const branch = resolveProjectBranch(SECONDARY_PROFILE, 'B-17010', 'Fix header layout', 'Team:2002');
         expect(branch).toBe('ninjas/b-17010_fix_header_layout');
     });
 
     it('builds YourProject-style without team prefix when teamId is unknown', () => {
-        const branch = resolveProjectBranch(MOSAIC_PROFILE, 'B-17010', 'Fix header layout', undefined, 'Gadget');
+        const branch = resolveProjectBranch(SECONDARY_PROFILE, 'B-17010', 'Fix header layout', undefined, 'Gadget');
         expect(branch).toBe('gadget/b-17010_fix_header_layout');
     });
 
@@ -186,6 +186,6 @@ describe('resolveTargetRef', () => {
     });
 
     it('returns refs/heads/master for YourProject', () => {
-        expect(resolveTargetRef(MOSAIC_PROFILE)).toBe('refs/heads/master');
+        expect(resolveTargetRef(SECONDARY_PROFILE)).toBe('refs/heads/master');
     });
 });

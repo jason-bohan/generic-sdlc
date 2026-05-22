@@ -204,7 +204,7 @@ def score_diff(
     instruction: str,
     mesh_url: str = "http://localhost:9337",
     ollama_url: str = "http://localhost:11434",
-    model: str = "meitheal-tuned",
+    model: str = "SDLC Framework-tuned",
     use_llm: bool = True,
     apply_threshold: float = 0.60,
     escalate_threshold: float = 0.35,
@@ -244,7 +244,7 @@ def main():
     parser.add_argument("--instruction", default="",                      help="What the diff is supposed to do")
     parser.add_argument("--mesh-url",    default="http://localhost:9337",  help="MeshLLM base URL")
     parser.add_argument("--ollama-url",  default="http://localhost:11434", help="Ollama base URL")
-    parser.add_argument("--model",       default="meitheal-tuned",        help="Model for LLM introspection")
+    parser.add_argument("--model",       default="SDLC Framework-tuned",        help="Model for LLM introspection")
     parser.add_argument("--no-llm",      action="store_true",             help="Skip LLM self-evaluation (heuristics only)")
     parser.add_argument("--threshold",   type=float, default=0.60,        help="Minimum score to recommend apply (default: 0.60)")
     parser.add_argument("--quiet",       action="store_true",             help="Print only the score number")

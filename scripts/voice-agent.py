@@ -55,7 +55,7 @@ async def _synthesize(text: str, voice: str, rate: str, output_path: Path) -> No
 
 
 def synthesize(text: str, voice: str = DEFAULT_VOICE, rate: str = DEFAULT_RATE) -> Path:
-    out = TEMP_DIR / "meitheal_voice.mp3"
+    out = TEMP_DIR / "SDLC Framework_voice.mp3"
     asyncio.run(_synthesize(text, voice, rate, out))
     return out
 

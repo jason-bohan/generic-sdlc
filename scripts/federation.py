@@ -301,7 +301,7 @@ def main():
 
     push_p = sub.add_parser("push", help="Push local patterns to federation server")
     push_p.add_argument("--server", default="http://localhost:8765")
-    push_p.add_argument("--org",    default="Meitheal", help="Org name (hashed before transmit)")
+    push_p.add_argument("--org",    default="SDLC Framework", help="Org name (hashed before transmit)")
     push_p.add_argument("--limit",  type=int, default=200)
 
     pull_p = sub.add_parser("pull", help="Pull global patterns from server")

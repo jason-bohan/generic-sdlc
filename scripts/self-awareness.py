@@ -16,7 +16,7 @@ Metric schema (per event):
     "predicted":  0.82,         # score from score-diff.py or model introspection
     "actual":     0,            # 1 = success, 0 = failure
     "attempts":   1,
-    "model":      "meitheal-tuned",
+    "model":      "SDLC Framework-tuned",
     "ts":         "2026-05-19T..."
   }
 
@@ -24,7 +24,7 @@ Storage: .self-awareness.jsonl (append-only), .blind-spots.json (derived report)
 
 Usage:
   python scripts/self-awareness.py record \\
-      --cluster null_ref --predicted 0.8 --success true --model meitheal-tuned
+      --cluster null_ref --predicted 0.8 --success true --model SDLC Framework-tuned
   python scripts/self-awareness.py report
   python scripts/self-awareness.py blind-spots
   python scripts/self-awareness.py remediate
@@ -47,7 +47,7 @@ FAILURE_THRESHOLD  = 0.30   # raw failure rate threshold
 RECOVERY_THRESHOLD = 3.0    # avg attempts to flag as "hard"
 
 MODEL_LADDER = [
-    "meitheal-tuned",
+    "SDLC Framework-tuned",
     "qwen3:8b",
     "qwen3:14b",
     "deepseek/deepseek-chat",
@@ -217,7 +217,7 @@ def main():
     rec.add_argument("--predicted", type=float, required=True, help="Predicted confidence (0-1)")
     rec.add_argument("--success",   type=lambda x: x.lower() == "true", required=True)
     rec.add_argument("--attempts",  type=int, default=1)
-    rec.add_argument("--model",     default="meitheal-tuned")
+    rec.add_argument("--model",     default="SDLC Framework-tuned")
 
     sub.add_parser("report", help="Show per-cluster confidence calibration")
 

@@ -386,7 +386,7 @@ def main():
     run_p.add_argument("--forever",  action="store_true")
     run_p.add_argument("--delay",    type=float, default=5.0, help="Seconds between cycles")
     run_p.add_argument("--mesh-url", default="http://localhost:9337")
-    run_p.add_argument("--model",    default="meitheal-tuned")
+    run_p.add_argument("--model",    default="SDLC Framework-tuned")
     run_p.add_argument("--test",     default="npx vitest run")
 
     sub.add_parser("status", help="Show manager state and pending queue")
