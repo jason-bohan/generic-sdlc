@@ -50,16 +50,15 @@ beforeEach(() => {
     writeFileSync(resolve(TMP, '.sdlc-framework.config.json'), JSON.stringify({ executionMode: 'balanced' }));
 });
 
-afterEach(async () => {
-    await stopServer();
-    vi.doUnmock('../server/meeting-agent');
-    vi.resetModules();
+afterEach(() => {
     rmSync(TMP, { recursive: true, force: true });
 });
 
 describe('/api/meeting-agent/messages', () => {
+    beforeAll(async () => { await startServer(); });
+    afterAll(async () => { await stopServer(); });
+
     it('serves a browser demo page on GET', async () => {
-        await startServer();
         const res = await originalFetch(`${baseUrl}/api/meeting-agent/messages`);
         const html = await res.text();
 
@@ -70,7 +69,6 @@ describe('/api/meeting-agent/messages', () => {
     });
 
     it('accepts a Teams activity-shaped message and returns a Bot Framework-style reply', async () => {
-        await startServer();
         const res = await originalFetch(`${baseUrl}/api/meeting-agent/messages`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -95,7 +93,6 @@ describe('/api/meeting-agent/messages', () => {
     });
 
     it('rejects empty meeting activity text', async () => {
-        await startServer();
         const res = await originalFetch(`${baseUrl}/api/meeting-agent/messages`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
