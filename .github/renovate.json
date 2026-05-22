@@ -32,6 +32,18 @@
       "groupName": "Rust dependencies",
       "groupSlug": "rust-deps",
       "matchDatasources": ["cargo"]
+    },
+    {
+      "description": "Stay on Node.js v22 LTS — package.json engine constraint is <24.0.0 and preinstall rejects v24+",
+      "matchPackageNames": ["node"],
+      "matchUpdateTypes": ["major"],
+      "enabled": false
+    },
+    {
+      "description": "Stay on nvidia/cuda v12.x — v13 is too aggressive for now",
+      "matchPackageNames": ["nvidia/cuda"],
+      "matchUpdateTypes": ["major"],
+      "enabled": false
     }
   ],
   "schedule": [
