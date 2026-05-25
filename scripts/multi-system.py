@@ -145,7 +145,7 @@ def _domain_strength_count(domain: str, systems: list[dict]) -> int:
     return sum(1 for system in systems if domain in system.get("strengths", []))
 
 
-def evaluate_coevolution_variant(variant: dict, systems: list[dict] | None = None) -> dict:
+def evaluate_coevolution_variant(variant: dict, systems: "list[dict] | None" = None) -> dict:
     systems = systems or []
     scores = variant.get("scores", {})
     files = _variant_files(variant)

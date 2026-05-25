@@ -31,6 +31,8 @@ Usage:
   python scripts/model-evolution.py benchmark --model SDLC Framework-tuned --eval eval.jsonl
 """
 
+from __future__ import annotations
+
 import argparse
 import json
 import re

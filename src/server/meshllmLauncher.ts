@@ -126,10 +126,10 @@ export async function ensureDockerRunning(deps: StartDeps = {}): Promise<boolean
 
     if (isDockerRunning()) return true;
 
-    // Only auto-start Docker Desktop on Windows
-    if (process.platform !== 'win32') return false;
-
-    const findDockerDesktop = deps.findDockerDesktop ?? (() => DOCKER_DESKTOP_PATHS.find(existsSync));
+    // Default finder only searches for Docker Desktop on Windows; injectable for tests
+    const findDockerDesktop =
+        deps.findDockerDesktop ??
+        (() => (process.platform === 'win32' ? DOCKER_DESKTOP_PATHS.find(existsSync) : undefined));
     const exePath = findDockerDesktop();
     if (!exePath) return false;
 

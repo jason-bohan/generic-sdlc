@@ -17,6 +17,13 @@ const RATE_WINDOW_MS = 60_000;
 const RATE_LIMIT_DEFAULT = 120;
 const RATE_LIMIT_GENERATE = 30;
 
+// Rate limiting is a no-op inside Docker: all host traffic arrives via the
+// Docker bridge (172.x.x.x), indistinguishable from any other LAN client.
+// A local dev stack has no external attack surface, so the limit adds no value.
+const IN_DOCKER = (() => {
+    try { require('node:fs').accessSync('/.dockerenv'); return true; } catch { return false; }
+})();
+
 function clientIp(req: http.IncomingMessage): string {
     const forwarded = req.headers['x-forwarded-for'];
     if (typeof forwarded === 'string') return forwarded.split(',')[0].trim();
@@ -150,8 +157,8 @@ export function withSecurity(
             }
         }
 
-        // Rate limiting
-        if (!config.disableRateLimit) {
+        // Rate limiting — skipped inside Docker (bridge IP ≠ 127.0.0.1) and for localhost
+        if (!config.disableRateLimit && !IN_DOCKER && !isLocalhostRequest(req)) {
             const ip = clientIp(req);
             const path = (req.url ?? '/').split('?')[0];
             const limit = isGeneratePath(path) ? RATE_LIMIT_GENERATE : RATE_LIMIT_DEFAULT;
