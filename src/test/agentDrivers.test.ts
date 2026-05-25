@@ -53,9 +53,9 @@ afterEach(() => {
 // ─── readDriverConfig ─────────────────────────────────────────────────────────
 
 describe('readDriverConfig', () => {
-    it('defaults to cursor when no config file exists', () => {
+    it('defaults to loop when no config file exists', () => {
         const cfg = readDriverConfig(resolve(TMP, 'nonexistent.json'));
-        expect(cfg.type).toBe('cursor');
+        expect(cfg.type).toBe('loop');
     });
 
     it('reads cursor driver', () => {
@@ -90,14 +90,14 @@ describe('readDriverConfig', () => {
         expect(cfg.generic?.command).toBe('my-cli');
     });
 
-    it('falls back to cursor for unknown driver values', () => {
+    it('falls back to loop for unknown driver values', () => {
         writeConfig({ scheduler: { driver: 'windsurf' } });
-        expect(readDriverConfig(CONFIG).type).toBe('cursor');
+        expect(readDriverConfig(CONFIG).type).toBe('loop');
     });
 
-    it('falls back to cursor on malformed JSON', () => {
+    it('falls back to loop on malformed JSON', () => {
         writeFileSync(CONFIG, '{ bad json }');
-        expect(readDriverConfig(CONFIG).type).toBe('cursor');
+        expect(readDriverConfig(CONFIG).type).toBe('loop');
     });
 
     it('routes configured cursor driver away from cursor when Cursor AI is disabled', () => {
@@ -126,7 +126,7 @@ describe('readDriverConfig', () => {
     });
 
     it('keeps non-Cursor drivers when Cursor AI is disabled', () => {
-        writeConfig({ cursorAiEnabled: false, scheduler: { driver: 'claude-code' } });
+        writeConfig({ cursorAiEnabled: false, claudeAiEnabled: true, scheduler: { driver: 'claude-code' } });
         expect(resolveCursorSafeDriverConfig(CONFIG).type).toBe('claude-code');
     });
 });

@@ -49,10 +49,10 @@ afterEach(async () => {
 });
 
 describe('/api/cursor-ai', () => {
-    it('returns enabled by default and persists PUT updates', async () => {
+    it('returns disabled by default and persists PUT updates', async () => {
         const initial = await request('/api/cursor-ai');
         expect(initial.res.status).toBe(200);
-        expect(initial.body).toEqual({ enabled: true });
+        expect(initial.body).toEqual({ enabled: false });
 
         const updated = await request('/api/cursor-ai', {
             method: 'PUT',

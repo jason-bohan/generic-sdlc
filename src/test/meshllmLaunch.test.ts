@@ -141,6 +141,7 @@ describe('MeshLLM launcher', () => {
             spawn,
             sleep,
             findDockerDesktop: () => 'C:\\Program Files\\Docker\\Docker\\Docker Desktop.exe',
+            imageExists: () => true,
         });
 
         expect(result.ok).toBe(true);

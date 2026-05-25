@@ -21,8 +21,8 @@ afterEach(() => {
 });
 
 describe('Cursor AI policy', () => {
-    it('defaults to enabled for backward compatibility', () => {
-        expect(isCursorAiEnabled(CONFIG)).toBe(true);
+    it('defaults to disabled (opt-in required)', () => {
+        expect(isCursorAiEnabled(CONFIG)).toBe(false);
     });
 
     it('reads cursorAiEnabled from config', () => {
@@ -55,8 +55,8 @@ describe('Cursor AI policy', () => {
 });
 
 describe('Claude AI policy', () => {
-    it('defaults to enabled for backward compatibility', () => {
-        expect(isClaudeEnabled(CONFIG)).toBe(true);
+    it('defaults to disabled (opt-in required)', () => {
+        expect(isClaudeEnabled(CONFIG)).toBe(false);
     });
 
     it('reads claudeAiEnabled from config', () => {
