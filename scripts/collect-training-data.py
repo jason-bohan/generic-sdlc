@@ -26,6 +26,7 @@ State file: .collect-state.json  (tracks last harvested commit hash for git mode
 
 import subprocess
 import json
+import os
 import re
 import argparse
 from pathlib import Path
@@ -33,6 +34,28 @@ from datetime import datetime
 
 OUTPUT_FILE  = Path("aider_dataset.jsonl")
 STATE_FILE   = Path(".collect-state.json")
+
+# ─── Role detection ───────────────────────────────────────────────────────────
+
+TEST_PATH_RE   = re.compile(r"(test|spec|__tests__)", re.IGNORECASE)
+REVIEW_MSG_RE  = re.compile(r"^(review|feedback|comment)[\s(:)]", re.IGNORECASE)
+QA_MSG_RE      = re.compile(r"^(test|qa|spec|chore\(tests?\))[\s(:)]", re.IGNORECASE)
+
+def infer_role(commit_hash: str, message: str, changed_paths: list[str]) -> str:
+    """Infer agent role from branch name, commit message, and changed files."""
+    branch = run(["git", "name-rev", "--name-only", commit_hash]).strip().split("~")[0].split("^")[0]
+    if "review" in branch:
+        return "reviewer"
+    if "test" in branch or "qa" in branch:
+        return "qa"
+    if REVIEW_MSG_RE.match(message):
+        return "reviewer"
+    if QA_MSG_RE.match(message):
+        return "qa"
+    # If ALL changed files are test files → qa
+    if changed_paths and all(TEST_PATH_RE.search(p) for p in changed_paths):
+        return "qa"
+    return "developer"
 
 TARGET_EXTENSIONS = {".ts", ".tsx", ".js", ".jsx", ".py", ".json", ".css", ".sql"}
 SKIP_PATH_PATTERNS = [
@@ -107,7 +130,7 @@ def save_state(state: dict) -> None:
 
 COMMIT_SEP = "|||COMMIT|||"
 
-def collect_git(since_hash: str | None) -> tuple[int, str | None]:
+def collect_git(since_hash):
     """Extract new commits since `since_hash`. Returns (count, latest_hash)."""
     fmt = f"{COMMIT_SEP}%H\x1f%s"
     cmd = ["git", "log", "--no-merges", f"--pretty=format:{fmt}", "-p",
@@ -151,11 +174,13 @@ def collect_git(since_hash: str | None) -> tuple[int, str | None]:
             continue
 
         response_diff = "".join(per_file.values()).strip()
+        role = infer_role(commit_hash, message.strip(), list(per_file.keys()))
         append_example({
             "instruction": message.strip(),
             "context": {"files": context_files},
             "response": response_diff,
-            "_meta": {"source": "git", "commit": commit_hash, "collected_at": datetime.utcnow().isoformat()},
+            "_meta": {"source": "git", "commit": commit_hash, "role": role,
+                      "collected_at": datetime.utcnow().isoformat()},
         })
         count += 1
 
@@ -259,6 +284,8 @@ def collect_aider(log_path: str) -> int:
 
 def main():
     parser = argparse.ArgumentParser(description="Collect Aider training data from git / CI / Aider logs")
+    parser.add_argument("--repo", default=None,
+                        help="Path to an external repo to collect from (default: cwd)")
     sub = parser.add_subparsers(dest="mode", required=True)
 
     sub.add_parser("git", help="Incremental git commit harvest")
@@ -271,6 +298,9 @@ def main():
     ai_p.add_argument("--log", required=True, help="Path to Aider session log file")
 
     args = parser.parse_args()
+
+    if args.repo:
+        os.chdir(args.repo)
 
     if args.mode == "git":
         state = load_state()
