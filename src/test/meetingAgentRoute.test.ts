@@ -1,4 +1,4 @@
-﻿import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+﻿import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import http, { type Server } from 'node:http';
 import { type AddressInfo } from 'node:net';
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
