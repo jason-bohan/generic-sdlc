@@ -610,3 +610,38 @@ export function stopAdoBridge() {
     bridgeConfig = null;
     log('Stopped');
 }
+
+// ── Provider API stubs (azure-devops adapter) ─────────────────────────────────
+
+export interface AdoPRCreateOptions {
+    title: string;
+    description?: string;
+    sourceBranch: string;
+    targetBranch: string;
+    workItemIds?: string[];
+    draft?: boolean;
+}
+
+export interface AdoPRResult {
+    prId: number;
+    url?: string;
+    title?: string;
+    status?: 'open' | 'merged' | 'closed' | 'draft';
+    buildStatus?: 'pending' | 'passing' | 'failing' | 'unknown';
+}
+
+export async function createAdoPR(_opts: AdoPRCreateOptions): Promise<AdoPRResult> {
+    throw new Error('createAdoPR: not yet implemented for this ADO configuration');
+}
+
+export async function getAdoPR(_prId: string): Promise<AdoPRResult | null> {
+    throw new Error('getAdoPR: not yet implemented for this ADO configuration');
+}
+
+export async function triggerAdoBuild(_branch: string, _repo?: string): Promise<{ buildId: string; url?: string }> {
+    throw new Error('triggerAdoBuild: not yet implemented for this ADO configuration');
+}
+
+export async function getAdoBuildStatus(_buildId: string): Promise<'pending' | 'passing' | 'failing' | 'unknown'> {
+    throw new Error('getAdoBuildStatus: not yet implemented for this ADO configuration');
+}

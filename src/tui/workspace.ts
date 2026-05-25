@@ -114,6 +114,6 @@ export function discoverAgentsFromStatusFiles(dir: string): string[] {
     }
 }
 
-export function getSDLC FrameworkHome(): string {
+export function getSDLCFrameworkHome(): string {
     return SDLC_FRAMEWORK_HOME;
 }
