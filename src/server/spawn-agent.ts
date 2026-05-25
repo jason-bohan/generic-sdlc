@@ -2,7 +2,7 @@
 import { existsSync, writeFileSync, appendFileSync, mkdirSync } from 'fs';
 import { resolve } from 'path';
 import { getMockModeSafetyDirective } from './test-safety';
-import { buildSpawnSpec, resolveCursorSafeDriverConfig, LOOP_DRIVER_SENTINEL, type AgentDriverType, type DriverSpawnSpec } from './agent-drivers';
+import { buildSpawnSpec, resolveCursorSafeDriverConfig, resolveAgentDriverConfig, LOOP_DRIVER_SENTINEL, type AgentDriverType, type DriverSpawnSpec } from './agent-drivers';
 import { isCursorAiEnabled, isClaudeEnabled } from './cursor-ai-policy';
 import { isMockExternalMode } from './external-mode';
 import { ensureMockShims } from './mock-mode-guard';
@@ -106,7 +106,7 @@ export function spawnAgent(
 
     // model='local' routes through the standard cursor driver (run-agent.ps1)
     // which has its own Goose routing with -KeepOpen, banners, and file watchers.
-    const driverConfig = resolveCursorSafeDriverConfig(configPath);
+    const driverConfig = resolveAgentDriverConfig(agentId, configPath);
 
     const spec = buildSpawnSpec(driverConfig, agentId, effectivePrompt, workspaceDir, promptFilePath, model, outputDir);
 

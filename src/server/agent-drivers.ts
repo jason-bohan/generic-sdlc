@@ -54,6 +54,32 @@ export function resolveCursorSafeDriverConfig(configPath: string): AgentDriverCo
     return cfg;
 }
 
+/**
+ * Like resolveCursorSafeDriverConfig but honours per-agent driver overrides.
+ * Set scheduler.agents.<id>.driver in .sdlc-framework.config.json to route a
+ * specific agent (e.g. "reviewer") to a different driver than the global default.
+ */
+export function resolveAgentDriverConfig(agentId: string, configPath: string): AgentDriverConfig {
+    const valid: AgentDriverType[] = ['cursor', 'claude-code', 'aider', 'goose', 'generic', 'loop'];
+    try {
+        if (existsSync(configPath)) {
+            const cfg = parseJsonUtf8File(configPath);
+            const perAgent = cfg.scheduler?.agents?.[agentId]?.driver as string | undefined;
+            if (perAgent && valid.includes(perAgent as AgentDriverType)) {
+                const overrideType = perAgent as AgentDriverType;
+                if ((overrideType === 'cursor' && !isCursorAiEnabled(configPath)) ||
+                    (overrideType === 'claude-code' && !isClaudeEnabled(configPath))) {
+                    if (findAiderCli()) return { type: 'aider' };
+                    if (existsSync(findGooseCli())) return { type: 'goose' };
+                    return { type: 'loop' };
+                }
+                return { type: overrideType, generic: cfg.scheduler?.genericDriver };
+            }
+        }
+    } catch { /* fall through to global */ }
+    return resolveCursorSafeDriverConfig(configPath);
+}
+
 // ─── Cursor ──────────────────────────────────────────────────────────────────
 
 export function findCursorCli(): string | null {
