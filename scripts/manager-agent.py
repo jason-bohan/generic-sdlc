@@ -17,6 +17,8 @@ Usage:
   python scripts/manager-agent.py queue --add "Fix null ref in agent status" --cluster null_ref
 """
 
+from __future__ import annotations
+
 import argparse
 import json
 import subprocess

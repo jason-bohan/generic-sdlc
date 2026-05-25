@@ -49,7 +49,8 @@ services:
       - "0:11434"
     volumes:
       # Host Ollama store — shares fine-tuned and pre-pulled models with the container
-      - ${USERPROFILE}/.ollama:/root/.ollama
+      # USERPROFILE (Windows) falls back to ~ (macOS/Linux)
+      - ${USERPROFILE:-~}/.ollama:/root/.ollama
     healthcheck:
       test: ["CMD", "ollama", "list"]
       interval: 5s

@@ -28,6 +28,8 @@ Usage:
   python scripts/agent-economy.py reset --agent null-ref-agent-1
 """
 
+from __future__ import annotations
+
 import argparse
 import json
 from datetime import datetime, timezone

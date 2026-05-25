@@ -25,6 +25,8 @@ Examples:
   python scripts/fix-pipeline.py --test "npx tsc --noEmit" --commit-msg "fix(ts): resolve type errors"
 """
 
+from __future__ import annotations
+
 import argparse
 import os
 import re

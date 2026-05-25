@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 const ROOT = resolve(__dirname, '..', '..');
 const TMP = resolve(tmpdir(), `sdlc-framework-coevolution-guardrails-${process.pid}`);
-const PYTHON = process.env.PYTHON || 'python';
+const PYTHON = process.env.PYTHON || (process.platform === 'win32' ? 'python' : 'python3');
 
 function runPython(source: string) {
     return execFileSync(PYTHON, ['-c', source], {
