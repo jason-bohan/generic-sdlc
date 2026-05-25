@@ -54,6 +54,10 @@ export async function resolveNotifications(rootDir: string) {
         const { MockNotifications } = await import('./mock');
         return new MockNotifications();
     }
+    if (provider === 'slack') {
+        const { SlackNotifications } = await import('./slack');
+        return new SlackNotifications();
+    }
     const { TeamsNotifications } = await import('./teams');
     return new TeamsNotifications(rootDir);
 }

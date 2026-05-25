@@ -72,6 +72,13 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                 json(res, { teams: loadLocalAgilityState(rootDir).teams, source: 'local' });
                 return;
             }
+            if ((process.env.PM_PROVIDER ?? '').toLowerCase() === 'github') {
+                const { resolveProjectTracker } = await import('../providers/index.js');
+                const tracker = await resolveProjectTracker(rootDir, configFile);
+                const teams = await tracker.getTeams();
+                json(res, { teams, source: 'github' });
+                return;
+            }
             const data = await v1Fetch(rootDir, '/Team', { sel: 'Name', where: "AssetState='64'", sort: 'Name' });
             json(res, { teams: (data.Assets || []).map((a: V1Asset) => ({ id: a.id, name: a.Attributes?.Name?.value ?? a.id })) });
         } catch (e: unknown) { json(res, { error: e instanceof Error ? e.message : String(e) }, 502); }
@@ -136,6 +143,20 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                 json(res, { stories: items, total: stories.length, source: 'local' });
                 return;
             }
+            // GitHub Issues provider — activated via PM_PROVIDER=github
+            if ((process.env.PM_PROVIDER ?? '').toLowerCase() === 'github') {
+                const { resolveProjectTracker } = await import('../providers/index.js');
+                const tracker = await resolveProjectTracker(rootDir, configFile);
+                const summaries = await tracker.getStories({ team, status, text, maxResults: Number(maxResults) || 20 });
+                const items = summaries.map(s => ({
+                    id: s.id, number: s.number, name: s.title,
+                    status: s.status, teamId: s.teamId ?? '', team: s.team ?? '',
+                    estimate: s.estimate ?? null, priority: s.priority ?? '', source: s.source,
+                }));
+                json(res, { stories: items, total: items.length, source: 'github' });
+                return;
+            }
+
             const where: string[] = [];
             if (team) where.push(`Team.Name='${team}'`);
             if (status) where.push(`Status.Name='${status}'`);
@@ -183,6 +204,25 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
             }
             if (req.method !== 'GET') { res.statusCode = 405; res.end('Method not allowed'); return; }
             if (!number && !oidParam) { json(res, { error: 'number or oid query param required' }, 400); return; }
+            if ((process.env.PM_PROVIDER ?? '').toLowerCase() === 'github') {
+                const { resolveProjectTracker } = await import('../providers/index.js');
+                const tracker = await resolveProjectTracker(rootDir, configFile);
+                const item = await tracker.getWorkItem(number || oidParam || '');
+                if (!item) { json(res, { error: `GitHub issue ${number} not found` }, 404); return; }
+                json(res, {
+                    id: item.id,
+                    number: item.number,
+                    name: item.title,
+                    description: item.description,
+                    status: item.status,
+                    priority: item.priority ?? 'Medium',
+                    type: item.type,
+                    url: item.url,
+                    acceptanceCriteria: '',
+                    source: 'github',
+                });
+                return;
+            }
             if (number && isLocalStoryNumber(number)) {
                 const story = findLocalStory(rootDir, number);
                 if (!story) { json(res, { error: `Local story ${number} not found` }, 404); return; }

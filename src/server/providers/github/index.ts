@@ -35,6 +35,12 @@ function labelPriority(labels: string[]): string {
     return 'Medium';
 }
 
+function assignTeam(issueNumber: number): { teamId: string; team: string } {
+    return issueNumber % 2 !== 0
+        ? { teamId: 'team-autobots',    team: 'Autobots' }
+        : { teamId: 'team-decepticons', team: 'Decepticons' };
+}
+
 function issueToWorkItem(issue: GitHubIssue, repo: string): WorkItem {
     const labels = issue.labels.map(l => l.name);
     return {
@@ -48,6 +54,7 @@ function issueToWorkItem(issue: GitHubIssue, repo: string): WorkItem {
         priority: labelPriority(labels),
         url: issue.html_url,
         source: 'github',
+        ...assignTeam(issue.number),
     };
 }
 
@@ -74,7 +81,10 @@ export class GitHubProjectTracker implements IProjectTracker {
     }
 
     async getTeams(): Promise<Team[]> {
-        return [{ id: this.repo, name: this.repo }];
+        return [
+            { id: 'team-autobots',    name: 'Autobots' },
+            { id: 'team-decepticons', name: 'Decepticons' },
+        ];
     }
 
     async getStories(opts: FetchStoriesOptions = {}): Promise<WorkItemSummary[]> {
@@ -99,6 +109,7 @@ export class GitHubProjectTracker implements IProjectTracker {
                     status: 'Open',
                     priority: labelPriority(labels),
                     source: 'github' as const,
+                    ...assignTeam(i.number),
                 };
             });
     }
