@@ -121,6 +121,55 @@ export const AGENT_TOOLS: ToolDefinition[] = [
     {
         type: 'function',
         function: {
+            name: 'http_request',
+            description: 'Make an HTTP request to a URL. Use this to call the SDLC API (create tasks, complete phases, etc.) instead of curl.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    method: { type: 'string', description: 'HTTP method: GET, POST, PUT, PATCH, DELETE' },
+                    url: { type: 'string', description: 'Full URL to request' },
+                    body: { type: 'object', description: 'JSON body to send (for POST/PUT/PATCH)' },
+                    headers: { type: 'object', description: 'Additional headers (optional)' },
+                },
+                required: ['method', 'url'],
+            },
+        },
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'create_task',
+            description: 'Create an implementation task for the current story. Returns the task ID.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    name: { type: 'string', description: 'Short task name, e.g. "Add input validation to POST /api/tasks"' },
+                    estimate: { type: 'number', description: 'Estimated hours (1-8)' },
+                },
+                required: ['name'],
+            },
+        },
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'complete_phase',
+            description: 'Mark the current SDLC phase as complete and advance to the next phase. Call this ONLY after all tasks are created.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    next_phase: { type: 'string', description: 'Next phase to move to, e.g. "analyzing"' },
+                    summary: { type: 'string', description: 'Short summary of what was done in this phase' },
+                    branch_plan: { type: 'string', description: 'Branch name plan, e.g. "fix/1-validate-task-title"' },
+                    risks: { type: 'string', description: 'Any identified risks or open questions' },
+                },
+                required: ['next_phase', 'summary'],
+            },
+        },
+    },
+    {
+        type: 'function',
+        function: {
             name: 'update_status',
             description: 'Update the agent status file. Call this after completing each phase.',
             parameters: {
@@ -300,6 +349,134 @@ function toolRunCommand(
     });
 }
 
+async function toolCreateTask(
+    args: Record<string, unknown>,
+    frameworkDir: string,
+    agentId: string,
+): Promise<string> {
+    const name = String(args.name ?? '').trim();
+    if (!name) return 'Error: task name is required';
+    const estimate = typeof args.estimate === 'number' ? args.estimate : 2;
+
+    // Read storyNumber from status file
+    const statusFile = resolve(frameworkDir, `.${agentId}-status.json`);
+    let storyNumber = '1';
+    try {
+        const s = parseJsonUtf8File(statusFile) as Record<string, unknown>;
+        if (typeof s.storyNumber === 'string') storyNumber = s.storyNumber;
+    } catch { /* use default */ }
+
+    try {
+        const res = await fetch('http://localhost:3001/api/scheduler/create-task', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ agentId, storyNumber, name, estimate }),
+            signal: AbortSignal.timeout(15_000),
+        });
+        const text = await res.text();
+        // When the story number isn't in VersionOne (plain GitHub issue numbers),
+        // fall back to writing the task directly into the status file.
+        if (res.status === 404 && text.includes('not found')) {
+            return toolCreateTaskLocal(name, estimate, storyNumber, statusFile);
+        }
+        return `HTTP ${res.status}\n${text.slice(0, 1000)}`;
+    } catch (e) {
+        return `Error: ${e instanceof Error ? e.message : String(e)}`;
+    }
+}
+
+function toolCreateTaskLocal(name: string, estimate: number, storyNumber: string, statusFile: string): string {
+    try {
+        const s = existsSync(statusFile) ? parseJsonUtf8File(statusFile) as Record<string, unknown> : {};
+        const tasks = Array.isArray(s.tasks) ? s.tasks as Array<Record<string, unknown>> : [];
+        const taskNumber = `T-${String(tasks.length + 1).padStart(3, '0')}`;
+        tasks.push({ id: taskNumber, number: taskNumber, name, status: 'pending', hours: estimate, source: 'local', inherited: false });
+        s.tasks = tasks;
+        writeFileSync(statusFile, JSON.stringify(s, null, 2));
+        return `HTTP 200\n${JSON.stringify({ ok: true, number: taskNumber, name })}`;
+    } catch (e) {
+        return `Error writing task locally: ${e instanceof Error ? e.message : String(e)}`;
+    }
+}
+
+async function toolCompletePhase(
+    args: Record<string, unknown>,
+    frameworkDir: string,
+    agentId: string,
+): Promise<string> {
+    const nextPhase = String(args.next_phase ?? 'analyzing');
+    const summary = String(args.summary ?? '');
+
+    const statusFile = resolve(frameworkDir, `.${agentId}-status.json`);
+    let workflowItemId: number | null = null;
+    let storyNumber = '1';
+    let tasks: unknown[] = [];
+    try {
+        const s = parseJsonUtf8File(statusFile) as Record<string, unknown>;
+        if (typeof s.workflowItemId === 'number') workflowItemId = s.workflowItemId;
+        if (typeof s.storyNumber === 'string') storyNumber = s.storyNumber;
+        if (Array.isArray(s.tasks)) tasks = s.tasks;
+    } catch { /* use defaults */ }
+
+    if (!workflowItemId) return 'Error: workflowItemId not found in status file';
+
+    const payload = {
+        workflowItemId,
+        agentId,
+        phase: 'reading-story',
+        nextPhase,
+        outputs: {
+            tasks,
+            taskIds: tasks.map((t: unknown) => (t as Record<string, unknown>)?.id ?? '').filter(Boolean),
+            branchPlan: args.branch_plan ?? `fix/${storyNumber}-fix`,
+            testMatrix: 'Unit tests for validation logic',
+            risks: args.risks ?? 'None identified',
+            openQuestions: 'None',
+            auditEvent: { action: 'reading-story-complete', storyNumber, agentId },
+        },
+        message: summary,
+    };
+
+    try {
+        const res = await fetch('http://localhost:3001/api/workflows/complete-phase', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+            signal: AbortSignal.timeout(15_000),
+        });
+        const text = await res.text();
+        return `HTTP ${res.status}\n${text.slice(0, 1000)}`;
+    } catch (e) {
+        return `Error: ${e instanceof Error ? e.message : String(e)}`;
+    }
+}
+
+async function toolHttpRequest(args: Record<string, unknown>): Promise<string> {
+    const method = String(args.method ?? 'GET').toUpperCase();
+    const url = String(args.url ?? '');
+    if (!url) return 'Error: url is required';
+
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (args.headers && typeof args.headers === 'object') {
+        for (const [k, v] of Object.entries(args.headers as Record<string, unknown>)) {
+            headers[k] = String(v);
+        }
+    }
+
+    const init: RequestInit = { method, headers };
+    if (args.body && ['POST', 'PUT', 'PATCH'].includes(method)) {
+        init.body = typeof args.body === 'string' ? args.body : JSON.stringify(args.body);
+    }
+
+    try {
+        const res = await fetch(url, init);
+        const text = await res.text();
+        return `HTTP ${res.status} ${res.statusText}\n${text.slice(0, 4000)}`;
+    } catch (e) {
+        return `Error: ${e instanceof Error ? e.message : String(e)}`;
+    }
+}
+
 function toolSearchInFiles(args: Record<string, unknown>, workspaceDir: string, frameworkDir: string): string {
     const pattern = String(args.pattern ?? '').toLowerCase();
     let dir = workspaceDir;
@@ -401,8 +578,19 @@ export async function executeToolCall(
         case 'write_file':      return toolWriteFile(a, workspaceDir, frameworkDir);
         case 'list_directory':  return toolListDirectory(a, workspaceDir, frameworkDir);
         case 'run_command':     return toolRunCommand(a, workspaceDir, frameworkDir, configPath);
+        case 'http_request':    return toolHttpRequest(a);
+        case 'create_task':     return toolCreateTask(a, frameworkDir, agentId);
+        case 'complete_phase':  return toolCompletePhase(a, frameworkDir, agentId);
         case 'search_in_files': return toolSearchInFiles(a, workspaceDir, frameworkDir);
         case 'update_status':   return toolUpdateStatus(a, workspaceDir, frameworkDir, agentId);
-        default:                return `Unknown tool: ${name}`;
+        default: {
+            // Local 14B models often emit the task *description* as the tool name
+            // (e.g. {"name":"Add validation to POST /api/tasks","arguments":{...}}).
+            // If the name contains spaces it's almost certainly a task title — route it.
+            if (name.includes(' ') || name.length > 40) {
+                return toolCreateTask({ ...a, name }, frameworkDir, agentId);
+            }
+            return `Unknown tool: ${name}`;
+        }
     }
 }

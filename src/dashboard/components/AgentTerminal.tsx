@@ -9,6 +9,44 @@ interface AgentTerminalProps {
     embedded?: boolean;
 }
 
+// Token colours matching the log event types
+const TOKEN_COLORS: Record<string, string> = {
+    spawn:      '#a78bfa', // purple
+    session:    '#6b7280', // gray
+    prompt:     '#6b7280', // gray
+    tool:       '#60a5fa', // blue
+    result:     '#34d399', // green
+    message:    '#f9fafb', // near-white
+    nudge:      '#fbbf24', // amber
+    injection:  '#fb923c', // orange
+    error:      '#f87171', // red
+    complete:   '#22c55e', // bright green
+    exit:       '#22c55e', // bright green
+};
+
+function tokenColor(token: string): string {
+    return TOKEN_COLORS[token.toLowerCase()] ?? '#c9d1d9';
+}
+
+/** Parse one log line into coloured spans */
+function LogLine({ line, idx }: { line: string; idx: number }) {
+    // Lines with an event token: "[token] timestamp rest..."
+    const m = line.match(/^(\[(\w+)\])\s+(\S+)\s*(.*)/s);
+    if (m) {
+        const [, bracket, token, timestamp, rest] = m;
+        const color = tokenColor(token);
+        return (
+            <div key={idx} style={lineStyle}>
+                <span style={{ color, fontWeight: 700 }}>{bracket}</span>
+                <span style={{ color: '#4b5563', marginLeft: 6 }}>{timestamp}</span>
+                {rest && <span style={{ color, marginLeft: 8 }}>{rest}</span>}
+            </div>
+        );
+    }
+    // Prompt/context text (no token prefix) — dim it
+    return <div key={idx} style={{ ...lineStyle, color: '#4b5563' }}>{line || ' '}</div>;
+}
+
 export function AgentTerminal({ agentId, active, collapsed, onToggleCollapse, embedded = false }: AgentTerminalProps) {
     const [log, setLog] = useState<string>('');
     const [error, setError] = useState<string | null>(null);
@@ -50,6 +88,16 @@ export function AgentTerminal({ agentId, active, collapsed, onToggleCollapse, em
         setAutoScroll(el.scrollHeight - el.scrollTop - el.clientHeight < 40);
     };
 
+    const lines = log.split('\n');
+
+    const logBody = error && !log
+        ? <span style={styles.dim}>{error}</span>
+        : (
+            <div style={styles.pre}>
+                {lines.map((line, i) => <LogLine key={i} line={line} idx={i} />)}
+            </div>
+        );
+
     if (embedded) {
         return (
             <div style={styles.embeddedWrapper}>
@@ -60,10 +108,7 @@ export function AgentTerminal({ agentId, active, collapsed, onToggleCollapse, em
                     {autoScroll && active && <span style={styles.scrollPin}>↓ auto</span>}
                 </div>
                 <div ref={containerRef} onScroll={handleScroll} style={styles.embeddedTerminal}>
-                    {error && !log
-                        ? <span style={styles.dim}>{error}</span>
-                        : <pre style={styles.pre}>{log || (error ?? 'No log yet')}</pre>
-                    }
+                    {logBody}
                     <div ref={bottomRef} />
                 </div>
             </div>
@@ -87,7 +132,11 @@ export function AgentTerminal({ agentId, active, collapsed, onToggleCollapse, em
                 <div ref={containerRef} onScroll={handleScroll} style={styles.terminal}>
                     {error
                         ? <span style={styles.dim}>{error}</span>
-                        : <pre style={styles.pre}>{log}</pre>
+                        : (
+                            <div style={styles.pre}>
+                                {lines.map((line, i) => <LogLine key={i} line={line} idx={i} />)}
+                            </div>
+                        )
                     }
                     <div ref={bottomRef} />
                 </div>
@@ -101,6 +150,13 @@ AgentTerminal.displayName = 'AgentTerminal';
 function dotStyle(color: string): CSSProperties {
     return { width: 8, height: 8, borderRadius: '50%', background: color, flexShrink: 0 };
 }
+
+const lineStyle: CSSProperties = {
+    whiteSpace: 'pre-wrap',
+    wordBreak: 'break-word',
+    lineHeight: '1.6',
+    minHeight: '1em',
+};
 
 const styles: Record<string, CSSProperties> = {
     wrapper: {
@@ -157,9 +213,6 @@ const styles: Record<string, CSSProperties> = {
     },
     pre: {
         margin: 0,
-        color: '#c9d1d9',
-        whiteSpace: 'pre-wrap' as const,
-        wordBreak: 'break-word' as const,
     },
     dim: {
         color: '#484f58',
