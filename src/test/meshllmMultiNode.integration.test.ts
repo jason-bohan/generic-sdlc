@@ -28,7 +28,7 @@ let availableModels: Array<{ id: string; owned_by?: string }> = [];
 // ── helpers ──────────────────────────────────────────────────────────────────
 
 async function tryFetch(url: string, init?: RequestInit) {
-    return fetch(url, { ...init, signal: AbortSignal.timeout(25_000) });
+    return fetch(url, { ...init, signal: AbortSignal.timeout(55_000) });
 }
 
 function skip(label: string) {
@@ -148,7 +148,7 @@ describe('MeshLLM completion', () => {
         const content = data.choices[0].message.content.toLowerCase();
         console.log(`[MeshLLM] completion (${model}): "${content.trim()}" — ${data.usage?.prompt_tokens ?? '?'}+${data.usage?.completion_tokens ?? '?'} tok`);
         expect(content.length).toBeGreaterThan(0);
-    }, 30_000);
+    }, 60_000);
 
     it('meshllmGenerate() routes to MeshLLM and returns tokens', async () => {
         if (!available) { skip('meshllmGenerate'); return; }
@@ -163,7 +163,7 @@ describe('MeshLLM completion', () => {
         expect(result.response.length).toBeGreaterThan(0);
         expect(result.tokens.input).toBeGreaterThan(0);
         console.log(`[MeshLLM] meshllmGenerate: "${result.response.trim()}" ${result.tokens.input}+${result.tokens.output} tok`);
-    }, 30_000);
+    }, 60_000);
 
     it('routes through the loop provider (OpenAICompatibleProvider)', async () => {
         if (!available) { skip('loop provider'); return; }
@@ -177,7 +177,7 @@ describe('MeshLLM completion', () => {
         expect(typeof result.message.content).toBe('string');
         expect((result.message.content ?? '').length).toBeGreaterThan(0);
         console.log(`[MeshLLM] loop provider: "${String(result.message.content).trim()}"`);
-    });
+    }, 60_000);
 });
 
 // ── ollama fallback ───────────────────────────────────────────────────────────
