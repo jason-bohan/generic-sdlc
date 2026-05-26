@@ -26,7 +26,7 @@ export function AssignView({ agent, story, dir, onBack }: Props) {
                 return;
             }
             const team = loadConfig()?.project?.team ?? 'Ninja Turtles';
-            fetch(`${API_BASE}/api/agility/stories?team=${encodeURIComponent(team)}`)
+            fetch(`${API_BASE}/api/planning/stories?team=${encodeURIComponent(team)}`)
             .then(r => r.json())
             .then(data => {
                 setStories(data.stories ?? []);

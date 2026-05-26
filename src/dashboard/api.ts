@@ -133,8 +133,8 @@ export function postSchedulerApprove(agentId: string) {
     });
 }
 
-export function postAgilityTasksSync(agentId: string, storyNumber: string) {
-    return fetch('/api/agility/tasks/sync', {
+export function postPlanningTasksSync(agentId: string, storyNumber: string) {
+    return fetch('/api/planning/tasks/sync', {
         method: 'POST',
         headers: JSON_HEADERS,
         body: JSON.stringify({ agentId, storyNumber }),

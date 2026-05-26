@@ -159,13 +159,13 @@ export default function SimpleFloor({
     useEffect(() => {
         if (!showCreateStory) return;
         if (storyTeams.length === 0) {
-            fetch('/api/agility/teams').then(r => r.json()).then(d => setStoryTeams(d.teams ?? [])).catch(() => {});
+            fetch('/api/planning/teams').then(r => r.json()).then(d => setStoryTeams(d.teams ?? [])).catch(() => {});
         }
         if (storyMembers.length === 0) {
-            fetch('/api/agility/members').then(r => r.json()).then(d => setStoryMembers(d.members ?? [])).catch(() => {});
+            fetch('/api/planning/members').then(r => r.json()).then(d => setStoryMembers(d.members ?? [])).catch(() => {});
         }
         if (classOfServiceValues.length === 0) {
-            fetch('/api/agility/class-of-service').then(r => r.json()).then(d => setClassOfServiceValues(d.values ?? [])).catch(() => {});
+            fetch('/api/planning/class-of-service').then(r => r.json()).then(d => setClassOfServiceValues(d.values ?? [])).catch(() => {});
         }
     }, [showCreateStory]);
 
@@ -178,7 +178,7 @@ export default function SimpleFloor({
         }
         setStoryStatus('enriching');
         try {
-            const res = await fetch('/api/agility/create-story', {
+            const res = await fetch('/api/planning/create-story', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

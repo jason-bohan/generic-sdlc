@@ -28,7 +28,7 @@ interface StoryDetail {
     team: string;
     estimate: number | null;
     priority: string;
-    /** Display name from Agility ClassOfService.Name */
+    /** Display name from the planning adapter's class-of-service field. */
     classOfService: string;
     acceptanceCriteria: string;
     frontend: string;
@@ -115,7 +115,7 @@ export default function StoryPicker({ agentId, agentName, onClose, onAssigned }:
     useEffect(() => {
         setLoading(true);
         setError(null);
-        fetch('/api/agility/teams')
+        fetch('/api/planning/teams')
             .then(r => r.json())
             .then(data => {
                 if (data.error) throw new Error(data.error);
@@ -138,7 +138,7 @@ export default function StoryPicker({ agentId, agentName, onClose, onAssigned }:
         setSelectedTeamId(team.id);
         setLoading(true);
         setError(null);
-        fetch(`/api/agility/stories?team=${encodeURIComponent(team.name)}`)
+        fetch(`/api/planning/stories?team=${encodeURIComponent(team.name)}`)
             .then(r => r.json())
             .then(data => {
                 if (data.error) throw new Error(data.error);
@@ -155,7 +155,7 @@ export default function StoryPicker({ agentId, agentName, onClose, onAssigned }:
     const loadDetail = useCallback((number: string) => {
         setLoading(true);
         setError(null);
-        fetch(`/api/agility/story?number=${encodeURIComponent(number)}`)
+        fetch(`/api/planning/story?number=${encodeURIComponent(number)}`)
             .then(r => r.json())
             .then(data => {
                 if (data.error) throw new Error(data.error);
@@ -195,7 +195,7 @@ export default function StoryPicker({ agentId, agentName, onClose, onAssigned }:
 
     return (
         <div style={s.overlay} onClick={onClose}>
-            {/* Scoped styles for HTML rendered from Agility */}
+            {/* Scoped styles for HTML rendered from planning adapters */}
             <style>{richHtmlCss}</style>
 
             <div ref={modalRef} role="dialog" aria-modal="true" style={s.modal} onClick={e => e.stopPropagation()}>
@@ -344,10 +344,10 @@ export default function StoryPicker({ agentId, agentName, onClose, onAssigned }:
 StoryPicker.displayName = 'StoryPicker';
 
 /* ─────────────────────────────────────────────────────────
-   Scoped CSS for Agility HTML content.
+   Scoped CSS for planning HTML content.
    Normalizes headings, lists, code blocks, and links
    inside .sp-rich-html containers so they look consistent
-   regardless of what Agility sends.
+   regardless of what the planning adapter sends.
    ───────────────────────────────────────────────────────── */
 const richHtmlCss = `
 .sp-rich-html h1,.sp-rich-html h2,.sp-rich-html h3,.sp-rich-html h4{

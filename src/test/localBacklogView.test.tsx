@@ -49,13 +49,13 @@ describe('LocalBacklogView', () => {
     it('renders local stories and switches tab views', async () => {
         const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
             const url = String(input);
-            if (url.includes('/api/agility/teams')) return { json: async () => ({ teams: board.teams }) };
-            if (url.includes('/api/agility/class-of-service')) return { json: async () => ({ values: board.classOfService }) };
-            if (url.includes('/api/agility/members')) return { json: async () => ({ members: board.members }) };
-            if (url.includes('/api/agility/story') && init?.method === 'PUT') return { json: async () => ({ ok: true, story: board.stories[0], source: 'local' }) };
-            if (url.includes('/api/agility/story?')) return { json: async () => ({ ...board.stories[0], project: 'SDLC Framework', source: 'local' }) };
-            if (url.includes('/api/agility/stories')) return { json: async () => ({ stories: board.stories, total: board.stories.length, source: 'local' }) };
-            if (url.includes('/api/agility/tasks')) return { json: async () => ({ tasks: board.stories[0].tasks, source: 'local' }) };
+            if (url.includes('/api/planning/teams')) return { json: async () => ({ teams: board.teams }) };
+            if (url.includes('/api/planning/class-of-service')) return { json: async () => ({ values: board.classOfService }) };
+            if (url.includes('/api/planning/members')) return { json: async () => ({ members: board.members }) };
+            if (url.includes('/api/planning/story') && init?.method === 'PUT') return { json: async () => ({ ok: true, story: board.stories[0], source: 'local' }) };
+            if (url.includes('/api/planning/story?')) return { json: async () => ({ ...board.stories[0], project: 'SDLC Framework', source: 'local' }) };
+            if (url.includes('/api/planning/stories')) return { json: async () => ({ stories: board.stories, total: board.stories.length, source: 'local' }) };
+            if (url.includes('/api/planning/tasks')) return { json: async () => ({ tasks: board.stories[0].tasks, source: 'local' }) };
             return { json: async () => ({ error: `Unhandled test URL ${url}` }) };
         });
         vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
@@ -71,7 +71,7 @@ describe('LocalBacklogView', () => {
         expect(screen.getByPlaceholderText('Description')).toHaveValue('Check the step-mode task pickup contract.');
         fireEvent.change(screen.getByPlaceholderText('Description'), { target: { value: 'Updated editable description.' } });
         fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-        await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/agility/story', expect.objectContaining({ method: 'PUT' })));
+        await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/planning/story', expect.objectContaining({ method: 'PUT' })));
         expect(await screen.findByText('Updated LOCAL-B-0001')).toBeInTheDocument();
 
         fireEvent.click(screen.getByRole('button', { name: 'List View' }));

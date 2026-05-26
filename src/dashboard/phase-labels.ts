@@ -9,6 +9,7 @@ export const PHASE_LABELS: Record<Phase, string> = {
     analyzing: 'Analyzing',
     'creating-tasks': 'Creating Tasks',
     'generating-code': 'Coding',
+    committing: 'Committing',
     validating: 'Validating',
     'creating-pr': 'Creating PR',
     'watching-reviews': 'Reviews',
@@ -42,6 +43,7 @@ export const PHASE_LABELS_DESK: Record<Phase, string> = {
     analyzing: 'Analyzing Codebase',
     'creating-tasks': 'Creating Tasks',
     'generating-code': 'Generating Code',
+    committing: 'Committing Changes',
     validating: 'Validating',
     'creating-pr': 'Creating PR',
     'watching-reviews': 'Watching Reviews',
@@ -74,6 +76,7 @@ export const PHASE_COLORS: Record<Phase, string> = {
     analyzing: 'var(--info)',
     'creating-tasks': 'var(--info)',
     'generating-code': 'var(--accent)',
+    committing: 'var(--accent)',
     validating: 'var(--warning)',
     'creating-pr': 'var(--info)',
     'watching-reviews': 'var(--warning)',
@@ -110,7 +113,7 @@ export const EVENT_COLORS: Record<StatusEvent['type'], string> = {
 /** Phases that use a strong activity pulse on the floor cards. */
 export const HARD_ACTIVE_PHASES: ReadonlySet<string> = new Set([
     'reading-story', 'planning', 'creating-tasks', 'analyzing',
-    'generating-code', 'validating', 'creating-pr', 'addressing-feedback',
+    'generating-code', 'committing', 'validating', 'creating-pr', 'addressing-feedback',
     'running-cypress', 'monitoring-build',
 ]);
 

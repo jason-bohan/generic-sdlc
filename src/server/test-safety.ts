@@ -11,8 +11,8 @@ export function getMockModeSafetyDirective(configPath: string): string {
     if (!isMockExternalMode(configPath)) return '';
     return [
         '',
-        'MOCK EXTERNAL MODE IS ACTIVE.',
-        'Hard safety rule: do not call Azure DevOps MCP tools, do not run git push, and do not create, update, approve, queue, or complete real Azure DevOps PRs or pipelines.',
+        'NOTE: Mock external mode is active. Normal development work (reading files, writing code, running tests) is fully allowed.',
+        'Only Azure DevOps MCP tools, git push, and real PR/pipeline/build operations are restricted — simulate those through the SDLC Framework mock API instead.',
         'Use local git branches and commits only. For Agility MCP calls, use the local mock base URL http://localhost:3001/mock-v1 with AGILITY_API_KEY=mock-token.',
         'When you reach PR/build/review phases, simulate them through SDLC Framework mock status/API state instead of contacting Azure DevOps.',
     ].join('\n');

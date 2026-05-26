@@ -59,7 +59,7 @@ export function CreateStoryModal({
         <div style={styles.modal} onClick={onClose}>
             <div ref={containerRef} style={styles.modalContent} role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                    <strong style={{ fontSize: 16, color: 'var(--text-primary)' }}>Create Agility Story</strong>
+                    <strong style={{ fontSize: 16, color: 'var(--text-primary)' }}>Create Work Item</strong>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <select
                             style={{ ...styles.formInput, width: 'auto', fontSize: 11, padding: '3px 6px', margin: 0, color: execMode === 'local' ? 'var(--success)' : execMode === 'speed' ? 'var(--warning)' : 'var(--text-secondary)' }}
@@ -192,7 +192,7 @@ export function CreateStoryModal({
                         >
                             {storyStatus === 'enriching'
                                 ? (execMode === 'local' ? 'Goose + Ollama enriching...' : execMode === 'speed' ? 'Creating...' : 'Enriching with Ollama...')
-                                : storyStatus === 'creating' ? 'Creating in Agility...'
+                                : storyStatus === 'creating' ? 'Creating work item...'
                                 : storyStatus === 'done' ? 'Create Another'
                                 : execMode === 'speed' ? 'Create Story (enrich via agent)' : 'Create Story'}
                         </button>

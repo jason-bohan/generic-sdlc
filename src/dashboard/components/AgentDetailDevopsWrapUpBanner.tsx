@@ -24,7 +24,7 @@ export function AgentDetailDevopsWrapUpBanner({
         >
             <div style={{ ...s.devopsWrapUpBadge, background: `${agent.accentColor}18`, color: agent.accentColor }}>Wrap-up</div>
             <p style={s.devopsWrapUpBody}>
-                CI passed for this PR. Start the DevOps agent with the full story wrap-up prompt (ADO, Agility, reset agent status files per{' '}
+                CI passed for this PR. Start the DevOps agent with the full story wrap-up prompt (review/build adapter, planning adapter, reset agent status files per{' '}
                 <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>.cursor/rules/story-wrapup.mdc</span>
                 ).
             </p>

@@ -26,7 +26,7 @@ export function isValidMode(mode: string): mode is ExecMode {
     return VALID_MODES.includes(mode as ExecMode);
 }
 
-/** How `/api/agility/create-story` fulfills a request for each execution mode. */
+/** How `/api/planning/create-story` fulfills a request for each execution mode. */
 export type StoryCreationRoute = 'goose' | 'balanced' | 'speed';
 
 export function storyCreationRouteForMode(mode: ExecMode): StoryCreationRoute {
@@ -60,7 +60,7 @@ export function findGoose(): string | null {
 
 export interface StoryParams {
     name: string;
-    /** Required — Agility Class of Service name (resolved to OID server-side). */
+    /** Required — planning class-of-service name (resolved by the adapter server-side). */
     classOfService: string;
     description?: string;
     estimate?: number;
@@ -291,7 +291,7 @@ export async function createStoryBalanced(
             body: JSON.stringify({
                 model: getActiveModel(),
                 prompt: enrichPrompt,
-                system: 'You are a product owner writing Agility story fields. Respond ONLY with a single valid JSON object. No markdown. No explanation. /no_think',
+                system: 'You are a product owner writing planning work item fields. Respond ONLY with a single valid JSON object. No markdown. No explanation. /no_think',
                 stream: false,
                 options: {
                     temperature: 0.1,
@@ -386,7 +386,7 @@ export interface EnrichedStoryFields {
 
 /**
  * Ollama-only story enrichment that returns the field values without writing to
- * Agility. Used by the local backlog "AI Create" path. Falls back to an empty
+ * a planning adapter. Used by the local backlog "AI Create" path. Falls back to an empty
  * result (enriched: false) whenever Ollama is unavailable or returns junk.
  */
 export async function enrichStoryFields(
@@ -433,7 +433,7 @@ export async function enrichStoryFields(
             body: JSON.stringify({
                 model: getActiveModel(),
                 prompt: enrichPrompt,
-                system: 'You are a product owner writing Agility story fields. Respond ONLY with a single valid JSON object. No markdown. No explanation. /no_think',
+                system: 'You are a product owner writing planning work item fields. Respond ONLY with a single valid JSON object. No markdown. No explanation. /no_think',
                 stream: false,
                 options: { temperature: 0.1, num_ctx: 4096, num_predict: 1500, repeat_penalty: 1.1 } }) });
         if (ollamaRes.ok) {

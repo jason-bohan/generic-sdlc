@@ -28,7 +28,7 @@ interface AgentDetailProps {
     onBack: () => void;
     onChat?: () => void;
     onPickUpStory?: () => void;
-    /** After reviewer picks up a PR from the ADO list, refresh status from disk. */
+    /** After reviewer picks up a review request from the adapter list, refresh status from disk. */
     onReviewerDeskChanged?: () => void;
     pendingMessages?: number;
 }

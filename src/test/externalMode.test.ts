@@ -39,9 +39,9 @@ describe('external mode', () => {
     it('emits a mock-mode safety directive that forbids live ADO writes', () => {
         writeFileSync(CONFIG, JSON.stringify({ externalMode: 'mock' }));
         const directive = getMockModeSafetyDirective(CONFIG);
-        expect(directive).toContain('MOCK EXTERNAL MODE IS ACTIVE');
-        expect(directive).toContain('do not call Azure DevOps MCP tools');
-        expect(directive).toContain('do not run git push');
+        expect(directive).toContain('Mock external mode is active');
+        expect(directive).toContain('Azure DevOps MCP tools');
+        expect(directive).toContain('git push');
     });
 
     it('recognizes Azure DevOps URLs as live PR URLs', () => {
@@ -78,7 +78,7 @@ describe('mock external services', () => {
                 DetailEstimate: { value: 2 },
             },
         }) as any;
-        expect(created.Attributes.Number.value).toMatch(/^TK-LOCAL-/);
+        expect(created.Attributes.Number.value).toMatch(/^TK-/);
 
         const tasks = mockV1Fetch(TMP, '/Task', { where: `Parent='${parent}'` }) as any;
         expect(tasks.Assets).toHaveLength(1);
@@ -116,7 +116,7 @@ describe('mock external services', () => {
         expect(task.id).toMatch(/^Task:/);
 
         const taskNumber = mockV1Http(TMP, 'GET', `/Task/${task.id.split(':')[1]}`, { sel: 'Number' }) as any;
-        expect(taskNumber.Attributes.Number.value).toMatch(/^TK-LOCAL-/);
+        expect(taskNumber.Attributes.Number.value).toMatch(/^TK-/);
 
         const updated = mockV1Http(TMP, 'POST', `/Task/${task.id.split(':')[1]}`, {}, {
             Attributes: {

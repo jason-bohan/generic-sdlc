@@ -79,8 +79,8 @@ export function prStatusLabel(status: PullRequest['status']): string {
     }
 }
 
-export function getAgilityStatusColor(agilityStatus?: string | null, localStatus?: string): string {
-    const agilityMap: Record<string, string> = {
+export function getPlanningStatusColor(planningStatus?: string | null, localStatus?: string): string {
+    const planningMap: Record<string, string> = {
         'Future': '#8b5cf6',
         'Not Started': '#8b5cf6',
         'In Progress': '#22c55e',
@@ -88,7 +88,7 @@ export function getAgilityStatusColor(agilityStatus?: string | null, localStatus
         'Completed': 'var(--text-tertiary)',
         'Failed': 'var(--error)',
     };
-    if (agilityStatus && agilityMap[agilityStatus]) return agilityMap[agilityStatus];
+    if (planningStatus && planningMap[planningStatus]) return planningMap[planningStatus];
     const fallback: Record<string, string> = {
         pending: '#8b5cf6',
         in_progress: '#22c55e',

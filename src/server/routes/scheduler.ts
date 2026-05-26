@@ -38,10 +38,10 @@ const AGENT_CATEGORY_NAME: Record<string, string> = {
     frontend: 'Frontend',
     backend: 'Api',
     qa: 'QA',
-    devops: 'AzureDevOps',
+    devops: 'DevOps',
     ux: 'UX' };
 
-async function loadAgilityTasksForStory(rootDir: string, storyNumber: string): Promise<RawTask[]> {
+async function loadPlanningTasksForStory(rootDir: string, storyNumber: string): Promise<RawTask[]> {
     if (isLocalStoryNumber(storyNumber)) return loadLocalTasksForStory(rootDir, storyNumber);
     const parentData = await v1Fetch(rootDir, '/Story', { sel: 'Number', where: `Number='${storyNumber}'` });
     const storyAsset = (parentData.Assets || [])[0];
@@ -126,7 +126,7 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
             const { agentId, storyNumber, name, estimate, category, priority } = JSON.parse(body);
             if (!agentId || !storyNumber || !name) { json(res, { error: 'agentId, storyNumber, and name required' }, 400); return; }
 
-            // ── Local story fast path (no Agility credentials needed) ──────────
+            // ── Local story fast path (no planning credentials needed) ──────────
             if (isLocalStoryNumber(storyNumber)) {
                 const localCategoryName = typeof category === 'string' && !category.startsWith('TaskCategory:') ? category : AGENT_CATEGORY_NAME[agentId] ?? null;
                 const localStatusFile = resolve(rootDir, `.${agentId}-status.json`);
@@ -179,6 +179,97 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                 return;
             }
             // ─────────────────────────────────────────────────────────────────────
+
+            // Mock mode or non-planning-adapter story (e.g. GitHub issues): write task directly to status file
+            if (isMockExternalMode(configFile)) {
+                const mockCategoryName = typeof category === 'string' && !category.startsWith('TaskCategory:') ? category : AGENT_CATEGORY_NAME[agentId] ?? null;
+                const mockStatusFile = resolve(rootDir, `.${agentId}-status.json`);
+                const mockNormName = String(name).trim().toLowerCase();
+                const mockNormCat = String(mockCategoryName ?? '').trim().toLowerCase();
+                if (existsSync(mockStatusFile)) {
+                    const loaded = parseJsonUtf8File(mockStatusFile) as Record<string, unknown>;
+                    const existing = Array.isArray(loaded.tasks) ? loaded.tasks as RawTask[] : [];
+                    if (loaded.storyNumber === storyNumber) {
+                        const dupIdx = existing.findIndex((t: RawTask) => {
+                            const tName = String(t.name ?? '').trim().toLowerCase();
+                            const tCat = String(t.category ?? '').trim().toLowerCase();
+                            if (tName !== mockNormName) return false;
+                            return tCat === mockNormCat || !tCat;
+                        });
+                        if (dupIdx >= 0) {
+                            const reconciliation = loaded.taskReconciliation as { status?: string } | undefined;
+                            if (reconciliation?.status !== 'reuse-confirmed') {
+                                const matchingTasks = existing.map((t: RawTask) => ({ id: String(t.id ?? t.number ?? ''), name: String(t.name ?? ''), status: String(t.status ?? 'pending'), category: t.category, hours: t.hours, priority: (t as RawTask & { priority?: unknown }).priority })).filter(t => t.id || t.name);
+                                loaded.currentPhase = 'analyzing'; loaded.handoffDispatched = false;
+                                loaded.taskReconciliation = { status: 'pending', storyNumber, reason: `Task "${name}" already exists for story ${storyNumber}.`, detectedAt: new Date().toISOString(), matchingTaskIds: matchingTasks.map(t => t.id).filter(Boolean), matchingTasks };
+                                const evs = Array.isArray(loaded.events) ? loaded.events as Array<{ timestamp: string; type: string; message: string }> : [];
+                                evs.push({ timestamp: new Date().toISOString(), type: 'warning', message: `Existing tasks detected for story ${storyNumber}. Waiting for reuse or recreate decision.` });
+                                loaded.events = evs;
+                                writeFileSync(mockStatusFile, JSON.stringify(loaded, null, 2));
+                                json(res, { ok: false, reconciliationRequired: true, existingTask: matchingTasks[dupIdx], matchingTasks }, 409);
+                                return;
+                            }
+                            const prev = existing[dupIdx];
+                            const reusedNumber = String(prev.number ?? prev.id ?? '');
+                            existing[dupIdx] = { ...prev, id: prev.id ?? reusedNumber, number: prev.number ?? reusedNumber, name, hours: estimate ?? prev.hours ?? 0, category: mockCategoryName ?? prev.category, ...(priority !== undefined ? { priority } : {}) };
+                            loaded.tasks = dedupeTasksPreserveOrder(existing);
+                            writeFileSync(mockStatusFile, JSON.stringify(loaded, null, 2));
+                            json(res, { ok: true, number: reusedNumber, name, deduplicated: true });
+                            return;
+                        }
+                    }
+                }
+                const taskNumber = `MOCK-TK-${Date.now()}`;
+                if (existsSync(mockStatusFile)) {
+                    const sr = parseJsonUtf8File(mockStatusFile) as Record<string, unknown>;
+                    if (sr.storyNumber && sr.storyNumber !== storyNumber) sr.tasks = [];
+                    sr.tasks = sr.tasks || [];
+                    const entry: RawTask = { id: taskNumber, number: taskNumber, name, status: 'pending', agilityStatus: 'None', hours: estimate ?? 0, category: mockCategoryName ?? undefined, source: 'local', inherited: false, ...(priority !== undefined ? { priority } : {}) };
+                    (sr.tasks as RawTask[]).push(entry);
+                    sr.tasks = dedupeTasksPreserveOrder(sr.tasks as RawTask[]);
+                    writeFileSync(mockStatusFile, JSON.stringify(sr, null, 2));
+                }
+                try {
+                    tryRecordWorkflowArtifact({
+                        storyNumber,
+                        agentId,
+                        artifactType: 'task',
+                        artifactKey: String(taskNumber),
+                        payload: {
+                            id: taskNumber,
+                            number: taskNumber,
+                            name,
+                            status: 'pending',
+                            hours: estimate ?? 0,
+                            agentId,
+                            category: mockCategoryName ?? undefined,
+                            sourceRoute: '/api/scheduler/create-task',
+                        },
+                    });
+                } catch (workflowErr) {
+                    console.warn('[scheduler/create-task] mock workflow artifact failed:', workflowErr);
+                }
+                json(res, { ok: true, number: taskNumber, name });
+                return;
+            }
+
+            // No planning credentials — generate a local task ID so GitHub-issue-based stories can proceed
+            if (!process.env.V1_BASE_URL && !process.env.AGILITY_BASE_URL) {
+                const noCredCategoryName = typeof category === 'string' && !category.startsWith('TaskCategory:') ? category : AGENT_CATEGORY_NAME[agentId] ?? null;
+                const noCredStatusFile = resolve(rootDir, `.${agentId}-status.json`);
+                const taskNumber = `GH-TK-${Date.now()}`;
+                if (existsSync(noCredStatusFile)) {
+                    const sr = parseJsonUtf8File(noCredStatusFile) as Record<string, unknown>;
+                    if (sr.storyNumber && sr.storyNumber !== storyNumber) sr.tasks = [];
+                    sr.tasks = sr.tasks || [];
+                    const entry: RawTask = { id: taskNumber, number: taskNumber, name, status: 'pending', agilityStatus: 'None', hours: estimate ?? 0, category: noCredCategoryName ?? undefined, source: 'local', inherited: false, ...(priority !== undefined ? { priority } : {}) };
+                    (sr.tasks as RawTask[]).push(entry);
+                    sr.tasks = dedupeTasksPreserveOrder(sr.tasks as RawTask[]);
+                    writeFileSync(noCredStatusFile, JSON.stringify(sr, null, 2));
+                }
+                json(res, { ok: true, number: taskNumber, name });
+                return;
+            }
 
             const parentData = await v1Fetch(rootDir, '/Story', { sel: 'Number', where: `Number='${storyNumber}'` });
             const parentAsset = (parentData.Assets || [])[0];
@@ -344,20 +435,20 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                 cypress: { lastRun: null, total: 0, passed: 0, failed: 0, skipped: 0, failures: [] },
                 events: [{ timestamp: new Date().toISOString(), type: immediate ? 'success' : 'info', message: immediate ? `Story ${storyNumber} assigned. Starting workflow.` : `Story ${storyNumber} assigned. Awaiting approval to start.` }] };
             try {
-                const inheritedTasks = await loadAgilityTasksForStory(rootDir, storyNumber);
+                const inheritedTasks = await loadPlanningTasksForStory(rootDir, storyNumber);
                 if (inheritedTasks.length > 0) {
                     status.tasks = inheritedTasks;
                     status.events.push({
                         timestamp: new Date().toISOString(),
                         type: 'info',
-                        message: `Inherited ${inheritedTasks.length} existing Agility task(s) for story ${storyNumber}.`,
+                        message: `Inherited ${inheritedTasks.length} existing planning task(s) for story ${storyNumber}.`,
                     });
                 }
             } catch (taskErr) {
                 status.events.push({
                     timestamp: new Date().toISOString(),
                     type: 'warning',
-                    message: `Could not inherit existing Agility tasks for story ${storyNumber}: ${taskErr instanceof Error ? taskErr.message : String(taskErr)}`,
+                    message: `Could not inherit existing planning tasks for story ${storyNumber}: ${taskErr instanceof Error ? taskErr.message : String(taskErr)}`,
                 });
             }
             writeFileSync(statusFile, JSON.stringify(status, null, 2));
@@ -388,7 +479,32 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                 console.warn('[scheduler] workflow state mirror failed:', workflowErr);
             }
             void notify(rootDir, { title: `📋 Story Assigned: ${storyNumber}`, body: `**${storyName || storyNumber}** assigned to **${resolveAgentDisplayName(agentId, rootDir)}**. ${immediate ? 'Workflow starting.' : 'Awaiting approval.'}`, color: immediate ? '6366f1' : 'f59e0b' });
-            json(res, { ok: true, phase: status.currentPhase, workflow });
+            let agentSpawned = false;
+            let spawnReason: string | undefined;
+            if (immediate) {
+                const activeProfile = getActiveProject(configFile);
+                const hasTargetCodebase = !!activeProfile?.workspacePath && activeProfile.workspacePath !== rootDir;
+                let prompt = buildContextPreamble(rootDir) + `You are ${agentId}. Read .${agentId}-status.json (story ${storyNumber}) and skills/${skillSubdirForAgentId(agentId)}/SKILL.md. Begin Phase 1: read the story, plan the work, and create/sign up for planning tasks.`;
+                try {
+                    const wf = storyNumber ? dbGetWorkflowItemByStory(storyNumber, agentId) : undefined;
+                    if (wf) {
+                        const phasePlan = startPhaseRun({
+                            workflowItemId: wf.id,
+                            serverBaseUrl: `http://${req.headers.host || 'localhost:3001'}`,
+                            statusFile: hasTargetCodebase ? resolve(rootDir, `.${agentId}-status.json`) : `.${agentId}-status.json`,
+                            skillFile: null,
+                            targetCodebase: activeProfile?.workspacePath ?? null,
+                        });
+                        if (phasePlan.ok && phasePlan.value) prompt = phasePlan.value.prompt;
+                    }
+                } catch (e) { console.warn('[assign] contract phase prompt failed:', e); }
+                try {
+                    const spawnResult = spawnAgent(agentId, prompt, rootDir, getAgentModel(agentId, rootDir));
+                    agentSpawned = spawnResult.spawned;
+                    if (!agentSpawned) spawnReason = spawnResult.reason;
+                } catch (e) { console.error('[assign] spawn failed:', e); }
+            }
+            json(res, { ok: true, phase: status.currentPhase, workflow, agentSpawned, spawnReason });
         } catch (e: unknown) { json(res, { error: e instanceof Error ? e.message : String(e) }, 500); }
     });
 
@@ -405,13 +521,13 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
             status.currentPhase = 'reading-story';
             status.startedAt = new Date().toISOString();
             try {
-                const inheritedTasks = await loadAgilityTasksForStory(rootDir, String(status.storyNumber || ''));
+                const inheritedTasks = await loadPlanningTasksForStory(rootDir, String(status.storyNumber || ''));
                 status.tasks = mergeInheritedTasks(Array.isArray(status.tasks) ? status.tasks as RawTask[] : [], inheritedTasks);
                 if (inheritedTasks.length > 0) {
                     status.events.push({
                         timestamp: new Date().toISOString(),
                         type: 'info',
-                        message: `Synced ${inheritedTasks.length} existing Agility task(s) before starting.`,
+                        message: `Synced ${inheritedTasks.length} existing planning task(s) before starting.`,
                     });
                 }
             } catch (taskErr) {
@@ -419,7 +535,7 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                 status.events.push({
                     timestamp: new Date().toISOString(),
                     type: 'warning',
-                    message: `Could not sync existing Agility tasks before starting: ${taskErr instanceof Error ? taskErr.message : String(taskErr)}`,
+                    message: `Could not sync existing planning tasks before starting: ${taskErr instanceof Error ? taskErr.message : String(taskErr)}`,
                 });
             }
             status.events.push({ timestamp: new Date().toISOString(), type: 'success', message: 'Workflow approved. Starting.' });
@@ -427,7 +543,7 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
             const storyNum = status.storyNumber || '';
             const activeProfile = getActiveProject(configFile);
             const targetCodebase = activeProfile?.workspacePath && activeProfile.workspacePath !== rootDir ? ` The target codebase is at ${activeProfile.workspacePath}.` : '';
-            let prompt = buildContextPreamble(rootDir) + `You are ${agentId}. Read .${agentId}-status.json (story ${storyNum}) and skills/${skillSubdirForAgentId(agentId)}/SKILL.md. Begin Phase 1: read the story, plan the work, and create/sign up for Agility tasks.${targetCodebase}`;
+            let prompt = buildContextPreamble(rootDir) + `You are ${agentId}. Read .${agentId}-status.json (story ${storyNum}) and skills/${skillSubdirForAgentId(agentId)}/SKILL.md. Begin Phase 1: read the story, plan the work, and create/sign up for planning tasks.${targetCodebase}`;
             try {
                 const workflow = storyNum ? dbGetWorkflowItemByStory(storyNum, agentId) : undefined;
                 if (workflow) {

@@ -64,8 +64,8 @@ function resetAgentsForStory(rootDir: string, storyNumber: string): string[] {
 export function mount(use: UseFn, rootDir: string, configFile: string): void {
     const v1ApiAdapter = createV1ApiAdapter(rootDir, configFile);
 
-    // ── /api/agility/teams ───────────────────────────────────────────────────
-    use('/api/agility/teams', async (req, res) => {
+    // ── /api/planning/teams ───────────────────────────────────────────────────
+    use('/api/planning/teams', async (req, res) => {
         try {
             const url = new URL(req.url!, `http://${req.headers.host}`);
             if (url.searchParams.get('source') === 'local') {
@@ -84,8 +84,8 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
         } catch (e: unknown) { json(res, { error: e instanceof Error ? e.message : String(e) }, 502); }
     });
 
-    // ── /api/agility/class-of-service ────────────────────────────────────────
-    use('/api/agility/class-of-service', async (req, res) => {
+    // ── /api/planning/class-of-service ────────────────────────────────────────
+    use('/api/planning/class-of-service', async (req, res) => {
         try {
             const url = new URL(req.url!, `http://${req.headers.host}`);
             if (url.searchParams.get('source') === 'local') {
@@ -97,8 +97,8 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
         } catch (e: unknown) { json(res, { error: e instanceof Error ? e.message : String(e) }, 502); }
     });
 
-    // ── /api/agility/members ─────────────────────────────────────────────────
-    use('/api/agility/members', async (req, res) => {
+    // ── /api/planning/members ─────────────────────────────────────────────────
+    use('/api/planning/members', async (req, res) => {
         try {
             const url = new URL(req.url!, `http://${req.headers.host}`);
             if (url.searchParams.get('source') === 'local') {
@@ -110,8 +110,8 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
         } catch (e: unknown) { json(res, { error: e instanceof Error ? e.message : String(e) }, 502); }
     });
 
-    // ── /api/agility/stories ─────────────────────────────────────────────────
-    use('/api/agility/stories', async (req, res) => {
+    // ── /api/planning/stories ─────────────────────────────────────────────────
+    use('/api/planning/stories', async (req, res) => {
         try {
             const url = new URL(req.url!, `http://${req.headers.host}`);
             const team = url.searchParams.get('team') || '';
@@ -171,8 +171,8 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
         } catch (e: unknown) { json(res, { error: e instanceof Error ? e.message : String(e) }, 502); }
     });
 
-    // ── /api/agility/story ───────────────────────────────────────────────────
-    use('/api/agility/story', async (req, res) => {
+    // ── /api/planning/story ───────────────────────────────────────────────────
+    use('/api/planning/story', async (req, res) => {
         const storySel = 'Number,Name,Description,Status.Name,Team,Team.Name,Estimate,Priority.Name,Custom_AcceptanceCriteria,Custom_Frontend,Custom_Backend,Custom_QA,Scope.Name,ClassOfService.Name';
         try {
             const url = new URL(req.url!, `http://${req.headers.host}`);
@@ -182,7 +182,7 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                 const body = JSON.parse(await readBody(req));
                 const storyNumber = String(body.number || number || '');
                 if (!storyNumber) { json(res, { error: 'number is required' }, 400); return; }
-                if (!isLocalStoryNumber(storyNumber)) { json(res, { error: 'Live Agility story edits are not implemented yet' }, 501); return; }
+                if (!isLocalStoryNumber(storyNumber)) { json(res, { error: 'Live planning item edits are not implemented yet' }, 501); return; }
                 const story = updateLocalStory(rootDir, storyNumber, {
                     name: body.name != null ? String(body.name) : undefined,
                     description: body.description != null ? String(body.description) : undefined,
@@ -259,8 +259,8 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
         } catch (e: unknown) { json(res, { error: e instanceof Error ? e.message : String(e) }, 502); }
     });
 
-    // ── /api/agility/tasks/sync (must come before /api/agility/tasks) ────────
-    use('/api/agility/tasks/sync', async (req, res) => {
+    // ── /api/planning/tasks/sync (must come before /api/planning/tasks) ────────
+    use('/api/planning/tasks/sync', async (req, res) => {
         if (req.method !== 'POST') { res.statusCode = 405; res.end('Method not allowed'); return; }
         const body = await readBody(req);
         try {
@@ -275,6 +275,14 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                 statusRaw.storySource = 'local';
                 writeFileSync(statusFile, JSON.stringify(statusRaw, null, 2));
                 json(res, { ok: true, tasks: statusRaw.tasks, source: 'local' });
+                return;
+            }
+            // Mock mode or no planning credentials: return status file tasks as-is
+            if (isMockExternalMode(configFile) || (!process.env.V1_BASE_URL && !process.env.AGILITY_BASE_URL)) {
+                const statusRaw = parseJsonUtf8File(statusFile);
+                statusRaw.tasks = dedupeTasksPreserveOrder(statusRaw.tasks || []);
+                writeFileSync(statusFile, JSON.stringify(statusRaw, null, 2));
+                json(res, { ok: true, tasks: statusRaw.tasks, source: isMockExternalMode(configFile) ? 'mock' : 'local' });
                 return;
             }
             const parentStory = await v1Fetch(rootDir, '/Story', { sel: 'Number', where: `Number='${storyNumber}'` });
@@ -313,8 +321,8 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
         } catch (e: unknown) { json(res, { error: e instanceof Error ? e.message : String(e) }, 500); }
     });
 
-    // ── /api/agility/tasks ───────────────────────────────────────────────────
-    use('/api/agility/tasks', async (req, res) => {
+    // ── /api/planning/tasks ───────────────────────────────────────────────────
+    use('/api/planning/tasks', async (req, res) => {
         try {
             const url = new URL(req.url!, `http://${req.headers.host}`);
             const story = url.searchParams.get('story');
@@ -349,8 +357,8 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
         } catch (e: unknown) { json(res, { error: e instanceof Error ? e.message : String(e) }, 502); }
     });
 
-    // ── /api/agility/create-story ────────────────────────────────────────────
-    use('/api/agility/create-story', async (req, res) => {
+    // ── /api/planning/create-story ────────────────────────────────────────────
+    use('/api/planning/create-story', async (req, res) => {
         cors(res, 'POST, OPTIONS');
         if (req.method === 'OPTIONS') { res.statusCode = 204; res.end(); return; }
         if (req.method !== 'POST') { res.statusCode = 405; res.end('Method not allowed'); return; }
@@ -437,8 +445,8 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
         } catch (e: unknown) { json(res, { error: e instanceof Error ? e.message : String(e) }, 500); }
     });
 
-    // ── /api/agility/story-status ────────────────────────────────────────────
-    use('/api/agility/story-status', async (req, res) => {
+    // ── /api/planning/story-status ────────────────────────────────────────────
+    use('/api/planning/story-status', async (req, res) => {
         cors(res, 'POST, OPTIONS');
         if (req.method === 'OPTIONS') { res.statusCode = 204; res.end(); return; }
         if (req.method !== 'POST') { res.statusCode = 405; res.end('Method not allowed'); return; }
@@ -463,14 +471,14 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                 if (isMockExternalMode(configFile)) { json(res, { ok: true, storyOid, status, mock: true }); return; }
                 const { baseUrl: v1Base, token: v1Token } = getV1Config(rootDir);
                 const opResp = await fetch(`${v1Base}/rest-1.v1/Data/${storyOid}?op=Inactivate`, { method: 'POST', headers: V1_HEADERS(v1Token), body: JSON.stringify({}) });
-                if (!opResp.ok) { const errText = await opResp.text(); json(res, { error: `Agility API: ${errText}` }, opResp.status); return; }
+                if (!opResp.ok) { const errText = await opResp.text(); json(res, { error: `Planning adapter API: ${errText}` }, opResp.status); return; }
             }
             json(res, { ok: true, storyOid, status });
         } catch (e: unknown) { json(res, { error: e instanceof Error ? e.message : String(e) }, 500); }
     });
 
-    // ── /api/agility/reorder-stories ────────────────────────────────────────
-    use('/api/agility/reorder-stories', async (req, res) => {
+    // ── /api/planning/reorder-stories ────────────────────────────────────────
+    use('/api/planning/reorder-stories', async (req, res) => {
         cors(res, 'POST, OPTIONS');
         if (req.method === 'OPTIONS') { res.statusCode = 204; res.end(); return; }
         if (req.method !== 'POST') { res.statusCode = 405; res.end('Method not allowed'); return; }
@@ -483,8 +491,8 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
         } catch (e: unknown) { json(res, { error: e instanceof Error ? e.message : String(e) }, 500); }
     });
 
-    // ── /api/agility/delete-story ────────────────────────────────────────────
-    use('/api/agility/delete-story', async (req, res) => {
+    // ── /api/planning/delete-story ────────────────────────────────────────────
+    use('/api/planning/delete-story', async (req, res) => {
         cors(res, 'POST, OPTIONS');
         if (req.method === 'OPTIONS') { res.statusCode = 204; res.end(); return; }
         if (req.method !== 'POST') { res.statusCode = 405; res.end('Method not allowed'); return; }
@@ -498,8 +506,8 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
         } catch (e: unknown) { json(res, { error: e instanceof Error ? e.message : String(e) }, 500); }
     });
 
-    // ── /api/agility/task-status ─────────────────────────────────────────────
-    use('/api/agility/task-status', async (req, res) => {
+    // ── /api/planning/task-status ─────────────────────────────────────────────
+    use('/api/planning/task-status', async (req, res) => {
         cors(res, 'POST, OPTIONS');
         if (req.method === 'OPTIONS') { res.statusCode = 204; res.end(); return; }
         if (req.method !== 'POST') { res.statusCode = 405; res.end('Method not allowed'); return; }
@@ -512,7 +520,7 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                 json(res, { ok: true, task, source: 'local' });
                 return;
             }
-            json(res, { error: 'Live Agility task status updates are not implemented yet' }, 501);
+            json(res, { error: 'Live planning task status updates are not implemented yet' }, 501);
         } catch (e: unknown) { json(res, { error: e instanceof Error ? e.message : String(e) }, 500); }
     });
 }

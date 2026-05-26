@@ -9,5 +9,6 @@ export {
     isRunnerActive,
     getActiveRunners,
     getActiveSessionId,
+    registryEvents,
 } from './registry';
 export type { Message, ToolDefinition, CompletionResponse, ProviderConfig, RunnerEvent } from './types';

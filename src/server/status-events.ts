@@ -4,6 +4,7 @@ import { resolve } from 'path';
 import { parseJsonUtf8File } from './json-file';
 import { getDefaultStatus } from './status-normalize';
 import { getActiveAgents } from './spawn-agent';
+import { isRunnerActive } from './agent-runner/registry';
 import { buildStatusBroadcast } from './status-broadcast';
 
 export interface StatusChangeEvent {
@@ -97,7 +98,7 @@ function _emitFromFile(agentId: string, file: string, frameworkDir: string): voi
             ? parseJsonUtf8File(file) as Record<string, unknown>
             : getDefaultStatus(agentId) as Record<string, unknown>;
         const active = getActiveAgents();
-        const isRunning = agentId in active;
+        const isRunning = agentId in active || isRunnerActive(agentId);
         emitStatusChange(agentId, buildStatusBroadcast(raw, agentId, isRunning, frameworkDir));
     } catch { /* status file temporarily incomplete during write */ }
 }

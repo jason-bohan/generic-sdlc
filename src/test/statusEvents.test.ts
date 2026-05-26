@@ -11,7 +11,7 @@ vi.mock('fs', async (importOriginal) => {
     };
 });
 vi.mock('../server/spawn-agent', () => ({ getActiveAgents: vi.fn().mockReturnValue({}) }));
-vi.mock('../server/agent-runner/registry', () => ({ getActiveSessionId: vi.fn().mockReturnValue(undefined) }));
+vi.mock('../server/agent-runner/registry', () => ({ getActiveSessionId: vi.fn().mockReturnValue(undefined), isRunnerActive: vi.fn().mockReturnValue(false) }));
 vi.mock('../server/route-shared', () => ({ getAgentModel: vi.fn().mockReturnValue('cloud') }));
 vi.mock('../server/json-file', () => ({ parseJsonUtf8File: vi.fn().mockReturnValue({}) }));
 vi.mock('../server/status-normalize', () => ({

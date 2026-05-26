@@ -314,8 +314,7 @@ For each task in your task list:
    - Proper `async/await` throughout
    - Nullable reference type annotations
 3. For boilerplate/scaffolding, **delegate to Ollama** (see Delegation Rules)
-4. Commit with meaningful messages referencing the task
-5. When a task is done, mark it completed in Agility (use the OID):
+4. When a task is done, mark it completed in Agility (use the OID):
    ```
    CallMcpTool: user-Agility (Digital.ai) [formerly VersionOne] / update_task
    { "number": "<TK-XXXXX>", "field": "status", "value": "TaskStatus:125" }
@@ -371,7 +370,7 @@ When validation passes:
      "workflowItemId": "<from status file>",
      "agentId": "backend",
      "phase": "validating",
-     "nextPhase": "creating-pr",
+     "nextPhase": "committing",
      "outputs": {
        "buildStatus": "passed",
        "testResults": { "passed": <N>, "failed": 0 },
@@ -379,7 +378,40 @@ When validation passes:
      }
    }
    ```
-2. Update status: phase → `creating-pr`, append event "Validation passed"
+2. Update status: phase → `committing`, append event "Validation passed"
+
+### Phase 5.5: committing
+
+**Goal**: Create the branch, stage all changes, and commit. Do NOT push to remote in mock mode.
+
+1. Create branch using `branchPlan` from your status file:
+   ```
+   git checkout -b <branchPlan.branchName>
+   ```
+2. Stage all changes:
+   ```
+   git add -A
+   ```
+3. Commit with a meaningful message referencing the story:
+   ```
+   git commit -m "feat(<storyNumber>): <short description>"
+   ```
+4. In mock mode: **do NOT push** — stop here. In live mode: `git push origin <branchName>`.
+5. **Register the phase transition**:
+   ```
+   POST $api/api/workflows/complete-phase
+   {
+     "workflowItemId": "<from status file>",
+     "agentId": "backend",
+     "phase": "committing",
+     "nextPhase": "creating-pr",
+     "outputs": {
+       "branchPlan": { "branchName": "<branchName>" },
+       "auditEvent": { "completedBy": "backend", "branch": "<branchName>" }
+     }
+   }
+   ```
+6. Update status: phase → `creating-pr`, append event "Committed: <branchName>"
 
 ### Phase 6: creating-pr
 
@@ -392,7 +424,7 @@ If external mode is `mock`, do not push or create a real Azure DevOps PR. Skip s
    CallMcpTool: user-Agility (Digital.ai) [formerly VersionOne] / update_story_field
    { "number": "<storyNumber>", "field": "status", "value": "Code Review" }
    ```
-2. Push your feature branch
+2. (Branch was already pushed in the `committing` phase — skip push here in live mode.)
 3. Create PR via Azure DevOps MCP:
    ```
    CallMcpTool: user-Azure DevOps / repo_create_pull_request
@@ -471,7 +503,7 @@ If external mode is `mock`, do not query Azure DevOps. Use local mock status/API
 
 1. Set story status to Released in Agility:
    ```
-   POST $api/api/agility/story-status
+   POST $api/api/planning/story-status
    { "number": "<storyNumber>", "status": "Released" }
    ```
    If the API endpoint is unavailable, use this fallback — the story will be closed when the PR merges.

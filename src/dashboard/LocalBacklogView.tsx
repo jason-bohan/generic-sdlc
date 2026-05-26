@@ -3,7 +3,7 @@ import { AGENT_ROSTER, type AgentProfile } from './types';
 import { htmlToPlainText, plainTextToHtml } from './agent-detail-utils';
 
 const AGENT_CATEGORY: Record<string, string> = {
-    frontend: 'Frontend', backend: 'Api', qa: 'QA', devops: 'AzureDevOps', ux: 'UX',
+    frontend: 'Frontend', backend: 'Api', qa: 'QA', devops: 'DevOps', ux: 'UX',
 };
 const ASSIGNABLE_AGENTS = AGENT_ROSTER.filter((a) => a.active && a.id !== 'reviewer');
 
@@ -53,7 +53,7 @@ interface Props {
     onAssigned?: (agent: AgentProfile) => void;
 }
 
-// Agility storyboard statuses. The first four make up the "In Progress" WIP group.
+// Local planning board statuses. The first four make up the "In Progress" WIP group.
 const IN_PROGRESS_STATUSES = ['Planning', 'In Development', 'In QA', 'In the Queue'];
 const STORY_COLUMNS = [
     ...IN_PROGRESS_STATUSES,
@@ -176,10 +176,10 @@ export default function LocalBacklogView({ onBack, onAssigned }: Props) {
         setError(null);
         try {
             const [teamsRes, classOfServiceRes, membersRes, storiesRes] = await Promise.all([
-                fetch('/api/agility/teams?source=local'),
-                fetch('/api/agility/class-of-service?source=local'),
-                fetch('/api/agility/members?source=local'),
-                fetch('/api/agility/stories?source=local&maxResults=500'),
+                fetch('/api/planning/teams?source=local'),
+                fetch('/api/planning/class-of-service?source=local'),
+                fetch('/api/planning/members?source=local'),
+                fetch('/api/planning/stories?source=local&maxResults=500'),
             ]);
             const [teamsData, classOfServiceData, membersData, storiesData] = await Promise.all([
                 teamsRes.json(),
@@ -191,7 +191,7 @@ export default function LocalBacklogView({ onBack, onAssigned }: Props) {
             if (firstError?.error) throw new Error(firstError.error);
             const stories = (storiesData.stories ?? []) as LocalStory[];
             const tasksByStory = await Promise.all(stories.map(async (story) => {
-                const tasksRes = await fetch(`/api/agility/tasks?story=${encodeURIComponent(story.number)}`);
+                const tasksRes = await fetch(`/api/planning/tasks?story=${encodeURIComponent(story.number)}`);
                 const tasksData = await tasksRes.json();
                 if (tasksData.error) throw new Error(tasksData.error);
                 return {
@@ -307,7 +307,7 @@ export default function LocalBacklogView({ onBack, onAssigned }: Props) {
         setError(null);
         setNotice(null);
         try {
-            const res = await fetch('/api/agility/create-story', {
+            const res = await fetch('/api/planning/create-story', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -334,7 +334,7 @@ export default function LocalBacklogView({ onBack, onAssigned }: Props) {
         setNotice(null);
         setAiCreating(true);
         try {
-            const res = await fetch('/api/agility/create-story', {
+            const res = await fetch('/api/planning/create-story', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -393,7 +393,7 @@ export default function LocalBacklogView({ onBack, onAssigned }: Props) {
         setSelectedStoryNumber(story.number);
         setError(null);
         try {
-            const res = await fetch(`/api/agility/story?number=${encodeURIComponent(story.number)}`);
+            const res = await fetch(`/api/planning/story?number=${encodeURIComponent(story.number)}`);
             const data = await res.json();
             if (data.error) throw new Error(data.error);
             const detail = { ...story, ...data, tasks: story.tasks } as LocalStory;
@@ -422,7 +422,7 @@ export default function LocalBacklogView({ onBack, onAssigned }: Props) {
         setError(null);
         setNotice(null);
         try {
-            const res = await fetch('/api/agility/story', {
+            const res = await fetch('/api/planning/story', {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -465,7 +465,7 @@ export default function LocalBacklogView({ onBack, onAssigned }: Props) {
             stories: current.stories.map((story) => story.number === storyNumber ? { ...story, status } : story),
         }));
         try {
-            const res = await fetch('/api/agility/story-status', {
+            const res = await fetch('/api/planning/story-status', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ number: storyNumber, status, source: 'local' }),
@@ -489,7 +489,7 @@ export default function LocalBacklogView({ onBack, onAssigned }: Props) {
             })),
         }));
         try {
-            const res = await fetch('/api/agility/task-status', {
+            const res = await fetch('/api/planning/task-status', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ number: taskNumber, status, source: 'local' }),
@@ -554,7 +554,7 @@ export default function LocalBacklogView({ onBack, onAssigned }: Props) {
         setError(null);
         setNotice(null);
         try {
-            const res = await fetch('/api/agility/story-status', {
+            const res = await fetch('/api/planning/story-status', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ number: story.number, status: 'Closed', source: 'local' }),
@@ -573,7 +573,7 @@ export default function LocalBacklogView({ onBack, onAssigned }: Props) {
         setError(null);
         setNotice(null);
         try {
-            const res = await fetch('/api/agility/delete-story', {
+            const res = await fetch('/api/planning/delete-story', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ number: story.number }),
@@ -605,7 +605,7 @@ export default function LocalBacklogView({ onBack, onAssigned }: Props) {
         });
         setDragOverIndex(null);
         dragSourceIndex.current = null;
-        fetch('/api/agility/reorder-stories', {
+        fetch('/api/planning/reorder-stories', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ numbers }),
@@ -621,7 +621,7 @@ export default function LocalBacklogView({ onBack, onAssigned }: Props) {
                     <button type="button" style={s.backBtn} onClick={onBack} aria-label="Back to floor">&larr;</button>
                     <div style={s.mascot} aria-hidden="true">M</div>
                     <div>
-                        <div style={s.kicker}>Local Agility</div>
+                        <div style={s.kicker}>Local Planning</div>
                         <h1 style={s.title}>SDLC Framework</h1>
                     </div>
                     <span style={s.localBadge}>LOCAL ONLY</span>

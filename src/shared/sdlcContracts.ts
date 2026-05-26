@@ -6,6 +6,7 @@ export type SdlcPhaseId =
     | 'reading-story'
     | 'analyzing'
     | 'generating-code'
+    | 'committing'
     | 'validating'
     | 'creating-pr'
     | 'watching-reviews'
@@ -114,9 +115,18 @@ export const SDLC_PHASE_CONTRACTS: Readonly<Record<SdlcPhaseId, SdlcPhaseContrac
         ownerAgents: ['frontend', 'backend'],
         purpose: 'Implement the planned code and supporting tests/docs in the target repository.',
         requires: ['tasks', 'branchPlan', 'codeChanges'],
-        produces: ['codeChanges', 'testResults', 'auditEvent'],
-        gates: ['Each completed task maps to changed files or an explicit no-op', 'Local commits are allowed by mode'],
-        allowedNext: ['validating', 'addressing-feedback', 'error'],
+        produces: ['codeChanges', 'auditEvent'],
+        gates: ['Each completed task maps to changed files or an explicit no-op'],
+        allowedNext: ['validating', 'committing', 'addressing-feedback', 'error'],
+    },
+    committing: {
+        id: 'committing',
+        ownerAgents: ['frontend', 'backend'],
+        purpose: 'Create branch, stage all changes, commit, and push (or simulate in mock mode).',
+        requires: ['codeChanges', 'branchPlan'],
+        produces: ['branchPlan', 'auditEvent'],
+        gates: ['Branch name follows branchPlan', 'All task changes are staged and committed', 'Mock mode does not push to remote'],
+        allowedNext: ['creating-pr', 'error'],
     },
     validating: {
         id: 'validating',
@@ -125,7 +135,7 @@ export const SDLC_PHASE_CONTRACTS: Readonly<Record<SdlcPhaseId, SdlcPhaseContrac
         requires: ['codeChanges', 'testMatrix'],
         produces: ['validationResults', 'staticAnalysis', 'testResults', 'risks', 'auditEvent'],
         gates: ['Build/test commands are recorded', 'Failures are fixed or explicitly accepted as risk'],
-        allowedNext: ['creating-pr', 'generating-code', 'error'],
+        allowedNext: ['committing', 'creating-pr', 'generating-code', 'error'],
     },
     'creating-pr': {
         id: 'creating-pr',
@@ -311,12 +321,13 @@ export const SDLC_WORKFLOW_GRAPHS: Readonly<Record<SdlcAgentId, SdlcWorkflowGrap
         agentId: 'frontend',
         start: 'reading-story',
         terminal: ['complete', 'error'],
-        phases: ['reading-story', 'analyzing', 'generating-code', 'validating', 'creating-pr', 'watching-reviews', 'addressing-feedback', 'running-cypress', 'complete', 'error'],
+        phases: ['reading-story', 'analyzing', 'generating-code', 'committing', 'validating', 'creating-pr', 'watching-reviews', 'addressing-feedback', 'running-cypress', 'complete', 'error'],
         transitions: {
             'reading-story': ['analyzing', 'error'],
             analyzing: ['generating-code', 'error'],
-            'generating-code': ['validating', 'error'],
-            validating: ['creating-pr', 'generating-code', 'error'],
+            'generating-code': ['validating', 'committing', 'error'],
+            committing: ['creating-pr', 'error'],
+            validating: ['committing', 'creating-pr', 'generating-code', 'error'],
             'creating-pr': ['watching-reviews', 'error'],
             'watching-reviews': ['addressing-feedback', 'running-cypress', 'complete', 'error'],
             'addressing-feedback': ['validating', 'watching-reviews', 'error'],
@@ -329,12 +340,13 @@ export const SDLC_WORKFLOW_GRAPHS: Readonly<Record<SdlcAgentId, SdlcWorkflowGrap
         agentId: 'backend',
         start: 'reading-story',
         terminal: ['complete', 'error'],
-        phases: ['reading-story', 'analyzing', 'generating-code', 'validating', 'creating-pr', 'watching-reviews', 'addressing-feedback', 'complete', 'error'],
+        phases: ['reading-story', 'analyzing', 'generating-code', 'committing', 'validating', 'creating-pr', 'watching-reviews', 'addressing-feedback', 'complete', 'error'],
         transitions: {
             'reading-story': ['analyzing', 'error'],
             analyzing: ['generating-code', 'error'],
-            'generating-code': ['validating', 'error'],
-            validating: ['creating-pr', 'generating-code', 'error'],
+            'generating-code': ['validating', 'committing', 'error'],
+            committing: ['creating-pr', 'error'],
+            validating: ['committing', 'creating-pr', 'generating-code', 'error'],
             'creating-pr': ['watching-reviews', 'error'],
             'watching-reviews': ['addressing-feedback', 'complete', 'error'],
             'addressing-feedback': ['validating', 'watching-reviews', 'error'],

@@ -1,11 +1,11 @@
 meta {
-  name: Sync tasks from Agility
+  name: Sync tasks from Planning
   type: http
   seq: 5
 }
 
 post {
-  url: {{baseUrl}}/api/agility/tasks/sync
+  url: {{baseUrl}}/api/planning/tasks/sync
   body: json
   auth: none
 }
