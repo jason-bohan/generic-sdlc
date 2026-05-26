@@ -21,17 +21,11 @@ function DashboardRoot() {
     const route = useSyncExternalStore(subscribeHash, getHashPath, () => '');
 
     const body = useMemo(() => {
-        if (route === 'profile') {
-            return (
-                <ThemeProvider>
-                    <UserProfilePage />
-                </ThemeProvider>
-            );
-        }
+        if (route === 'profile') return <UserProfilePage />;
         return <App />;
     }, [route]);
 
-    return body;
+    return <ThemeProvider>{body}</ThemeProvider>;
 }
 
 createRoot(document.getElementById('root')!).render(

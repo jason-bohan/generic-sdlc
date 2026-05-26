@@ -253,8 +253,8 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                 return;
             }
 
-            // No planning credentials — generate a local task ID so GitHub-issue-based stories can proceed
-            if (!process.env.V1_BASE_URL && !process.env.AGILITY_BASE_URL) {
+            // No planning credentials, or GitHub provider — generate a local task ID so GitHub-issue-based stories can proceed
+            if ((process.env.PM_PROVIDER ?? '').toLowerCase() === 'github' || (!process.env.V1_BASE_URL && !process.env.AGILITY_BASE_URL)) {
                 const noCredCategoryName = typeof category === 'string' && !category.startsWith('TaskCategory:') ? category : AGENT_CATEGORY_NAME[agentId] ?? null;
                 const noCredStatusFile = resolve(rootDir, `.${agentId}-status.json`);
                 const taskNumber = `GH-TK-${Date.now()}`;
