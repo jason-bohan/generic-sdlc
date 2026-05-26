@@ -1,6 +1,8 @@
 import { writeFileSync, existsSync } from 'fs';
 import { parseJsonUtf8File } from '../json-file';
 import { resolve } from 'path';
+
+const registeredAutoResumeRoots = new Set<string>();
 import { matchTrigger } from '../../messages/triggers';
 import { dbGetMessages, dbUpdateMessageStatus, dbGetSession } from '../db';
 import { getActiveSessionId, isRunnerActive, registryEvents, stopRunner } from '../agent-runner';
@@ -386,6 +388,8 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
     });
 
     // ── Autonomous mode: auto-resume when loop agent stops mid-phase ─────────
+    if (!registeredAutoResumeRoots.has(rootDir)) {
+        registeredAutoResumeRoots.add(rootDir);
     registryEvents.on('agent-stopped', ({ agentId, phase, frameworkDir: stoppedDir }: { agentId: string; phase: string; frameworkDir: string }) => {
         if (stoppedDir !== rootDir) return;
         try {
@@ -412,6 +416,7 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
             } catch (e) { console.error(`[auto-resume] failed to resume ${agentId}:`, e); }
         }, 2_000);
     });
+    }
 }
 
 function buildContinuePrompt(
