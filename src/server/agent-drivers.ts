@@ -1,6 +1,6 @@
 ﻿import { existsSync, readdirSync, writeFileSync } from 'fs';
 import { resolve } from 'path';
-import { execFile, execFileSync } from 'child_process';
+import { execFile } from 'child_process';
 import { parseJsonUtf8File } from './json-file';
 import { isCursorAiEnabled, isClaudeEnabled } from './cursor-ai-policy';
 import { OpenAICompatibleProvider, readLoopProviderConfig } from './agent-runner/provider';
@@ -235,13 +235,17 @@ export function buildGooseSpawnSpec(
 // ─── Aider ───────────────────────────────────────────────────────────────────
 
 export function findAiderCli(): string | null {
-    try {
-        const cmd = process.platform === 'win32' ? 'where.exe' : 'which';
-        const result = execFileSync(cmd, ['aider'], {
-            timeout: 2000, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'],
-        }).split('\n')[0].trim();
-        if (result) return result;
-    } catch { /* fall through */ }
+    // Search PATH directly — avoids spawning `which`/`where`, which can miss
+    // process.env.PATH mutations in test workers on Linux.
+    const pathEnv = process.env.PATH || '';
+    const sep = process.platform === 'win32' ? ';' : ':';
+    const names = process.platform === 'win32' ? ['aider.exe', 'aider.cmd', 'aider.bat'] : ['aider'];
+    for (const dir of pathEnv.split(sep).filter(Boolean)) {
+        for (const name of names) {
+            const candidate = resolve(dir, name);
+            if (existsSync(candidate)) return candidate;
+        }
+    }
     // Microsoft Store Python (common on Windows 11)
     const localAppData = process.env.LOCALAPPDATA || '';
     const msStorePkgs = resolve(localAppData, 'Packages');
@@ -254,15 +258,16 @@ export function findAiderCli(): string | null {
             }
         } catch { /* fall through */ }
     }
-    // pipx install
-    const pipxBin = resolve(process.env.USERPROFILE || '', '.local', 'bin', 'aider.exe');
+    // pipx install (Windows: USERPROFILE, macOS/Linux: HOME)
+    const home = process.env.USERPROFILE || process.env.HOME || '';
+    const pipxBin = resolve(home, '.local', 'bin', process.platform === 'win32' ? 'aider.exe' : 'aider');
     if (existsSync(pipxBin)) return pipxBin;
     return null;
 }
 
 /**
- * Spawn Aider in a visible PowerShell terminal.
- * Uses MeshLLM (localhost:9337) as the primary provider, falls back to Ollama.
+ * Spawn Aider against the target workspace.
+ * Uses MeshLLM as the primary provider, falls back to Ollama when MeshLLM is absent.
  * Both endpoints are OpenAI-compatible so the same model name works for both.
  */
 export function buildAiderSpawnSpec(
@@ -271,21 +276,46 @@ export function buildAiderSpawnSpec(
     promptFilePath: string,
     model: string | undefined,
     outputDir: string,
+    providerBaseUrl?: string,
 ): DriverSpawnSpec | { error: string } {
-    if (process.platform !== 'win32') {
-        return { error: 'Aider driver currently requires the PowerShell launcher (Windows only).' };
-    }
     const aiderExe = findAiderCli();
     if (!aiderExe) {
         return { error: 'Aider not found. Install with: pipx install aider-chat' };
     }
-    const meshllmBase = (process.env.MESHLLM_HOST || 'http://localhost:9337') + '/v1';
+    const meshllmBase = providerBaseUrl || ((process.env.MESHLLM_HOST || 'http://localhost:9337') + '/v1');
     const ollamaBase = ollamaHost() + '/v1';
     const effectiveModel = model && model !== 'auto' ? model : 'qwen3:8b';
+    const agentOutputDir = resolve(workspaceDir, '.agent-output');
+
+    if (process.platform !== 'win32') {
+        const launcherPath = resolve(outputDir, `${agentId}-aider-launcher.sh`);
+        const q = (s: string) => `'${s.replace(/'/g, "'\\''")}'`;
+        writeFileSync(launcherPath, [
+            '#!/bin/sh',
+            'set -eu',
+            `cd ${q(workspaceDir)}`,
+            `mkdir -p ${q(agentOutputDir)}`,
+            `log_path=${q(resolve(agentOutputDir, `${agentId}-`))}$(date +%Y-%m-%dT%H-%M-%S).log`,
+            `mesh_base=${q(meshllmBase)}`,
+            `ollama_base=${q(ollamaBase)}`,
+            `if curl -fsS "$mesh_base/models" >/dev/null 2>&1; then`,
+            `  echo "Backend: MeshLLM" >> "$log_path"`,
+            `  exec ${q(aiderExe)} --model ${q(`openai/${effectiveModel}`)} --openai-api-base "$mesh_base" --openai-api-key meshllm --yes-always --no-auto-commits --map-tokens 0 --no-show-model-warnings --no-check-update --message-file ${q(promptFilePath)} >> "$log_path" 2>&1`,
+            'else',
+            `  echo "Backend: Ollama" >> "$log_path"`,
+            `  exec ${q(aiderExe)} --model ${q(`openai/${effectiveModel}`)} --openai-api-base "$ollama_base" --openai-api-key ollama --yes-always --no-auto-commits --map-tokens 0 --no-show-model-warnings --no-check-update --message-file ${q(promptFilePath)} >> "$log_path" 2>&1`,
+            'fi',
+        ].join('\n'), 'utf-8');
+        return {
+            cmd: '/bin/sh',
+            args: [launcherPath],
+            env: { OLLAMA_HOST: ollamaHost(), SDLC_AGENT_OUTPUT_DIR: agentOutputDir },
+            ignoreStdio: true,
+        };
+    }
+
     const launcherPath = resolve(outputDir, `${agentId}-aider-launcher.ps1`);
     const q = (s: string) => s.replace(/'/g, "''");  // PS single-quote escape
-
-    const agentOutputDir = resolve(workspaceDir, '.agent-output');
 
     writeFileSync(launcherPath, [
         `$host.ui.RawUI.WindowTitle = 'SDLC Framework Aider: ${agentId}'`,
@@ -356,6 +386,7 @@ export function buildSpawnSpec(
     promptFilePath: string,
     model: string | undefined,
     outputDir: string,
+    providerBaseUrl?: string,
 ): DriverSpawnSpec | { error: string } {
     switch (driverConfig.type) {
         case 'loop':
@@ -363,7 +394,7 @@ export function buildSpawnSpec(
         case 'claude-code':
             return buildClaudeCodeSpawnSpec(agentId, workspaceDir, promptFilePath, model, outputDir);
         case 'aider':
-            return buildAiderSpawnSpec(agentId, workspaceDir, promptFilePath, model, outputDir);
+            return buildAiderSpawnSpec(agentId, workspaceDir, promptFilePath, model, outputDir, providerBaseUrl);
         case 'goose':
             return buildGooseSpawnSpec(prompt, workspaceDir);
         case 'generic':
