@@ -155,7 +155,7 @@ describe('SSE chat stream', () => {
                 agentId: 'frontend',
                 message: {
                     id: `sse-seed-${Date.now()}`,
-                    from: 'user',
+                    from: 'agent',
                     message: 'SSE seed check',
                     timestamp: new Date().toISOString(),
                 },
@@ -192,7 +192,7 @@ describe('SSE chat stream', () => {
             agentId: 'frontend',
             message: {
                 id: msgId,
-                from: 'user',
+                from: 'agent',
                 message: 'live SSE push test',
                 timestamp: new Date().toISOString(),
             },

@@ -13,7 +13,7 @@ describe('Dashboard (Simple Floor)', () => {
 
     it('displays the header stats bar', () => {
         cy.contains('Agents').should('be.visible');
-        cy.contains('Cloud Tokens').should('be.visible');
+        cy.contains('Tokens').should('be.visible');
     });
 
     it('shows agent names on cards', () => {
