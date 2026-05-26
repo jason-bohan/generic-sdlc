@@ -146,9 +146,16 @@ export class MockNotifications implements INotifications {
     readonly providerName = 'mock';
     readonly sent: NotificationPayload[] = [];
 
+    constructor(private readonly rootDir?: string) {}
+
     async send(payload: NotificationPayload): Promise<boolean> {
         this.sent.push(payload);
         console.log(`[mock-notify] ${payload.title}: ${payload.body}`);
+        if (this.rootDir) {
+            // Write to mock state so tests and the dashboard can observe notifications.
+            const { appendMockNotification } = await import('../../mock-external');
+            appendMockNotification(this.rootDir, payload.title, payload.body ?? '', payload.color);
+        }
         return true;
     }
 }

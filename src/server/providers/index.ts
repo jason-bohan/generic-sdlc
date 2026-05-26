@@ -1,5 +1,7 @@
 import { existsSync } from 'fs';
+import { resolve } from 'path';
 import { parseJsonUtf8File } from '../json-file';
+import { isMockExternalMode } from '../external-mode';
 import type { NotificationPayload } from './types';
 
 export type { WorkItem, WorkItemSummary, Team, PREvent, NotificationPayload } from './types';
@@ -50,9 +52,10 @@ export async function resolveCodeReview(rootDir: string, configFile: string) {
 
 export async function resolveNotifications(rootDir: string) {
     const provider = (process.env.NOTIFY_PROVIDER ?? 'teams').toLowerCase();
-    if (provider === 'mock' || provider === 'none') {
+    const configFile = resolve(rootDir, '.sdlc-framework.config.json');
+    if (provider === 'mock' || provider === 'none' || isMockExternalMode(configFile)) {
         const { MockNotifications } = await import('./mock');
-        return new MockNotifications();
+        return new MockNotifications(rootDir);
     }
     if (provider === 'slack') {
         const { SlackNotifications } = await import('./slack');
