@@ -1,3 +1,5 @@
+import { existsSync } from 'fs';
+import { parseJsonUtf8File } from '../json-file';
 import type { NotificationPayload } from './types';
 
 export type { WorkItem, WorkItemSummary, Team, PREvent, NotificationPayload } from './types';
@@ -19,6 +21,18 @@ export async function resolveProjectTracker(rootDir: string, configFile: string)
         const { MockProjectTracker } = await import('./mock');
         return new MockProjectTracker(rootDir);
     }
+    if (provider === 'github') {
+        const { GitHubProjectTracker } = await import('./github');
+        let repo = process.env.GITHUB_REPO ?? '';
+        if (!repo && existsSync(configFile)) {
+            try {
+                const cfg = parseJsonUtf8File(configFile);
+                repo = cfg.github?.repo ?? '';
+            } catch { /* ignore */ }
+        }
+        if (!repo) throw new Error('GitHub provider requires GITHUB_REPO env var or github.repo in config');
+        return new GitHubProjectTracker(repo);
+    }
     // Default: Agility/VersionOne — delegates to existing v1Fetch infrastructure
     const { AgilityProjectTracker } = await import('./agility');
     return new AgilityProjectTracker(rootDir, configFile);
@@ -39,6 +53,10 @@ export async function resolveNotifications(rootDir: string) {
     if (provider === 'mock' || provider === 'none') {
         const { MockNotifications } = await import('./mock');
         return new MockNotifications();
+    }
+    if (provider === 'slack') {
+        const { SlackNotifications } = await import('./slack');
+        return new SlackNotifications();
     }
     const { TeamsNotifications } = await import('./teams');
     return new TeamsNotifications(rootDir);

@@ -1,6 +1,6 @@
 """
 SDLC Framework Unsloth QLoRA Fine-Tuning Pipeline
-Target: Qwen3:8B on RTX 3500 Ada (12GB VRAM)
+Target: Qwen2.5-Coder-14B on Apple Silicon (32GB unified) or CUDA GPU
 Training config: 4-bit QLoRA with gradient checkpointing
 """
 
@@ -17,13 +17,18 @@ from trl import SFTTrainer, SFTConfig
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Configuration
+# 14B fits in 32GB unified memory at 4-bit (~9GB weights + LoRA overhead).
+# Drop to Qwen3-8B if running on a 12GB GPU (set MODEL_NAME env var).
 # ──────────────────────────────────────────────────────────────────────────────
-MODEL_NAME = "unsloth/Qwen3-8B-bnb-4bit"
+MODEL_NAME = os.environ.get(
+    "SDLC_BASE_MODEL",
+    "unsloth/Qwen2.5-Coder-14B-Instruct-bnb-4bit",
+)
 OUTPUT_DIR = Path(__file__).parent / "output"
 DATA_FILE = Path(__file__).parent / "data" / "train.jsonl"
-MAX_SEQ_LENGTH = 2048
-LORA_R = 16
-LORA_ALPHA = 16
+MAX_SEQ_LENGTH = 4096   # 14B handles longer context well; use 2048 on 12GB GPU
+LORA_R = 32             # higher rank → more capacity; drop to 16 on 12GB GPU
+LORA_ALPHA = 32
 LORA_DROPOUT = 0.0
 TARGET_MODULES = [
     "q_proj", "k_proj", "v_proj", "o_proj",
@@ -31,7 +36,7 @@ TARGET_MODULES = [
 ]
 
 TRAINING_ARGS = dict(
-    per_device_train_batch_size=2,
+    per_device_train_batch_size=1,   # 14B needs smaller batch; effective=4 via accum
     gradient_accumulation_steps=4,
     warmup_steps=5,
     max_steps=60,
@@ -59,13 +64,38 @@ def format_conversation(example):
 
 
 def main():
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--role", default=None,
+                        choices=["developer", "reviewer", "qa"],
+                        help="Agent role — loads train-{role}.jsonl if present")
+    args = parser.parse_args()
+
+    # Resolve dataset path: prefer role-specific file
+    data_file = DATA_FILE
+    if args.role:
+        role_file = DATA_FILE.parent / f"train-{args.role}.jsonl"
+        if role_file.exists():
+            data_file = role_file
+
+    # Hardware info — works on CUDA and MPS (Apple Silicon)
+    if torch.cuda.is_available():
+        hw_name = torch.cuda.get_device_name(0)
+        hw_mem = f"{torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB VRAM"
+    elif torch.backends.mps.is_available():
+        hw_name = "Apple MPS"
+        hw_mem = f"{torch.mps.driver_allocated_memory() / 1024**3:.1f} GB (unified)"
+    else:
+        hw_name = "CPU"
+        hw_mem = "N/A"
+
     print("=" * 60)
     print("SDLC Framework Unsloth QLoRA Fine-Tuning")
     print("=" * 60)
-    print(f"GPU: {torch.cuda.get_device_name(0)}")
-    print(f"VRAM: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB")
+    print(f"HW:    {hw_name}  {hw_mem}")
     print(f"Model: {MODEL_NAME}")
-    print(f"Data: {DATA_FILE}")
+    print(f"Role:  {args.role or 'all'}")
+    print(f"Data:  {data_file}")
     print(f"LoRA rank: {LORA_R}, alpha: {LORA_ALPHA}")
     print(f"Max seq length: {MAX_SEQ_LENGTH}")
     print()
@@ -73,8 +103,8 @@ def main():
     # Track metrics
     metrics = {
         "model": MODEL_NAME,
-        "gpu": torch.cuda.get_device_name(0),
-        "vram_total_gb": round(torch.cuda.get_device_properties(0).total_memory / 1024**3, 1),
+        "role": args.role or "all",
+        "hw": hw_name,
         "lora_r": LORA_R,
         "lora_alpha": LORA_ALPHA,
         "max_seq_length": MAX_SEQ_LENGTH,
@@ -121,7 +151,7 @@ def main():
 
     # ── Load dataset ──────────────────────────────────────────────────────────
     print("[3/5] Loading and formatting dataset...")
-    dataset = load_dataset("json", data_files=str(DATA_FILE), split="train")
+    dataset = load_dataset("json", data_files=str(data_file), split="train")
     dataset = dataset.map(format_conversation, remove_columns=dataset.column_names)
     print(f"   {len(dataset)} training examples loaded")
     metrics["num_examples"] = len(dataset)

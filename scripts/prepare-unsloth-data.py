@@ -22,7 +22,8 @@ import json
 import argparse
 from pathlib import Path
 
-SYSTEM_PROMPT = """\
+SYSTEM_PROMPTS: dict[str, str] = {
+    "developer": """\
 You are a deterministic coding agent. Your only output is a unified diff in git format.
 
 Rules:
@@ -37,8 +38,29 @@ Rules:
      context
     -removed
     +added
-     context
-"""
+     context""",
+
+    "reviewer": """\
+You are a code review agent. Your output is a structured list of review comments on the provided diff.
+
+Rules:
+- Output ONLY review comments in the format: `<file>:<line>: <severity>: <message>`
+- Severity is one of: info, warning, error
+- Focus on correctness, security, and maintainability — not style.
+- If the change is correct with no issues, output: LGTM""",
+
+    "qa": """\
+You are a QA agent. Your only output is a unified diff that adds or updates tests for the described behaviour.
+
+Rules:
+- Output ONLY the diff. No explanation, no markdown fences, no commentary.
+- Write the minimum tests needed to cover the acceptance criteria.
+- Use the same test framework already present in the codebase.
+- Tests must be deterministic and not depend on external services.""",
+}
+
+# Backwards-compatible alias used by existing callers that pass no --role
+SYSTEM_PROMPT = SYSTEM_PROMPTS["developer"]
 
 
 def build_user_message(instruction: str, files: dict[str, str]) -> str:
@@ -49,7 +71,7 @@ def build_user_message(instruction: str, files: dict[str, str]) -> str:
     return f"### Instruction:\n{instruction}\n\n### Context:\n{context_block}"
 
 
-def convert(input_path: str, output_path: str, max_seq_chars: int) -> int:
+def convert(input_path: str, output_path: str, max_seq_chars: int, role: "str | None" = None) -> int:
     out = Path(output_path)
     out.parent.mkdir(parents=True, exist_ok=True)
 
@@ -70,15 +92,23 @@ def convert(input_path: str, output_path: str, max_seq_chars: int) -> int:
                 skipped += 1
                 continue
 
+            # Role filter: skip examples that don't match requested role
+            if role and role != "all":
+                ex_role = ex.get("_meta", {}).get("role", "developer")
+                if ex_role != role:
+                    skipped += 1
+                    continue
+
             user_msg = build_user_message(instruction, files)
             full_text = SYSTEM_PROMPT + user_msg + response
             if len(full_text) > max_seq_chars:
                 skipped += 1
                 continue
 
+            sys_prompt = SYSTEM_PROMPTS.get(role or "developer", SYSTEM_PROMPT)
             record = {
                 "conversations": [
-                    {"role": "system",    "content": SYSTEM_PROMPT},
+                    {"role": "system",    "content": sys_prompt},
                     {"role": "user",      "content": user_msg},
                     {"role": "assistant", "content": response},
                 ]
@@ -94,13 +124,18 @@ def main():
     parser.add_argument("--input",  default="aider_dataset.jsonl",        help="Source JSONL (default: aider_dataset.jsonl)")
     parser.add_argument("--output", default="ml/unsloth/data/train.jsonl", help="Destination JSONL (default: ml/unsloth/data/train.jsonl)")
     parser.add_argument("--max-seq-chars", type=int, default=16000,        help="Skip examples whose total text exceeds this (default: 16000)")
+    parser.add_argument("--role",   default=None,
+                        choices=["developer", "reviewer", "qa", "all"],
+                        help="Filter and specialize for a specific agent role (default: all)")
     args = parser.parse_args()
 
     print(f"Input  : {args.input}")
     print(f"Output : {args.output}")
+    if args.role:
+        print(f"Role   : {args.role}")
 
-    count, skipped = convert(args.input, args.output, args.max_seq_chars)
-    print(f"Written: {count} examples  ({skipped} skipped — too long or empty)")
+    count, skipped = convert(args.input, args.output, args.max_seq_chars, role=args.role)
+    print(f"Written: {count} examples  ({skipped} skipped — too long, empty, or wrong role)")
 
 
 if __name__ == "__main__":

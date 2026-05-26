@@ -1,5 +1,5 @@
 ﻿import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { resolve } from 'path';
 import {
     buildAiderSpawnSpec,
@@ -28,13 +28,15 @@ function writeConfig(partial: object) {
 }
 
 function prependPath(path: string) {
-    process.env.PATH = `${path};${originalPath ?? ''}`;
+    const sep = process.platform === 'win32' ? ';' : ':';
+    process.env.PATH = `${path}${sep}${originalPath ?? ''}`;
 }
 
 function writeFakeAider() {
     mkdirSync(FAKE_BIN, { recursive: true });
     const fakeAider = resolve(FAKE_BIN, isWin ? 'aider.cmd' : 'aider');
     writeFileSync(fakeAider, isWin ? '@echo off\r\nexit /b 0\r\n' : '#!/usr/bin/env sh\nexit 0\n');
+    if (!isWin) chmodSync(fakeAider, 0o755);
     return fakeAider;
 }
 
@@ -278,13 +280,56 @@ describe('Aider driver', () => {
         expect(launcher).not.toContain("--model 'openai/qwen3:8b'");
     });
 
+    it.skipIf(isWin)('finds aider on PATH', () => {
+        const fakeAider = writeFakeAider();
+        prependPath(FAKE_BIN);
+
+        expect(findAiderCli()).toBe(fakeAider);
+    });
+
+    it.skipIf(isWin)('creates a shell launcher using MeshLLM with Ollama fallback', () => {
+        const fakeAider = writeFakeAider();
+        prependPath(FAKE_BIN);
+
+        const spec = buildAiderSpawnSpec('frontend', TMP, PROMPT_FILE, 'auto', OUTPUT);
+
+        expect('error' in spec).toBe(false);
+        if ('error' in spec) return;
+        expect(spec.cmd).toBe('/bin/sh');
+        expect(spec.args).toEqual([resolve(OUTPUT, 'frontend-aider-launcher.sh')]);
+        expect(spec.ignoreStdio).toBe(true);
+
+        const launcher = readFileSync(resolve(OUTPUT, 'frontend-aider-launcher.sh'), 'utf-8');
+        expect(launcher).toContain(`cd '${TMP}'`);
+        expect(launcher).toContain(`'${fakeAider}'`);
+        expect(launcher).toContain("--model 'openai/qwen3:8b'");
+        expect(launcher).toContain("mesh_base='http://localhost:9337/v1'");
+        expect(launcher).toContain('--openai-api-base "$mesh_base"');
+        expect(launcher).toContain('--openai-api-base "$ollama_base"');
+        expect(launcher).toContain('--message-file');
+        expect(launcher).toContain('--no-auto-commits');
+        expect(launcher).toContain('curl -fsS');
+    });
+
+    it.skipIf(isWin)('uses an explicit model instead of auto default', () => {
+        writeFakeAider();
+        prependPath(FAKE_BIN);
+
+        const spec = buildAiderSpawnSpec('qa', TMP, PROMPT_FILE, 'sdlc-tuned', OUTPUT);
+
+        expect('error' in spec).toBe(false);
+        const launcher = readFileSync(resolve(OUTPUT, 'qa-aider-launcher.sh'), 'utf-8');
+        expect(launcher).toContain("--model 'openai/sdlc-tuned'");
+        expect(launcher).not.toContain("--model 'openai/qwen3:8b'");
+    });
+
     it('routes aider driver through aider spec', () => {
         const cfg: AgentDriverConfig = { type: 'aider' };
         const spec = buildSpawnSpec(cfg, 'frontend', 'do work', TMP, PROMPT_FILE, undefined, OUTPUT);
         if ('error' in spec) {
-            expect(spec.error).toMatch(/Aider|Windows|PowerShell/);
+            expect(spec.error).toMatch(/Aider|Windows|PowerShell|pipx/);
         } else {
-            expect(spec.cmd.toLowerCase()).toMatch(/powershell\.exe$/);
+            expect(spec.cmd).toMatch(isWin ? /powershell\.exe$/i : /\/bin\/sh$/);
         }
     });
 });

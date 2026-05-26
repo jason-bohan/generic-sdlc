@@ -1,7 +1,8 @@
-import type { Dispatch, SetStateAction } from 'react';
+import { useState, type Dispatch, type SetStateAction } from 'react';
 import type { AgentProfile, AgentStatus, PullRequestWithAgentName } from '../types';
 import { StatPill, PrPill, TasksPill, statPillBarStyles as ps } from './StatPill';
 import { floorStatsBarStyles as styles } from './FloorStatsBar.styles';
+import { AgentCostBreakdown } from './AgentCostBreakdown';
 
 export interface FloorStatsBarProps {
     integrationMock: boolean;
@@ -58,6 +59,7 @@ export function FloorStatsBar({
     setShowLedger,
     ledgerTotalTokens,
 }: FloorStatsBarProps) {
+    const [showCostBreakdown, setShowCostBreakdown] = useState(false);
     return (
         <>
             <div
@@ -87,9 +89,21 @@ export function FloorStatsBar({
                 aria-label="System Statistics"
             >
                 <StatPill label="Agents" value={activeAgents.length.toString()} />
-                <StatPill label="Cloud Tokens" value={formatTokens(totalCloudTokens)} />
-                <StatPill label="MeshLLM Tokens" value={formatTokens(totalMeshllmTokens)} />
-                <StatPill label="Ollama Tokens" value={formatTokens(totalOllamaTokens)} />
+                <div style={{ position: 'relative' }}>
+                    <button
+                        onClick={() => setShowCostBreakdown(v => !v)}
+                        style={{ ...ps.statPill, cursor: 'pointer', background: 'var(--bg-card)' }}
+                        title="Click to see per-agent cost breakdown"
+                    >
+                        <span style={ps.statLabel}>Tokens {showCostBreakdown ? '▲' : '▼'}</span>
+                        <span style={ps.statValue}>
+                            {formatTokens(totalCloudTokens + totalMeshllmTokens + totalOllamaTokens)}
+                        </span>
+                    </button>
+                    {showCostBreakdown && (
+                        <AgentCostBreakdown agentStatuses={agentStatuses} displayNames={displayNames} />
+                    )}
+                </div>
                 <TasksPill count={activeWorkItemCount} agentStatuses={agentStatuses} displayNames={displayNames} onSelectAgent={onSelectAgent} />
                 <PrPill items={headerOpenPullRequests} />
                 {testSummary && testSummary.last_run_at && (
