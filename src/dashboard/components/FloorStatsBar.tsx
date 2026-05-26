@@ -156,8 +156,8 @@ export function FloorStatsBar({
                     onClick={async () => {
                         const next = externalMode === 'mock' ? 'live' : 'mock';
                         const warning = next === 'live'
-                            ? 'Switch to LIVE mode?\n\nThis will enable real Azure DevOps calls, git pushes, and Agility updates. Only do this if you are ready to work against production systems.'
-                            : 'Switch to MOCK mode?\n\nAll external integrations (ADO, Agility, git push) will be simulated. Agent work will not affect production systems.';
+                            ? 'Switch to LIVE mode?\n\nThis will enable real review/build adapter calls, git pushes, and planning updates. Only do this if you are ready to work against production systems.'
+                            : 'Switch to MOCK mode?\n\nExternal integrations (review/build adapters, planning updates, git push) will be simulated. Agent work will not affect production systems.';
                         if (!window.confirm(warning)) return;
                         try {
                             const r = await fetch('/api/external-mode', {

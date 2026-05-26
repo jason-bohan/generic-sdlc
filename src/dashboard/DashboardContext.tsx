@@ -12,7 +12,7 @@ import type { AgentStatus, AgentProfile, ChatMessage, Phase } from './types';
 import { AGENT_ROSTER } from './types';
 import type { DashboardNotification } from './NotificationToast';
 import {
-    useAgilityTaskSync,
+    usePlanningTaskSync,
     useDashboardBootstrapFetch,
     usePhaseTransitionNotifications,
     useTauriStatusNotifications,
@@ -116,7 +116,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     }, [updateAgentStatus]);
 
     useAgentStatusSSE(updateAgentStatus);
-    useAgilityTaskSync(statuses);
+    usePlanningTaskSync(statuses);
     useTauriStatusNotifications(statuses, notifiedEvents);
     usePhaseTransitionNotifications(statuses, prevPhases, resolveAgentName, setNotifications);
     useAgentChatSSE(chatAgent?.id ?? null, setChatMessages);

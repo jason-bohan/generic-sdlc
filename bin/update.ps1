@@ -78,7 +78,7 @@ try {
             & npm update
 
             if ($breakingCount -gt 0) {
-                Write-Host "`n  Creating Agility story for $breakingCount breaking updates..." -ForegroundColor Yellow
+                Write-Host "`n  Creating planning story for $breakingCount breaking updates..." -ForegroundColor Yellow
 
                 $pkgList = ($breakingPkgs | ForEach-Object { "$($_.name) $($_.current)->$($_.latest)" }) -join ", "
 
@@ -104,12 +104,12 @@ try {
                 } | ConvertTo-Json -Compress -Depth 5
 
                 try {
-                    $storyResult = Invoke-RestMethod -Uri "http://localhost:3847/api/agility/create-story" -Method Post -Body $storyBody -ContentType "application/json" -TimeoutSec 120
+                    $storyResult = Invoke-RestMethod -Uri "http://localhost:3847/api/planning/create-story" -Method Post -Body $storyBody -ContentType "application/json" -TimeoutSec 120
                     if ($storyResult.number) {
                         Write-Host "  Story $($storyResult.number) created: $storyName" -ForegroundColor Green
                         Write-Host "  Assign to DevOps via the dashboard to start the upgrade." -ForegroundColor DarkGray
                     } else {
-                        Write-Host "  Story created but no number returned. Check Agility." -ForegroundColor Yellow
+                        Write-Host "  Story created but no number returned. Check planning." -ForegroundColor Yellow
                     }
                 } catch {
                     Write-Host "  Dashboard not running or timed out." -ForegroundColor Yellow
@@ -137,10 +137,10 @@ try {
     Pop-Location
 }
 
-$mcpAgilityDir = Join-Path $sdlc-frameworkRoot "tools\mcp-agility"
-if (Test-Path (Join-Path $mcpAgilityDir "package.json")) {
-    Write-Host "  MCP Agility server:" -ForegroundColor DarkGray
-    Push-Location $mcpAgilityDir
+$mcpPlanningDir = Join-Path $sdlc-frameworkRoot "tools\mcp-agility"
+if (Test-Path (Join-Path $mcpPlanningDir "package.json")) {
+    Write-Host "  MCP planning server:" -ForegroundColor DarkGray
+    Push-Location $mcpPlanningDir
     try {
         $mcpOutdated = & npm outdated --json 2>$null | ConvertFrom-Json
         if ($mcpOutdated -and ($mcpOutdated | Get-Member -MemberType NoteProperty).Count -gt 0) {
@@ -151,7 +151,7 @@ if (Test-Path (Join-Path $mcpAgilityDir "package.json")) {
                 $latestMajor = if ($info.latest) { ($info.latest -split '\.')[0] } else { "?" }
                 $breaking = $currentMajor -ne $latestMajor -and $currentMajor -ne "?"
                 $flag = if ($breaking) { " [BREAKING]" } else { "" }
-                if ($breaking) { $issues += "MCP Agility: $pkg has breaking major update $($info.current) -> $($info.latest)" }
+                if ($breaking) { $issues += "MCP planning: $pkg has breaking major update $($info.current) -> $($info.latest)" }
                 Write-Host "    $pkg $($info.current) -> $($info.latest)$flag" -ForegroundColor $(if ($breaking) { "Red" } else { "DarkGray" })
             }
             if (-not $DryRun) {
@@ -361,10 +361,10 @@ if (Test-Path $mcpJson) {
 
 $mcpNodeModules = Join-Path $sdlc-frameworkRoot "tools\mcp-agility\node_modules"
 if (Test-Path $mcpNodeModules) {
-    Write-Host "  ✅ MCP Agility deps installed." -ForegroundColor Green
+    Write-Host "  ✅ MCP planning deps installed." -ForegroundColor Green
 } else {
-    Write-Host "  ⚠️  MCP Agility deps missing - run 'npm install' or .\bin\setup.ps1" -ForegroundColor Yellow
-    $issues += "MCP Agility node_modules missing"
+    Write-Host "  ⚠️  MCP planning deps missing - run 'npm install' or .\bin\setup.ps1" -ForegroundColor Yellow
+    $issues += "MCP planning node_modules missing"
 }
 
 # -----------------------------------------------------------------------

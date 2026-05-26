@@ -2,7 +2,7 @@
 
 The SDLC Framework API server runs on port 3001 (`npm run server`). The Vite dashboard proxies all `/api/*` requests there automatically.
 
-The API is integration-agnostic: route handlers work with generic SDLC concepts such as work items, tasks, review requests, builds, notifications, and model calls. Some route names are kept for adapter compatibility (`/api/agility/*`, `/api/ado/*`), but callers should treat those payloads as generic planning or review/build operations that can be backed by Digital.ai Agility, Azure DevOps, GitHub, Jira, mock demo state, or another adapter.
+The API is integration-agnostic: route handlers work with generic SDLC concepts such as work items, tasks, review requests, builds, notifications, and model calls. Callers should treat `/api/planning/*` payloads as generic planning operations that can be backed by GitHub, Jira, Digital.ai Agility, local mock state, or another adapter.
 
 Use the **Bruno collection** at `bruno/sdlc-framework/` to explore endpoints interactively — open it in Bruno with the `local` environment selected.
 
@@ -52,24 +52,24 @@ Returns the current status for an agent.
 
 ## Planning / Work Items
 
-These endpoints read and write work-item data through the configured planning adapter. The `/api/agility/*` paths are legacy compatibility routes; their response shapes should stay generic enough to map to other planning systems.
+These endpoints read and write work-item data through the configured planning adapter. Their response shapes should stay generic enough to map to different planning systems.
 
 Legacy payload keys such as `storyNumber`, `storyName`, and `storyDescription` currently represent the generic work-item key, title, and description. New adapters should translate those names at the boundary instead of leaking a tool-specific model through the rest of the system.
 
-### `GET /api/agility/teams`
+### `GET /api/planning/teams`
 Returns active teams from the configured planning adapter.
 
-### `GET /api/agility/class-of-service`
+### `GET /api/planning/class-of-service`
 Returns available class-of-service or priority values from the configured planning adapter.
 
-### `POST /api/agility/stories`
+### `GET /api/planning/stories`
 Returns work items for a team, optionally filtered by status.
 
 ```json
 { "teamId": "Team:1234", "statusFilter": ["In Progress", "Backlog"] }
 ```
 
-### `POST /api/agility/create-story`
+### `POST /api/planning/create-story`
 Creates a work item through the planning adapter with optional LLM-enriched fields.
 
 ```json
@@ -84,7 +84,7 @@ Creates a work item through the planning adapter with optional LLM-enriched fiel
 }
 ```
 
-### `POST /api/agility/story-status`
+### `POST /api/planning/story-status`
 Updates a work item's status, such as `Released` or `Done`.
 
 ```json
@@ -259,4 +259,4 @@ Sends a notification through the configured notification adapter.
 ```
 
 ### `POST /api/ado/vote-pr`
-Casts a vote on a review request through the Azure DevOps compatibility adapter.
+Casts a vote on a review request through the configured review adapter compatibility route.

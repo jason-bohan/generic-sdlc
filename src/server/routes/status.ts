@@ -7,7 +7,7 @@ import { getOllamaHealth } from '../ollamaManager';
 import { json } from '../router';
 import { getDefaultStatus } from '../status-normalize';
 import { onStatusChange, onAgentStatusChange, startStatusFileWatcher, type StatusChangeEvent } from '../status-events';
-import { getActiveSessionId } from '../agent-runner/registry';
+import { getActiveSessionId, isRunnerActive } from '../agent-runner/registry';
 import type { IncomingMessage, ServerResponse } from 'http';
 import type { UseFn } from './types';
 import { buildStatusBroadcast } from '../status-broadcast';
@@ -52,7 +52,7 @@ export function mount(use: UseFn, rootDir: string, _configFile: string): void {
                 const raw = existsSync(statusFile)
                     ? parseJsonUtf8File(statusFile) as Record<string, unknown>
                     : getDefaultStatus(id) as Record<string, unknown>;
-                const running = id in active;
+                const running = id in active || isRunnerActive(id);
                 const status = buildStatusBroadcast(raw, id, running, rootDir);
                 send({ agentId: id, status, timestamp: new Date().toISOString() });
             } catch { /* skip unreadable */ }
@@ -112,7 +112,7 @@ export function mount(use: UseFn, rootDir: string, _configFile: string): void {
         const agentId = url.searchParams.get('agentId') || 'frontend';
         const statusFile = resolve(rootDir, `.${agentId}-status.json`);
         const active = getActiveAgents();
-        const isRunning = agentId in active;
+        const isRunning = agentId in active || isRunnerActive(agentId);
         let raw: Record<string, unknown>;
         if (existsSync(statusFile)) {
             try { raw = parseJsonUtf8File(statusFile) as Record<string, unknown>; }

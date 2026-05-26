@@ -112,7 +112,7 @@ describe('workflow routes', () => {
         }
     });
 
-    it('inherits existing Agility tasks on story assignment and preserves them on approval', async () => {
+    it('inherits existing planning tasks on story assignment and preserves them on approval', async () => {
         mockV1Post(TMP, '/Task', {
             Attributes: {
                 Name: { value: 'Existing YourProject task from taskboard' },
@@ -151,7 +151,7 @@ describe('workflow routes', () => {
         expect(status.currentPhase).toBe('reading-story');
         expect(status.tasks).toHaveLength(1);
         expect(status.tasks[0].name).toBe('Existing YourProject task from taskboard');
-        expect(status.events.some((event: { message: string }) => event.message.includes('Synced 1 existing Agility task'))).toBe(true);
+        expect(status.events.some((event: { message: string }) => event.message.includes('Synced 1 existing planning task'))).toBe(true);
     });
 
     it('mirrors scheduler assignment into SQLite workflow state', async () => {
@@ -302,7 +302,7 @@ describe('workflow routes', () => {
                 agentId: 'backend',
                 storyNumber: 'B-17001',
                 storyName: 'Add pagination to audit trail table',
-                storyDescription: 'Use mock Agility story so task creation can resolve the parent',
+                storyDescription: 'Use mock planning story so task creation can resolve the parent',
             }),
         });
         const workflowItemId = assigned.body.workflow.item.id;
@@ -318,7 +318,7 @@ describe('workflow routes', () => {
         });
 
         expect(created.res.status).toBe(200);
-        expect(created.body.number).toMatch(/^TK-LOCAL-/);
+        expect(created.body.number).toMatch(/^MOCK-TK-/);
 
         const audit = await request(`/api/workflows?id=${workflowItemId}`);
         expect(audit.body.artifacts).toEqual(expect.arrayContaining([

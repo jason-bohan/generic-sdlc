@@ -1,6 +1,7 @@
 ﻿import { resolve } from 'path';
 import { existsSync, writeFileSync, appendFileSync, mkdirSync } from 'fs';
 import { spawn } from 'child_process';
+import { EventEmitter } from 'events';
 import { AgentRunner } from './AgentRunner';
 import { OpenAICompatibleProvider, readLoopProviderConfig } from './provider';
 import {
@@ -12,6 +13,10 @@ import {
 } from '../db';
 import type { Message } from './types';
 import { parseJsonUtf8File } from '../json-file';
+
+export const registryEvents = new EventEmitter();
+
+const TERMINAL_PHASES = new Set(['idle', 'complete', 'error']);
 
 const runners = new Map<string, AgentRunner>();
 
@@ -225,12 +230,18 @@ export function startRunner(
     const cleanup = (status: 'complete' | 'error') => {
         runners.delete(agentId);
         try { dbEndSession(sessionId!, status); } catch { /* non-critical */ }
+        let stoppedPhase: string | null = null;
         if (existsSync(statusFile)) {
             try {
                 const s = parseJsonUtf8File(statusFile) as Record<string, unknown>;
+                const phase = String(s.currentPhase ?? 'idle');
+                if (!TERMINAL_PHASES.has(phase)) stoppedPhase = phase;
                 s.isRunning = false;
                 writeFileSync(statusFile, JSON.stringify(s, null, 2));
             } catch { /* non-critical */ }
+        }
+        if (status === 'complete' && stoppedPhase) {
+            registryEvents.emit('agent-stopped', { agentId, phase: stoppedPhase, configPath, frameworkDir });
         }
     };
 

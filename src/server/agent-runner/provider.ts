@@ -37,9 +37,31 @@ export function readLoopProviderToggles(configPath: string): LoopProviderToggles
 }
 
 export class OpenAICompatibleProvider {
+    private modelResolved = false;
+
     constructor(private readonly config: ProviderConfig) {}
 
+    private async resolveModel(): Promise<void> {
+        if (this.modelResolved) return;
+        this.modelResolved = true;
+        const { baseUrl, apiKey, model } = this.config;
+        if (!model || model === 'auto') return;
+        try {
+            const headers: Record<string, string> = {};
+            if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
+            const r = await fetch(`${baseUrl}/models`, { headers, signal: AbortSignal.timeout(5_000) });
+            if (!r.ok) return;
+            const data = await r.json() as { data?: Array<{ id: string }> };
+            const available = data.data?.map(m => m.id) ?? [];
+            if (available.length > 0 && !available.includes(model)) {
+                console.warn(`[provider] model "${model}" not found — using "${available[0]}" instead`);
+                this.config.model = available[0];
+            }
+        } catch { /* provider unreachable — let complete() surface the error */ }
+    }
+
     async complete(messages: Message[], tools: ToolDefinition[]): Promise<CompletionResponse> {
+        await this.resolveModel();
         const { baseUrl, apiKey, model, maxTokens = 1500, temperature = 0.2 } = this.config;
 
         const body: Record<string, unknown> = {

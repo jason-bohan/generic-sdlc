@@ -57,9 +57,9 @@ export function CreateStoryView({ dir, onBack }: Props) {
                 return;
             }
             return Promise.all([
-                fetch(`${API_BASE}/api/agility/teams`).then(r => r.json()).catch(() => ({ teams: [] })),
-                fetch(`${API_BASE}/api/agility/members`).then(r => r.json()).catch(() => ({ members: [] })),
-                fetch(`${API_BASE}/api/agility/class-of-service`).then(r => r.json()).catch(() => ({ values: [] })),
+                fetch(`${API_BASE}/api/planning/teams`).then(r => r.json()).catch(() => ({ teams: [] })),
+                fetch(`${API_BASE}/api/planning/members`).then(r => r.json()).catch(() => ({ members: [] })),
+                fetch(`${API_BASE}/api/planning/class-of-service`).then(r => r.json()).catch(() => ({ values: [] })),
                 fetch(`${API_BASE}/api/execution-mode`).then(r => (r.ok ? r.json() : {})).catch(() => ({})),
             ]).then(([teamsData, membersData, cosData, modeData]) => {
                 setTeams(teamsData.teams ?? []);
@@ -78,7 +78,7 @@ export function CreateStoryView({ dir, onBack }: Props) {
     async function doCreate() {
         setStatus('enriching');
         try {
-            const res = await fetch(`${API_BASE}/api/agility/create-story`, {
+            const res = await fetch(`${API_BASE}/api/planning/create-story`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

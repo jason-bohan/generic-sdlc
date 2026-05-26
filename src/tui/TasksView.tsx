@@ -75,7 +75,7 @@ export function TasksView({ agent, dir }: Props) {
         }
         setMode('syncing');
         try {
-            const res = await fetch(`${API_BASE}/api/agility/tasks/sync`, {
+            const res = await fetch(`${API_BASE}/api/planning/tasks/sync`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ agentId: agent, storyNumber }),

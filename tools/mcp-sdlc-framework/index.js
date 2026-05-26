@@ -180,17 +180,17 @@ server.tool(
 
 server.tool(
   "assign_story",
-  "Assign an Agility story to a SDLC Framework agent to start the SDLC workflow. The agent will read the story, plan tasks, and begin coding.",
+  "Assign a work item to a SDLC Framework agent to start the SDLC workflow. The agent will read the work item, plan tasks, and begin coding.",
   {
     agentId: z
       .enum(["frontend", "backend", "qa", "ux"])
-      .describe("Agent to assign the story to"),
-    storyNumber: z.string().describe("Agility story number, e.g. B-12345"),
-    storyName: z.string().optional().describe("Story title (avoids an extra Agility lookup)"),
-    storyDescription: z.string().optional().describe("Story description text"),
-    frontend: z.string().optional().describe("Frontend field from the Agility story"),
-    backend: z.string().optional().describe("Backend field from the Agility story"),
-    qa: z.string().optional().describe("QA field from the Agility story"),
+      .describe("Agent to assign the work item to"),
+    storyNumber: z.string().describe("Work item key, e.g. B-12345 or issue number"),
+    storyName: z.string().optional().describe("Work item title (avoids an extra planning lookup)"),
+    storyDescription: z.string().optional().describe("Work item description text"),
+    frontend: z.string().optional().describe("Frontend implementation notes from the planning item"),
+    backend: z.string().optional().describe("Backend implementation notes from the planning item"),
+    qa: z.string().optional().describe("QA notes from the planning item"),
   },
   async (params) => {
     try {
@@ -257,7 +257,7 @@ server.tool(
   "run_workflow_phase",
   "Build the phase runner prompt for a workflow item and optionally spawn the agent. Use this to manually trigger a phase when step mode is off but the agent hasn't auto-started.",
   {
-    storyNumber: z.string().describe("Agility story number, e.g. B-12345"),
+    storyNumber: z.string().describe("Work item key, e.g. B-12345 or issue number"),
     agentId: z
       .enum(["frontend", "backend", "qa", "ux", "reviewer", "devops"])
       .optional()
@@ -309,7 +309,7 @@ server.tool(
 
 server.tool(
   "search_stories",
-  "Search Agility stories visible to SDLC Framework. Returns open, unreleased stories ready for assignment.",
+  "Search planning work items visible to SDLC Framework. Returns open items ready for assignment.",
   {
     team: z.string().optional().describe("Filter by team name"),
     status: z.string().optional().describe("Filter by status name, e.g. 'Future', 'In Progress'"),
@@ -323,7 +323,7 @@ server.tool(
       if (params.status) qs.set("status", params.status);
       if (params.text) qs.set("text", params.text);
       if (params.maxResults) qs.set("maxResults", String(params.maxResults));
-      const data = await apiGet(`/api/agility/stories?${qs}`);
+      const data = await apiGet(`/api/planning/stories?${qs}`);
       return textResult(data);
     } catch (e) {
       return textResult({ error: e.message });
@@ -335,13 +335,13 @@ server.tool(
 
 server.tool(
   "get_story",
-  "Get full Agility story detail including acceptance criteria, frontend/backend/QA fields, and a direct URL to the story.",
+  "Get full planning work item detail including acceptance criteria, frontend/backend/QA fields, and a direct URL.",
   {
-    number: z.string().describe("Agility story number, e.g. B-12345"),
+    number: z.string().describe("Work item key, e.g. B-12345 or issue number"),
   },
   async ({ number }) => {
     try {
-      const data = await apiGet(`/api/agility/story?number=${encodeURIComponent(number)}`);
+      const data = await apiGet(`/api/planning/story?number=${encodeURIComponent(number)}`);
       return textResult(data);
     } catch (e) {
       return textResult({ error: e.message });
@@ -387,7 +387,7 @@ server.tool(
 
 server.tool(
   "get_reviewer_prs",
-  "List Azure DevOps PRs that are eligible for the reviewer agent to pick up.",
+  "List review requests that are eligible for the reviewer agent to pick up.",
   {},
   async () => {
     try {

@@ -1,6 +1,6 @@
 /** Phases where POST /api/agent/continue may honor dashboard-selected tasks (task-scoped work). */
 export const PHASES_ALLOWING_CONTINUE_TASK_SCOPE = new Set<string>([
-    'generating-code', 'addressing-feedback',
+    'generating-code', 'committing', 'addressing-feedback',
     'pending-review', 'reviewing', 'commenting',
     'pending-build', 'monitoring-build',
     'analyzing', 'validating',
@@ -17,6 +17,7 @@ export const AGENT_STEP_MODE_PHASES: Record<string, readonly string[]> = {
     frontend: [
         'analyzing',
         'generating-code',
+        'committing',
         'validating',
         'creating-pr',
         'watching-reviews',
@@ -26,6 +27,7 @@ export const AGENT_STEP_MODE_PHASES: Record<string, readonly string[]> = {
     backend: [
         'analyzing',
         'generating-code',
+        'committing',
         'validating',
         'creating-pr',
         'watching-reviews',

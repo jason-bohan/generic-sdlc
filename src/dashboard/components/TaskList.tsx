@@ -1,6 +1,6 @@
 import type { TaskItem } from '../types';
 import { agentDetailStyles as s } from './AgentDetail.styles';
-import { getAgilityStatusColor, CATEGORY_BADGE_COLORS } from '../agent-detail-utils';
+import { getPlanningStatusColor, CATEGORY_BADGE_COLORS } from '../agent-detail-utils';
 
 export interface TaskListProps {
     agentId: string;
@@ -33,7 +33,7 @@ export function TaskList({
                 const isDone = normalizedStatus === 'completed' || normalizedStatus === 'failed';
                 const isInProgress = normalizedStatus === 'in_progress';
                 const isSelected = selectedTaskIds.has(taskId);
-                const statusColor = getAgilityStatusColor(task.agilityStatus, normalizedStatus);
+                const statusColor = getPlanningStatusColor(task.agilityStatus, normalizedStatus);
                 const catColors = task.category ? (CATEGORY_BADGE_COLORS[task.category] ?? { bg: 'rgba(120,113,108,0.12)', fg: '#78716c' }) : null;
                 const rowTestId = `${agentId}-task-${String(taskId).replace(/[^a-zA-Z0-9_-]/g, '-')}`;
                 const canSelect = isPausedAtStep && taskSelectionAllowed && !isDone && !isInProgress && !isRunning;

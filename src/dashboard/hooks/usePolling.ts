@@ -6,7 +6,7 @@ import type { DashboardNotification } from '../NotificationToast';
 
 const IS_TAURI = !!(typeof window !== 'undefined' && (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__);
 const POLL_INTERVAL = 2000;
-const AGILITY_SYNC_INTERVAL = 30_000;
+const PLANNING_SYNC_INTERVAL = 30_000;
 
 /** @deprecated Use TanStack Router routes instead of this union. Kept only if referenced externally. */
 export type AppView = { kind: 'floor' } | { kind: 'desk'; agent: AgentProfile } | { kind: 'local-backlog' };
@@ -59,7 +59,7 @@ export function useAgentStatusPolling(fetchStatusForAgent: (agent: AgentProfile)
     }, [fetchStatusForAgent]);
 }
 
-export function useAgilityTaskSync(statuses: Record<string, AgentStatus | null>): void {
+export function usePlanningTaskSync(statuses: Record<string, AgentStatus | null>): void {
     useEffect(() => {
         const syncTasks = async () => {
             for (const [agentId, status] of Object.entries(statuses)) {
@@ -67,7 +67,7 @@ export function useAgilityTaskSync(statuses: Record<string, AgentStatus | null>)
                 const phase = status.currentPhase;
                 if (phase === 'idle' || phase === 'complete') continue;
                 try {
-                    await fetch('/api/agility/tasks/sync', {
+                    await fetch('/api/planning/tasks/sync', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ agentId, storyNumber: status.storyNumber }),
@@ -77,7 +77,7 @@ export function useAgilityTaskSync(statuses: Record<string, AgentStatus | null>)
                 }
             }
         };
-        const id = setInterval(syncTasks, AGILITY_SYNC_INTERVAL);
+        const id = setInterval(syncTasks, PLANNING_SYNC_INTERVAL);
         return () => clearInterval(id);
     }, [statuses]);
 }

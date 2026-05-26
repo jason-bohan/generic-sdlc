@@ -368,7 +368,7 @@ export function ContextualActionBar({
                                         : `Select one or more feedback requests to scope ${shownName}'s next run, or continue with all open feedback in view.`
                                     : hasActivePr
                                         ? `${shownName} already has an active PR — waiting for review and merge before another can be created.`
-                                        : `Create PR tells ${shownName} to create or register the PR. Azure DevOps updates when that run completes.`}
+                                        : `Create PR tells ${shownName} to create or register the PR. The review adapter updates when that run completes.`}
             </p>
         </div>
     );

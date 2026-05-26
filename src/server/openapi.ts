@@ -7,7 +7,7 @@ export const openApiSpec = {
     info: {
         title: 'SDLC Framework API',
         version: '3.0.0',
-        description: 'SDLC automation pipeline — agent orchestration, Agility integration, token tracking, and ADO bridge.',
+        description: 'SDLC automation pipeline — agent orchestration, planning integration, token tracking, and review/build adapters.',
     },
     servers: [
         { url: 'http://localhost:3001', description: 'Local standalone server (Scalar at `/`)' },
@@ -16,10 +16,10 @@ export const openApiSpec = {
     tags: [
         { name: 'Status', description: 'Agent status and configuration' },
         { name: 'Workflows', description: 'SQLite SDLC workflow items, phase runner, supervisor, complete-phase' },
-        { name: 'Agility', description: 'VersionOne/Agility story and team operations' },
+        { name: 'Planning', description: 'Planning work item, team, and task operations' },
         { name: 'Scheduler', description: 'Agent workflow scheduling and task management' },
         { name: 'Agents', description: 'Model selection, step mode, continue, hooks, test helpers' },
-        { name: 'Reviewer', description: 'Azure DevOps PR pickup and listing for the reviewer agent' },
+        { name: 'Reviewer', description: 'Review request pickup and listing for the reviewer agent' },
         { name: 'Handoff', description: 'SDLC pipeline handoff events' },
         { name: 'Tokens', description: 'LLM token usage tracking' },
         { name: 'Chat', description: 'Agent messaging system' },
@@ -255,7 +255,7 @@ export const openApiSpec = {
         '/api/reviewer/prs': {
             get: {
                 tags: ['Reviewer'],
-                summary: 'List active Azure DevOps PRs for reviewer pickup',
+                summary: 'List active review requests for reviewer pickup',
                 parameters: [
                     { name: 'projectKey', in: 'query', schema: { type: 'string' } },
                     { name: 'team', in: 'query', schema: { type: 'string' } },
@@ -268,14 +268,14 @@ export const openApiSpec = {
         '/api/reviewer/auto-pick-config': {
             get: {
                 tags: ['Reviewer'],
-                summary: 'Whether dashboard auto-picks first ADO list row (scheduler.agents.reviewer.autoPickAdoList only)',
+                summary: 'Whether dashboard auto-picks first review adapter list row (scheduler.agents.reviewer.autoPickAdoList only)',
                 responses: { '200': { description: '{ autoPickPullRequests, autoPickAdoList, workflowMode, reviewerAutoStart, blockedByStepMode, globalStepMode, reviewerStepMode }' } },
             },
         },
         '/api/reviewer/pick-pr': {
             post: {
                 tags: ['Reviewer'],
-                summary: 'Assign reviewer desk to an ADO PR',
+                summary: 'Assign reviewer desk to a review request',
                 requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['prId'], properties: { prId: { type: 'number' }, projectKey: { type: 'string' } } } } } },
                 responses: { '200': { description: 'ok + pr + spawn flags' } },
             },
@@ -392,14 +392,14 @@ export const openApiSpec = {
         '/mock-v1/rest-1.v1/Data/{assetPath}': {
             get: {
                 tags: ['Mock'],
-                summary: 'Mock Agility GET (mock externalMode only)',
+                summary: 'Mock planning GET (mock externalMode only)',
                 description: 'The server matches any path under `/mock-v1/rest-1.v1/Data`; nested segments appear after the prefix. Scalar may show one path segment in `assetPath`; use the raw URL for multi-segment assets.',
                 parameters: [{ name: 'assetPath', in: 'path', required: true, schema: { type: 'string' } }],
                 responses: { '200': { description: 'VersionOne-shaped JSON' } },
             },
             post: {
                 tags: ['Mock'],
-                summary: 'Mock Agility POST',
+                summary: 'Mock planning POST',
                 description: 'See GET for path behavior.',
                 parameters: [{ name: 'assetPath', in: 'path', required: true, schema: { type: 'string' } }],
                 responses: { '200': { description: 'Created asset' } },
@@ -441,51 +441,51 @@ export const openApiSpec = {
                 responses: { '200': { description: 'Merged profile record' }, '400': { description: 'Invalid JSON body' } },
             },
         },
-        '/api/agility/teams': {
-            get: { tags: ['Agility'], summary: 'List Agility teams', responses: { '200': { description: 'Array of teams', content: { 'application/json': { schema: { type: 'object', properties: { teams: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, name: { type: 'string' } } } } } } } } } } },
+        '/api/planning/teams': {
+            get: { tags: ['Planning'], summary: 'List planning teams', responses: { '200': { description: 'Array of teams', content: { 'application/json': { schema: { type: 'object', properties: { teams: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, name: { type: 'string' } } } } } } } } } } },
         },
-        '/api/agility/stories': {
+        '/api/planning/stories': {
             get: {
-                tags: ['Agility'],
-                summary: 'List stories for a team',
+                tags: ['Planning'],
+                summary: 'List work items for a team',
                 parameters: [
                     { name: 'team', in: 'query', schema: { type: 'string' }, description: 'Team name filter' },
                     { name: 'status', in: 'query', schema: { type: 'string' }, description: 'Status filter' },
                     { name: 'text', in: 'query', schema: { type: 'string' }, description: 'Name text search' },
                     { name: 'maxResults', in: 'query', schema: { type: 'string', default: '20' }, description: 'Max results' },
                 ],
-                responses: { '200': { description: 'Filtered stories' } },
+                responses: { '200': { description: 'Filtered work items' } },
             },
         },
-        '/api/agility/story': {
+        '/api/planning/story': {
             get: {
-                tags: ['Agility'],
-                summary: 'Get story detail',
+                tags: ['Planning'],
+                summary: 'Get work item detail',
                 parameters: [
-                    { name: 'number', in: 'query', schema: { type: 'string' }, description: 'Story number (e.g. B-17013)' },
-                    { name: 'oid', in: 'query', schema: { type: 'string' }, description: 'Story OID (alternative to number)' },
+                    { name: 'number', in: 'query', schema: { type: 'string' }, description: 'Work item key (e.g. B-17013)' },
+                    { name: 'oid', in: 'query', schema: { type: 'string' }, description: 'Work item OID (alternative to number)' },
                 ],
-                responses: { '200': { description: 'Full story detail with description, AC, frontend, backend, QA fields' } },
+                responses: { '200': { description: 'Full work item detail with description, AC, frontend, backend, QA fields' } },
             },
         },
-        '/api/agility/class-of-service': {
-            get: { tags: ['Agility'], summary: 'List Class of Service values', responses: { '200': { description: 'CoS values' } } },
+        '/api/planning/class-of-service': {
+            get: { tags: ['Planning'], summary: 'List Class of Service values', responses: { '200': { description: 'CoS values' } } },
         },
-        '/api/agility/members': {
-            get: { tags: ['Agility'], summary: 'List Agility members', responses: { '200': { description: 'Members array' } } },
+        '/api/planning/members': {
+            get: { tags: ['Planning'], summary: 'List planning members', responses: { '200': { description: 'Members array' } } },
         },
-        '/api/agility/tasks': {
+        '/api/planning/tasks': {
             get: {
-                tags: ['Agility'],
-                summary: 'List tasks for a story',
-                parameters: [{ name: 'story', in: 'query', required: true, schema: { type: 'string' }, description: 'Story number' }],
-                responses: { '200': { description: 'Tasks for story' } },
+                tags: ['Planning'],
+                summary: 'List tasks for a work item',
+                parameters: [{ name: 'story', in: 'query', required: true, schema: { type: 'string' }, description: 'Work item key' }],
+                responses: { '200': { description: 'Tasks for work item' } },
             },
         },
-        '/api/agility/create-story': {
+        '/api/planning/create-story': {
             post: {
-                tags: ['Agility'],
-                summary: 'Create and enrich a new story',
+                tags: ['Planning'],
+                summary: 'Create and enrich a new work item',
                 requestBody: {
                     required: true,
                     content: { 'application/json': { schema: { type: 'object', required: ['name', 'classOfService'], properties: {
@@ -502,21 +502,21 @@ export const openApiSpec = {
                         mode: { type: 'string', enum: ['local', 'balanced', 'speed'], description: 'Override execution mode' },
                     } } } },
                 },
-                responses: { '200': { description: 'Created story with enrichment results' } },
+                responses: { '200': { description: 'Created work item with enrichment results' } },
             },
         },
-        '/api/agility/story-status': {
+        '/api/planning/story-status': {
             post: {
-                tags: ['Agility'],
-                summary: 'Update story status (e.g. close/release)',
+                tags: ['Planning'],
+                summary: 'Update work item status (e.g. close/release)',
                 requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['number', 'status'], properties: { number: { type: 'string' }, status: { type: 'string' } } } } } },
                 responses: { '200': { description: 'Status updated' } },
             },
         },
-        '/api/agility/tasks/sync': {
+        '/api/planning/tasks/sync': {
             post: {
-                tags: ['Agility'],
-                summary: 'Sync agent tasks with Agility',
+                tags: ['Planning'],
+                summary: 'Sync agent tasks with the planning adapter',
                 requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['agentId', 'storyNumber'], properties: { agentId: { type: 'string' }, storyNumber: { type: 'string' } } } } } },
                 responses: { '200': { description: 'Merged task list' } },
             },
@@ -550,7 +550,7 @@ export const openApiSpec = {
         '/api/scheduler/create-task': {
             post: {
                 tags: ['Scheduler'],
-                summary: 'Create an Agility task under a story',
+                summary: 'Create a planning task under a work item',
                 requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['agentId', 'storyNumber', 'name'], properties: { agentId: { type: 'string' }, storyNumber: { type: 'string' }, name: { type: 'string' }, estimate: { type: 'number' } } } } } },
                 responses: { '200': { description: 'Created task' } },
             },

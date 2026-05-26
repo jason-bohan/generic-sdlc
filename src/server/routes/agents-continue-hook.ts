@@ -3,7 +3,8 @@ import { parseJsonUtf8File } from '../json-file';
 import { resolve } from 'path';
 import { matchTrigger } from '../../messages/triggers';
 import { dbGetMessages, dbUpdateMessageStatus, dbGetSession } from '../db';
-import { getActiveSessionId, isRunnerActive } from '../agent-runner';
+import { getActiveSessionId, isRunnerActive, registryEvents, stopRunner } from '../agent-runner';
+import { getSchedulerWorkflowMode } from '../schedulerMode';
 import { findStoryOwnerByPrId, wrapUpDeskRequestId } from '../handoff';
 import { phaseAllowsContinueTaskScope } from '../../shared/agentPhases';
 import { skillSubdirForAgentId } from '../../shared/agentSkillDirs';
@@ -201,6 +202,20 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
         } catch (e: unknown) { json(res, { error: e instanceof Error ? e.message : String(e) }, 500); }
     });
 
+    // ── /api/agent/stop ──────────────────────────────────────────────────────
+    use('/api/agent/stop', async (req, res) => {
+        cors(res, 'POST, OPTIONS');
+        if (req.method === 'OPTIONS') { res.statusCode = 204; res.end(); return; }
+        if (req.method !== 'POST') { res.statusCode = 405; res.end('Method not allowed'); return; }
+        const body = await readBody(req);
+        try {
+            const { agentId } = JSON.parse(body);
+            if (!agentId || typeof agentId !== 'string') { json(res, { error: 'agentId required' }, 400); return; }
+            const stopped = stopRunner(agentId.trim());
+            json(res, { ok: stopped, agentId: agentId.trim(), stopped });
+        } catch (e: unknown) { json(res, { error: e instanceof Error ? e.message : String(e) }, 500); }
+    });
+
     // ── /api/hook/agent-stop ─────────────────────────────────────────────────
     // IDE-agnostic watcher trigger. Any IDE (or CI/CD) can POST here instead of
     // running the .cursor/hooks/*.ps1 scripts directly. Returns the same
@@ -368,6 +383,34 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
 
             json(res, { agentId, sessionId, active: isRunnerActive(agentId), session: sessionInfo });
         } catch (e: unknown) { json(res, { error: e instanceof Error ? e.message : String(e) }, 500); }
+    });
+
+    // ── Autonomous mode: auto-resume when loop agent stops mid-phase ─────────
+    registryEvents.on('agent-stopped', ({ agentId, phase, frameworkDir: stoppedDir }: { agentId: string; phase: string; frameworkDir: string }) => {
+        if (stoppedDir !== rootDir) return;
+        try {
+            const cfg = parseJsonUtf8File(configFile) as Record<string, unknown>;
+            if (getSchedulerWorkflowMode(cfg) !== 'autonomous') return;
+        } catch { return; }
+        setTimeout(() => {
+            if (isRunnerActive(agentId)) return;
+            const statusFile = resolve(rootDir, `.${agentId}-status.json`);
+            let storyNum = '';
+            try {
+                const s = parseJsonUtf8File(statusFile) as Record<string, unknown>;
+                storyNum = String(s.storyNumber ?? '').trim();
+                // Clear handoffDispatched so spawnAgent guard doesn't block the resume
+                if (s.handoffDispatched) {
+                    s.handoffDispatched = false;
+                    writeFileSync(statusFile, JSON.stringify(s, null, 2));
+                }
+            } catch { /* proceed with empty storyNum */ }
+            const prompt = buildContinuePrompt(agentId, phase, storyNum, rootDir, configFile, '', '');
+            try {
+                spawnAgent(agentId, prompt, rootDir, getAgentModel(agentId, rootDir));
+                console.log(`[auto-resume] ${agentId} re-spawned after stopping in '${phase}'`);
+            } catch (e) { console.error(`[auto-resume] failed to resume ${agentId}:`, e); }
+        }, 2_000);
     });
 }
 

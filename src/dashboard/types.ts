@@ -8,6 +8,7 @@ export type Phase =
     | 'analyzing'
     | 'creating-tasks'
     | 'generating-code'
+    | 'committing'
     | 'validating'
     | 'creating-pr'
     | 'watching-reviews'
@@ -58,7 +59,7 @@ export interface RequestItem {
     status: 'open' | 'resolved';
     prId?: number;
     createdAt: string;
-    /** Agility / workflow story key when this row is story-scoped (e.g. wrap-up). */
+    /** Planning / workflow story key when this row is story-scoped (e.g. wrap-up). */
     storyNumber?: string;
 }
 
@@ -109,7 +110,7 @@ export interface StatusEvent {
 export interface AgentStatus {
     storyNumber: string | null;
     storyName: string | null;
-    /** HTML or plain text from Agility; dashboard strips tags for display. */
+    /** HTML or plain text from planning adapters; dashboard strips tags for display. */
     storyDescription?: string | null;
     teamId?: string | null;
     currentPhase: Phase;
@@ -455,7 +456,7 @@ export const ORG_CHART: OrgNode[] = [
         avatar: 'O',
         active: true,
         reportsTo: 'ev',
-        description: 'CI/CD pipelines, build validation, and infrastructure. Monitors Azure DevOps pipelines and gates PR merges on passing builds.',
+        description: 'CI/CD pipelines, build validation, and infrastructure. Monitors configured build adapters and gates PR merges on passing builds.',
     },
     {
         id: 'goose',

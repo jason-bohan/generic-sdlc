@@ -109,7 +109,7 @@ function ReviewerPrRowView({
     return (
         <div style={s.reviewerPrRow} data-testid={`reviewer-pr-${pr.id}`}>
             <div style={s.reviewerPrMain}>
-                <a href={pr.url} target="_blank" rel="noopener noreferrer" style={s.reviewerPrId} title={`Open PR #${pr.id} in Azure DevOps`}>#{pr.id}</a>
+                <a href={pr.url} target="_blank" rel="noopener noreferrer" style={s.reviewerPrId} title={`Open review request #${pr.id}`}>#{pr.id}</a>
                 <a href={pr.url} target="_blank" rel="noopener noreferrer" style={s.reviewerPrTitle} title={pr.title}>{pr.title}</a>
                 {pr.storyNumber && <span style={s.reviewerPrStory}>{pr.storyNumber}</span>}
             </div>
@@ -123,7 +123,7 @@ function ReviewerPrRowView({
             <div style={s.reviewerPrActions}>
                 {kind === 'none' ? (
                     pr.reviewerPickupEligible === false ? (
-                        <span style={s.reviewerPickExcluded} title="Dismissed from the desk card, or completed in Azure DevOps / story status. Not offered for pickup.">
+                        <span style={s.reviewerPickExcluded} title="Dismissed from the desk card, or completed in the review adapter / story status. Not offered for pickup.">
                             Not available for pickup
                         </span>
                     ) : (
@@ -195,7 +195,7 @@ function ReviewerPrRowView({
                                     type="button"
                                     style={s.reviewerTextBtn}
                                     onClick={() => {
-                                        if (window.confirm(`Remove PR #${pr.id} from ${shownName}'s desk? This does not change Azure DevOps; you can pick it up again later.`)) {
+                                        if (window.confirm(`Remove PR #${pr.id} from ${shownName}'s desk? This does not change the review adapter; you can pick it up again later.`)) {
                                             void removeActivePrFromReviewerDesk(pr.id);
                                         }
                                     }}
@@ -296,7 +296,7 @@ export function ReviewerDeskPanel(props: ReviewerDeskPanelProps) {
                         <div>
                             <h2 style={s.reviewerPickupTitle}>Available PRs</h2>
                             <p style={s.reviewerPickupSub}>
-                                Active Azure DevOps PRs matching the filters below (manual <strong>Pick Up</strong> per row). This list does not include PRs already on the desk above.
+                                Active review requests matching the filters below (manual <strong>Pick Up</strong> per row). This list does not include requests already on the desk above.
                                 {reviewerAutoPick && ' Optional `scheduler.agents.reviewer.autoPickAdoList`: while idle, auto-pick the first row here (blocked when global or reviewer step mode is on).'}
                                 {reviewerAutoPickBlocked && ' (That auto-list pick is waiting: turn off global or reviewer step mode.)'}
                             </p>
@@ -357,7 +357,7 @@ export function ReviewerDeskPanel(props: ReviewerDeskPanelProps) {
                             </button>
                         </div>
                         <p style={s.reviewerFeedbackHint}>
-                            Local threads from `.reviewer-comments.json` and review items copied onto the story owner when changes were requested. Does not call Azure DevOps.
+                            Local threads from `.reviewer-comments.json` and review items copied onto the story owner when changes were requested. Does not call the review adapter.
                         </p>
                         {reviewerFeedbackLoading ? (
                             <p style={s.emptyText}>Loading feedback...</p>

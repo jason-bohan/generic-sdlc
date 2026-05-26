@@ -23,7 +23,7 @@ describe('Story Picker', () => {
     });
 
     it('opens the story picker modal when Pick Up Story is clicked', () => {
-        cy.intercept('GET', '/api/agility/teams', {
+        cy.intercept('GET', '/api/planning/teams', {
             body: { teams: [{ id: 'team-1', name: 'Fusion' }, { id: 'team-2', name: 'Platform' }] },
         }).as('getTeams');
 
@@ -49,7 +49,7 @@ describe('Story Picker', () => {
     });
 
     it('displays team list from the API', () => {
-        cy.intercept('GET', '/api/agility/teams', {
+        cy.intercept('GET', '/api/planning/teams', {
             body: { teams: [{ id: 'team-1', name: 'Fusion' }, { id: 'team-2', name: 'Platform' }] },
         }).as('getTeams');
         cy.intercept('GET', '/api/active-project', { body: { profile: {} } });
@@ -72,11 +72,11 @@ describe('Story Picker', () => {
     });
 
     it('navigates to stories list when a team is selected', () => {
-        cy.intercept('GET', '/api/agility/teams', {
+        cy.intercept('GET', '/api/planning/teams', {
             body: { teams: [{ id: 'team-1', name: 'Fusion' }] },
         });
         cy.intercept('GET', '/api/active-project', { body: { profile: {} } });
-        cy.intercept('GET', '/api/agility/stories?team=Fusion', {
+        cy.intercept('GET', '/api/planning/stories?team=Fusion', {
             body: {
                 stories: [
                     { id: 's-1', number: 'B-17013', name: 'Add dark mode', status: 'Ready', team: 'Fusion', estimate: 5, priority: 'High' },
@@ -106,18 +106,18 @@ describe('Story Picker', () => {
     });
 
     it('shows story detail and Assign button when a story is selected', () => {
-        cy.intercept('GET', '/api/agility/teams', {
+        cy.intercept('GET', '/api/planning/teams', {
             body: { teams: [{ id: 'team-1', name: 'Fusion' }] },
         });
         cy.intercept('GET', '/api/active-project', { body: { profile: {} } });
-        cy.intercept('GET', '/api/agility/stories?team=Fusion', {
+        cy.intercept('GET', '/api/planning/stories?team=Fusion', {
             body: {
                 stories: [
                     { id: 's-1', number: 'B-17013', name: 'Add dark mode', status: 'Ready', team: 'Fusion', estimate: 5, priority: 'High' },
                 ],
             },
         });
-        cy.intercept('GET', '/api/agility/story?number=B-17013', {
+        cy.intercept('GET', '/api/planning/story?number=B-17013', {
             body: {
                 id: 's-1',
                 number: 'B-17013',
@@ -159,12 +159,12 @@ describe('Story Picker', () => {
     });
 
     it('calls /api/scheduler/assign when Assign button is clicked', () => {
-        cy.intercept('GET', '/api/agility/teams', { body: { teams: [{ id: 't1', name: 'Fusion' }] } });
+        cy.intercept('GET', '/api/planning/teams', { body: { teams: [{ id: 't1', name: 'Fusion' }] } });
         cy.intercept('GET', '/api/active-project', { body: { profile: {} } });
-        cy.intercept('GET', '/api/agility/stories?team=Fusion', {
+        cy.intercept('GET', '/api/planning/stories?team=Fusion', {
             body: { stories: [{ id: 's-1', number: 'B-17013', name: 'Add dark mode', status: 'Ready', team: 'Fusion', estimate: 5, priority: 'High' }] },
         });
-        cy.intercept('GET', '/api/agility/story?number=B-17013', {
+        cy.intercept('GET', '/api/planning/story?number=B-17013', {
             body: {
                 id: 's-1', number: 'B-17013', name: 'Add dark mode', description: '', status: 'Ready',
                 team: 'Fusion', estimate: 5, priority: 'High', classOfService: 'Standard',
