@@ -84,6 +84,36 @@ npm run server
 
 Short version: you can use more VRAM than this PC by running MeshLLM on a stronger machine, or on a distributed mesh, and setting `MESHLLM_HOST`. Local Ollama alone is still capped by this machine's GPU.
 
+### Tiered local routing
+
+For a 32 GB Mac Studio or a similar local MeshLLM node, keep the 14B coder as the global default and route heavier agents to a 32B Q4 coder:
+
+```json
+{
+  "scheduler": {
+    "loopProvider": {
+      "baseUrl": "http://host.docker.internal:9338/v1",
+      "model": "bartowski/Qwen2.5-Coder-14B-Instruct-GGUF:Q4_K_M",
+      "maxTokens": 4096
+    },
+    "agents": {
+      "developer": { "driver": "loop" },
+      "qa": { "driver": "loop" },
+      "reviewer": {
+        "driver": "loop",
+        "model": "bartowski/Qwen2.5-Coder-32B-Instruct-GGUF:Q4_K_M"
+      },
+      "devops": {
+        "driver": "loop",
+        "model": "bartowski/Qwen2.5-Coder-32B-Instruct-GGUF:Q4_K_M"
+      }
+    }
+  }
+}
+```
+
+The 32B Q4 weights are roughly 18-19 GB before KV cache and runtime overhead. Keep runtime context at or below 16k tokens on a 32 GB unified-memory machine unless MeshLLM shows comfortable headroom. If MeshLLM reports a much smaller per-lane budget, such as about 9 GB, raise that MeshLLM-side memory or lane setting before assigning agents to the 32B model.
+
 ### Limits to be aware of
 
 - The Compose service is a local Mesh-LLM client node; remote GPU capacity and mesh membership are still Mesh-LLM-side configuration.
@@ -92,6 +122,57 @@ Short version: you can use more VRAM than this PC by running MeshLLM on a strong
 - Remote MeshLLM use requires network reachability and sensible security. Use a firewall or VPN, and do not expose port `9337` on the public internet without authentication.
 - SDLC Framework does not verify your exact MeshLLM version, mesh membership, or which models your peers expose. That is MeshLLM-side configuration.
 - `bin/import-unsloth-model.ps1` imports a fine-tuned model into local Ollama; it does not publish that model into a remote MeshLLM mesh.
+
+## Aider Driver
+
+Aider is a terminal-based AI coding tool that the scheduler can use instead of Cursor or Claude Code. It is the preferred fallback when neither IDE is available, and is the recommended driver for headless/macOS environments.
+
+Set it as the global driver in `.sdlc-framework.config.json`:
+
+```json
+{ "scheduler": { "driver": "aider" } }
+```
+
+Or route a specific agent to it:
+
+```json
+{ "scheduler": { "agents": { "developer": { "driver": "aider" } } } }
+```
+
+### macOS installation
+
+Python 3.14 (Homebrew default) cannot build some of aider's pinned C-extension dependencies. Install aider against Python 3.12 instead:
+
+```sh
+brew install pipx python@3.12
+pipx install aider-chat --python python3.12
+```
+
+pipx exposes `aider` on PATH (`~/.local/bin/aider`) — no virtualenv activation needed at runtime.
+
+### Ollama setup (macOS)
+
+```sh
+brew install ollama
+brew services start ollama   # runs as a background service, restarts on login
+ollama pull qwen3:8b
+```
+
+Confirm Ollama is reachable: `curl http://localhost:11434/api/tags`
+
+### How the driver works
+
+When an agent is dispatched, the framework writes a shell launcher at `.agent-output/{agentId}-aider-launcher.sh` and executes it via `/bin/sh`. The launcher:
+
+1. Probes MeshLLM (`$MESHLLM_HOST/v1/models`) with `curl` — uses it if reachable.
+2. Falls back to Ollama (`http://localhost:11434/v1`) if MeshLLM is unavailable.
+3. Runs aider with `--yes-always --no-auto-commits --message-file <prompt>` and logs output to `.agent-output/{agentId}-<timestamp>.log`.
+
+The default model is `qwen3:8b`. Override per-agent with `scheduler.agents.<id>.model`.
+
+### Inline queries
+
+`runInlineQuery` routes the `aider` driver through the loop provider (OpenAI-compatible HTTP) rather than spawning aider, since aider is designed for full coding sessions rather than single-turn queries.
 
 ## Inference Parameters (8B Tuning)
 
