@@ -1,9 +1,8 @@
 ﻿import { resolve } from 'path';
-import { existsSync, readFileSync, writeFileSync, appendFileSync, mkdirSync } from 'fs';
+import { existsSync, writeFileSync, appendFileSync, mkdirSync } from 'fs';
 import { spawn } from 'child_process';
 import { AgentRunner } from './AgentRunner';
 import { OpenAICompatibleProvider, readLoopProviderConfig } from './provider';
-import { skillSubdirForAgentId } from '../../shared/agentSkillDirs';
 import {
     dbCreateSession,
     dbGetActiveSession,
@@ -56,19 +55,16 @@ export function getActiveRunners(): string[] {
     return [...runners.keys()];
 }
 
-function buildSystemPrompt(agentId: string, frameworkDir: string): string {
-    const skillDir = skillSubdirForAgentId(agentId);
-    const skillFile = resolve(frameworkDir, 'skills', skillDir, 'SKILL.md');
-    const skillContent = existsSync(skillFile)
-        ? readFileSync(skillFile, 'utf-8')
-        : `You are the ${agentId} agent in the SDLC Framework SDLC automation platform.`;
-
+function buildSystemPrompt(agentId: string, _frameworkDir: string): string {
     return [
-        skillContent,
+        `You are the ${agentId} agent in the SDLC Framework automation platform.`,
+        'Your skill guide is available via the read_file tool at the path listed in the initial prompt — read it before starting work.',
         '',
         '## Runtime instructions',
         '- Your workspace is the directory passed in the initial prompt.',
+        '- CRITICAL: Always act by calling a tool. Never write a plan or explanation without first calling a tool to gather information or take an action. If you find yourself writing "I will..." or "Step 1:", stop and call a tool instead.',
         '- Use the provided tools (read_file, write_file, list_directory, run_command, search_in_files, update_status) to do your work.',
+        '- If a file is not found at a relative path, try the absolute path shown in the prompt.',
         '- Call update_status after completing each phase so the dashboard stays current.',
         '- When you receive a [/btw] message from the user, address it at the next logical break point.',
         '- When your work is complete, output a brief summary and stop calling tools.',
@@ -123,11 +119,13 @@ export function startRunner(
     frameworkDir: string,
     workspaceDir: string,
     configPath: string,
+    model?: string,
     opts?: { showTerminal?: boolean },
 ): AgentRunner {
     stopRunner(agentId);
 
-    const providerConfig = readLoopProviderConfig(configPath);
+    const modelOverride = model && model !== 'auto' && model !== 'local' ? model : undefined;
+    const providerConfig = readLoopProviderConfig(configPath, modelOverride);
     const statusFile = resolve(frameworkDir, `.${agentId}-status.json`);
     const storyNumber = readStoryNumber(statusFile);
     const currentPhase = readCurrentPhase(statusFile);

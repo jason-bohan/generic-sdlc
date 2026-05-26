@@ -228,11 +228,16 @@ export function mount(use: UseFn, rootDir: string, _configFile: string): void {
                 ...(isWin ? { windowsHide: true } : {}),
             });
             const logStream = createWriteStream(logFile);
-            child.stdout?.pipe(logStream);
-            child.stderr?.pipe(logStream);
+            const safeWrite = (msg: string) => { if (!logStream.writableEnded) logStream.write(msg); };
+            const safeEnd = () => { if (!logStream.writableEnded) logStream.end(); };
+            child.stdout?.pipe(logStream, { end: false });
+            child.stderr?.pipe(logStream, { end: false });
             child.on('error', (err) => {
-                logStream.write(`\n--- Spawn error: ${err.message} ---\n`);
-                logStream.end();
+                const msg = err.message.includes('ENOENT') || err.message.includes('qemu')
+                    ? `\n--- pwsh not available on this platform (${process.platform}/${process.arch}). Install PowerShell or use a bash-based runner. ---\nError: ${err.message}\n`
+                    : `\n--- Spawn error: ${err.message} ---\n`;
+                safeWrite(msg);
+                safeEnd();
                 if (scenario.suppressSpawns) setTestRunnerActive(false);
                 if (activeTestRunner?.logFile === logFile) {
                     lastTestLogFile = logFile;
@@ -242,8 +247,8 @@ export function mount(use: UseFn, rootDir: string, _configFile: string): void {
             activeTestRunner = { pid: child.pid || 0, scenarioId, logFile, startedAt: new Date().toISOString(), process: child };
             if (scenario.suppressSpawns) setTestRunnerActive(true);
             child.on('close', (code) => {
-                logStream.write(`\n--- Test finished with exit code ${code} ---\n`);
-                logStream.end();
+                safeWrite(`\n--- Test finished with exit code ${code} ---\n`);
+                safeEnd();
                 if (scenario.suppressSpawns) setTestRunnerActive(false);
                 if (activeTestRunner?.pid === child.pid) {
                     lastTestLogFile = logFile;

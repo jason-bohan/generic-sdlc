@@ -69,7 +69,7 @@ export interface BuildPhasePromptInput {
     workflowItemId: number;
     serverBaseUrl?: string;
     statusFile?: string;
-    skillFile?: string;
+    skillFile?: string | null;
     targetCodebase?: string | null;
 }
 
@@ -243,16 +243,40 @@ function formatKeyList(keys: readonly string[]): string {
 }
 
 function phaseSpecificInstructions(item: WorkflowItemRow, serverBaseUrl: string): string {
-    if (item.active_phase !== 'reading-story') return '';
+    if (item.active_phase === 'reading-story') {
+        return [
+            'Phase 1 tasking requirements:',
+            `- Fetch or read story ${item.story_number} before planning.`,
+            `- Create/refine implementation tasks through ${serverBaseUrl}/api/scheduler/create-task so mock mode and live mode use the same API boundary.`,
+            '- For each task call: POST /api/scheduler/create-task with agentId, storyNumber, name, and estimate.',
+            '- Use the returned task numbers as taskIds.',
+            '- Include tasks, taskIds, affected repo, branch plan, test matrix, risks, open questions, and auditEvent in the completion payload.',
+        ].join('\n');
+    }
 
-    return [
-        'Phase 1 tasking requirements:',
-        `- Fetch or read story ${item.story_number} before planning.`,
-        `- Create/refine implementation tasks through ${serverBaseUrl}/api/scheduler/create-task so mock mode and live mode use the same API boundary.`,
-        '- For each task call: POST /api/scheduler/create-task with agentId, storyNumber, name, and estimate.',
-        '- Use the returned task numbers as taskIds.',
-        '- Include tasks, taskIds, affected repo, branch plan, test matrix, risks, open questions, and auditEvent in the completion payload.',
-    ].join('\n');
+    if (item.active_phase === 'analyzing') {
+        return [
+            'Analyzing phase — act immediately:',
+            '1. Call read_file on the status file to get the story description and task list.',
+            '2. Call list_directory on the target codebase to find relevant source files.',
+            '3. Call read_file on the specific files that need to change (routes, controllers, validators).',
+            '4. Once you have read the code, call complete_phase with your analysis — do NOT write code yet.',
+            'DO NOT describe what you plan to do. Call read_file immediately.',
+        ].join('\n');
+    }
+
+    if (item.active_phase === 'generating-code') {
+        return [
+            'Generating-code phase — act immediately:',
+            '1. Call read_file on the status file to get the task list and branch plan.',
+            '2. Call read_file on each file that needs to change.',
+            '3. Call write_file to apply the fix to each file.',
+            '4. After writing all files, call complete_phase.',
+            'DO NOT describe what you plan to do. Call read_file immediately.',
+        ].join('\n');
+    }
+
+    return '';
 }
 
 export function buildPhaseRunPrompt(input: BuildPhasePromptInput): OrchestratorResult<PhaseRunPlan> {
@@ -272,14 +296,15 @@ export function buildPhaseRunPrompt(input: BuildPhasePromptInput): OrchestratorR
 
     const serverBaseUrl = input.serverBaseUrl ?? 'http://localhost:3001';
     const statusFile = input.statusFile ?? `.${agentId}-status.json`;
-    const skillFile = input.skillFile ?? `skills/${agentId}/SKILL.md`;
+    // skillFile defaults to the standard path, but passing null explicitly suppresses it
+    const skillFile = input.skillFile !== null ? (input.skillFile ?? `skills/${agentId}/SKILL.md`) : null;
     const nextPhases = workflow.transitions[phase] ?? contract.allowedNext;
     const prompt = [
         `You are ${agentId}. Run SDLC phase "${phase}" for story ${item.story_number}.`,
         '',
         'Read first:',
         `- ${statusFile}`,
-        `- ${skillFile}`,
+        skillFile ? `- ${skillFile}` : null,
         input.targetCodebase ? `- Target codebase: ${input.targetCodebase}` : null,
         (input.targetCodebase || agentId === 'qa')
             ? item.external_mode === 'mock'

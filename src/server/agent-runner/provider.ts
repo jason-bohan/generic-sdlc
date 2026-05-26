@@ -60,7 +60,7 @@ export class OpenAICompatibleProvider {
             method: 'POST',
             headers,
             body: JSON.stringify(body),
-            signal: AbortSignal.timeout(180_000) });
+            signal: AbortSignal.timeout(600_000) });
 
         if (!res.ok) {
             const text = await res.text();
@@ -80,7 +80,7 @@ export class OpenAICompatibleProvider {
     }
 }
 
-export function readLoopProviderConfig(configPath: string): ProviderConfig {
+export function readLoopProviderConfig(configPath: string, modelOverride?: string): ProviderConfig {
     const explicitBase = process.env.LOOP_PROVIDER_BASE_URL;
     const explicitKey = process.env.LOOP_PROVIDER_API_KEY;
     const openrouterKey = process.env.OPENROUTER_API_KEY;
@@ -115,7 +115,7 @@ export function readLoopProviderConfig(configPath: string): ProviderConfig {
 
     const defaults: ProviderConfig = {
         baseUrl: defaultBase.replace(/\/$/, ''),
-        model: defaultModel,
+        model: modelOverride || defaultModel,
         apiKey: defaultKey };
 
     if (!existsSync(configPath)) return defaults;
@@ -126,7 +126,7 @@ export function readLoopProviderConfig(configPath: string): ProviderConfig {
         if (!lp) return defaults;
         const configApiKey = (lp.apiKey as string | undefined) || defaults.apiKey;
         const configBase = lp.baseUrl as string | undefined;
-        const configModel = lp.model as string | undefined;
+        const configModel = modelOverride || (lp.model as string | undefined);
         const isOrKey = !!(configApiKey?.startsWith('sk-or-'));
         const providerEnabled = readLoopProviderToggles(configPath);
         const resolved: ProviderConfig = {

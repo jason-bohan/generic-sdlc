@@ -16,6 +16,10 @@ import {
     resolveDevopsStatusPrId,
     storyNumberFromOwnerStatus } from '../route-shared';
 import { buildContextPreamble } from '../contextLoader';
+import { startPhaseRun } from '../orchestrator';
+import { dbGetWorkflowItemByStory } from '../db';
+import { getActiveProject } from '../project-config';
+import { resolve as pathResolve } from 'path';
 import type { UseFn } from './types';
 
 export function mount(use: UseFn, rootDir: string, configFile: string): void {
@@ -173,16 +177,10 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                         scopeSuffix;
                     spawnOpts = { bypassHandoffDispatched: true };
                 } else {
-                    prompt =
-                        buildContextPreamble(rootDir) +
-                        `Continue as ${agentIdStr}. Read .${agentIdStr}-status.json (currently in phase '${phase}'${storyNum ? `, story ${storyNum}` : ''}) ` +
-                        `and skills/${skillSubdirForAgentId(agentIdStr)}/SKILL.md. Execute the next phase.${scopeSuffix}${phaseHintClause}`;
+                    prompt = buildContinuePrompt(agentIdStr, phase, storyNum, rootDir, configFile, scopeSuffix, phaseHintClause);
                 }
             } else {
-                prompt =
-                    buildContextPreamble(rootDir) +
-                    `Continue as ${agentIdStr}. Read .${agentIdStr}-status.json (currently in phase '${phase}'${storyNum ? `, story ${storyNum}` : ''}) ` +
-                    `and skills/${skillSubdirForAgentId(agentIdStr)}/SKILL.md. Execute the next phase.${scopeSuffix}${phaseHintClause}`;
+                prompt = buildContinuePrompt(agentIdStr, phase, storyNum, rootDir, configFile, scopeSuffix, phaseHintClause);
             }
             let spawned = false;
             try {
@@ -371,4 +369,41 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
             json(res, { agentId, sessionId, active: isRunnerActive(agentId), session: sessionInfo });
         } catch (e: unknown) { json(res, { error: e instanceof Error ? e.message : String(e) }, 500); }
     });
+}
+
+function buildContinuePrompt(
+    agentId: string,
+    phase: string,
+    storyNum: string,
+    rootDir: string,
+    configFile: string,
+    scopeSuffix: string,
+    phaseHintClause: string,
+): string {
+    // Try the structured phase contract prompt first (has phase-specific instructions)
+    try {
+        if (storyNum) {
+            const workflow = dbGetWorkflowItemByStory(storyNum, agentId);
+            if (workflow) {
+                const activeProfile = getActiveProject(configFile);
+                const hasTargetCodebase = !!activeProfile?.workspacePath && activeProfile.workspacePath !== rootDir;
+                const plan = startPhaseRun({
+                    workflowItemId: workflow.id,
+                    serverBaseUrl: 'http://localhost:3001',
+                    statusFile: hasTargetCodebase
+                        ? pathResolve(rootDir, `.${agentId}-status.json`)
+                        : `.${agentId}-status.json`,
+                    skillFile: null,
+                    targetCodebase: activeProfile?.workspacePath ?? null,
+                });
+                if (plan.ok && plan.value) return plan.value.prompt;
+            }
+        }
+    } catch { /* fall through to generic */ }
+
+    return (
+        buildContextPreamble(rootDir) +
+        `Continue as ${agentId}. Read .${agentId}-status.json (currently in phase '${phase}'${storyNum ? `, story ${storyNum}` : ''}) ` +
+        `and skills/${skillSubdirForAgentId(agentId)}/SKILL.md. Execute the next phase.${scopeSuffix}${phaseHintClause}`
+    );
 }

@@ -431,11 +431,14 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
             try {
                 const workflow = storyNum ? dbGetWorkflowItemByStory(storyNum, agentId) : undefined;
                 if (workflow) {
+                    const hasTargetCodebase = !!activeProfile?.workspacePath && activeProfile.workspacePath !== rootDir;
                     const phasePlan = startPhaseRun({
                         workflowItemId: workflow.id,
                         serverBaseUrl: `http://${req.headers.host || 'localhost:3001'}`,
-                        statusFile: `.${agentId}-status.json`,
-                        skillFile: `skills/${skillSubdirForAgentId(agentId)}/SKILL.md`,
+                        statusFile: hasTargetCodebase
+                            ? resolve(rootDir, `.${agentId}-status.json`)
+                            : `.${agentId}-status.json`,
+                        skillFile: null,
                         targetCodebase: activeProfile?.workspacePath ?? null });
                     if (phasePlan.ok && phasePlan.value) prompt = phasePlan.value.prompt;
                 }

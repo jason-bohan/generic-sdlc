@@ -3,6 +3,7 @@ import { getOllamaHealth, isEmbeddingReady, getActiveModel, startOllamaManager }
 import { buildRagIndex } from '../ragIndex';
 import { getExecMode } from '../modes';
 import { updateTokens } from '../tokens';
+import { getActiveProject } from '../project-config';
 import type { UseFn } from './types';
 
 export function mount(use: UseFn, rootDir: string, configFile: string): void {
@@ -29,7 +30,8 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
         if (!isEmbeddingReady()) { json(res, { error: 'Embedding model not ready' }, 503); return; }
         const body = await readBody(req);
         const { workspaceDir } = body ? JSON.parse(body) : {};
-        const dir = workspaceDir || rootDir;
+        const activeProject = getActiveProject(configFile);
+        const dir = workspaceDir || activeProject.workspacePath || rootDir;
         const ollamaHost = process.env.OLLAMA_HOST || 'http://localhost:11434';
         try {
             const idx = await buildRagIndex(dir, rootDir, ollamaHost);

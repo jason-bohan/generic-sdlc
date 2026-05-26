@@ -2,7 +2,7 @@ FROM node:22-alpine
 
 # curl: health checks; docker-cli + compose + git: sibling container management and remote builds
 # libstdc++ + libgcc + icu-libs: required by PowerShell Core (pwsh) on Alpine
-RUN apk add --no-cache curl docker-cli docker-cli-compose git libstdc++ libgcc icu-libs
+RUN apk add --no-cache curl docker-cli docker-cli-compose git libstdc++ libgcc icu-libs python3 py3-pip python3-dev build-base
 
 # Install PowerShell Core so test scripts (.ps1) run on Linux too
 ARG PS_VERSION=7.4.6
@@ -16,6 +16,11 @@ RUN curl -fsSL https://github.com/PowerShell/PowerShell/releases/download/v${PS_
 
 # Pin npm to 11.x (avoids 10.x audit noise; update when 12 releases)
 RUN npm install -g npm@11.14.1
+
+# Aider provides repo-aware coding sessions for macOS/Linux Docker agents.
+RUN python3 -m venv /opt/aider \
+    && /opt/aider/bin/pip install --no-cache-dir aider-chat \
+    && ln -s /opt/aider/bin/aider /usr/local/bin/aider
 
 WORKDIR /app
 

@@ -1,3 +1,4 @@
+import { resolve } from 'path';
 import { getActiveProject } from '../project-config';
 import { spawnAgent } from '../spawn-agent';
 import { completePhase, startPhaseRun, superviseWorkflow } from '../orchestrator';
@@ -37,10 +38,17 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                     return;
                 }
                 const serverBaseUrl = `http://${req.headers.host || 'localhost:3001'}`;
+                const activeProf = getActiveProject(configFile);
+                const hasTarget = !!activeProf?.workspacePath && activeProf.workspacePath !== rootDir;
+                const agentIdForPlan = dbGetWorkflowItem(resolvedWorkflowItemId)?.active_agent_id ?? '';
                 const plan = startPhaseRun({
                     workflowItemId: resolvedWorkflowItemId,
                     serverBaseUrl,
-                    targetCodebase: getActiveProject(configFile)?.workspacePath ?? null,
+                    statusFile: hasTarget
+                        ? resolve(rootDir, `.${agentIdForPlan}-status.json`)
+                        : undefined,
+                    skillFile: null,
+                    targetCodebase: activeProf?.workspacePath ?? null,
                 });
                 if (!plan.ok || !plan.value) {
                     json(res, { error: plan.error }, 409);

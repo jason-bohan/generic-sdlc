@@ -7,8 +7,10 @@ import { isCursorAiEnabled, isClaudeEnabled } from './cursor-ai-policy';
 import { isMockExternalMode } from './external-mode';
 import { ensureMockShims } from './mock-mode-guard';
 import { startRunner } from './agent-runner';
+import { readLoopProviderConfig } from './agent-runner/provider';
 import { dbCreateAgentSession, dbUpdateAgentSession } from './db';
 import { parseJsonUtf8File } from './json-file';
+import { getActiveProject } from './project-config';
 
 export interface SpawnResult {
     spawned: boolean;
@@ -107,8 +109,16 @@ export function spawnAgent(
     // model='local' routes through the standard cursor driver (run-agent.ps1)
     // which has its own Goose routing with -KeepOpen, banners, and file watchers.
     const driverConfig = resolveAgentDriverConfig(agentId, configPath);
+    const profile = getActiveProject(configPath);
+    const agentWorkspace = profile.workspacePath && existsSync(profile.workspacePath)
+        ? profile.workspacePath
+        : workspaceDir;
+    const launchWorkspace = driverConfig.type === 'aider' ? agentWorkspace : workspaceDir;
+    const providerBaseUrl = driverConfig.type === 'aider'
+        ? readLoopProviderConfig(configPath, model && model !== 'auto' && model !== 'local' ? model : undefined).baseUrl
+        : undefined;
 
-    const spec = buildSpawnSpec(driverConfig, agentId, effectivePrompt, workspaceDir, promptFilePath, model, outputDir);
+    const spec = buildSpawnSpec(driverConfig, agentId, effectivePrompt, launchWorkspace, promptFilePath, model, outputDir, providerBaseUrl);
 
     // Loop driver: start an in-process AgentRunner instead of a subprocess
     if (spec === LOOP_DRIVER_SENTINEL) {
@@ -119,12 +129,18 @@ export function spawnAgent(
                 writeFileSync(statusFile, JSON.stringify(s, null, 2));
             } catch { /* non-critical */ }
         }
-        startRunner(agentId, effectivePrompt, workspaceDir, workspaceDir, configPath, { showTerminal: true });
+        startRunner(agentId, effectivePrompt, workspaceDir, agentWorkspace, configPath, model, { showTerminal: true });
         console.log(`[spawn-agent] ${agentId} started via loop driver`);
         return { spawned: true };
     }
 
     if ('error' in spec) {
+        if (driverConfig.type === 'aider' && spec.error.includes('Aider not found')) {
+            appendFileSync(resolve(workspaceDir, '.agent-spawns.log'), `${new Date().toISOString()} | ${agentId} | FALLBACK | Aider not found, using loop driver\n`);
+            startRunner(agentId, effectivePrompt, workspaceDir, agentWorkspace, configPath, model, { showTerminal: true });
+            console.warn(`[spawn-agent] ${agentId}: Aider not found, using loop driver`);
+            return { spawned: true, reason: 'Aider not found, using loop driver' };
+        }
         // Try fallback drivers before giving up (not when model='local' — goose is explicit)
         if (model !== 'local') {
             const fallback = _buildFallbackSpec(driverConfig.type, agentId, effectivePrompt, workspaceDir, promptFilePath, model, outputDir, isCursorAiEnabled(configPath), isClaudeEnabled(configPath));
