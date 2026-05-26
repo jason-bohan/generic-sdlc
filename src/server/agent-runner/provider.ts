@@ -40,7 +40,7 @@ export class OpenAICompatibleProvider {
     constructor(private readonly config: ProviderConfig) {}
 
     async complete(messages: Message[], tools: ToolDefinition[]): Promise<CompletionResponse> {
-        const { baseUrl, apiKey, model, maxTokens = 4096, temperature = 0.2 } = this.config;
+        const { baseUrl, apiKey, model, maxTokens = 1500, temperature = 0.2 } = this.config;
 
         const body: Record<string, unknown> = {
             model,
