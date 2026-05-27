@@ -23,6 +23,7 @@ interface AgentStatus {
     currentPhase: string;
     currentTask: string | null;
     startedAt: string | null;
+    isRunning?: boolean;
     tokens: {
         cloud: { input: number; output: number };
         meshllm?: { input: number; output: number };
@@ -135,7 +136,7 @@ export default function App({ dir, agent = 'frontend' }: AppProps) {
         );
     }
 
-    const working = status.currentPhase !== 'idle' && status.currentPhase !== 'complete';
+    const working = status.isRunning !== false && status.currentPhase !== 'idle' && status.currentPhase !== 'complete';
     const narrow = (process.stdout.columns ?? 120) < 80;
 
     return (

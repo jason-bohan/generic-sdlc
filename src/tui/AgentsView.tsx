@@ -48,14 +48,16 @@ export function AgentsView({ dir, onBack }: Props) {
                 const file = resolve(dir, `.${id}-status.json`);
                 let phase = 'idle';
                 let story = '';
+                let isRunning: boolean | undefined;
                 if (existsSync(file)) {
                     try {
                         const data = JSON.parse(readFileSync(file, 'utf-8'));
                         phase = data.currentPhase ?? 'idle';
                         story = data.storyNumber ?? '';
+                        isRunning = data.isRunning;
                     } catch { /* ignore */ }
                 }
-                const active = phase !== 'idle' && phase !== 'complete' && phase !== 'build-passed';
+                const active = isRunning !== false && phase !== 'idle' && phase !== 'complete' && phase !== 'build-passed';
                 const inStepMode = stepModes[id] ?? false;
                 return (
                     <Box key={id} gap={1}>
