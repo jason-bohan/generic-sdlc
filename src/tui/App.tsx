@@ -25,6 +25,7 @@ interface AgentStatus {
         cloud: { input: number; output: number };
         meshllm?: { input: number; output: number };
         ollama: { input: number; output: number };
+        mlx?: { input: number; output: number };
     };
     tasks: Array<{ number: string; name: string; status: string }>;
     prs: Array<{ id: number; title: string; status: string; url?: string }>;
@@ -162,7 +163,7 @@ export default function App({ dir, agent = 'frontend' }: AppProps) {
                 <PhaseProgress currentPhase={status.currentPhase} />
 
                 <Box flexDirection="column" gap={1}>
-                    <TokenUsage cloud={status.tokens.cloud} meshllm={status.tokens.meshllm} ollama={status.tokens.ollama} />
+                    <TokenUsage cloud={status.tokens.cloud} meshllm={status.tokens.meshllm} ollama={status.tokens.ollama} mlx={status.tokens.mlx} />
 
                     {status.prs.length > 0 && (
                         <Box flexDirection="column">

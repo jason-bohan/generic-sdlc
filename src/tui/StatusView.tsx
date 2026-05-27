@@ -49,7 +49,10 @@ export function StatusView({ agent, dir, onBack }: Props) {
         cloud: data.tokens?.cloud ?? { input: 0, output: 0 },
         meshllm: data.tokens?.meshllm ?? { input: 0, output: 0 },
         ollama: data.tokens?.ollama ?? { input: 0, output: 0 },
+        mlx: data.tokens?.mlx ?? { input: 0, output: 0 },
     };
+    const localIn = tokens.ollama.input + tokens.mlx.input;
+    const localOut = tokens.ollama.output + tokens.mlx.output;
     const phase = data.currentPhase ?? 'idle';
     const phaseColor = PHASE_COLORS[phase] ?? 'white';
     const tasks = data.tasks ?? [];
@@ -65,7 +68,7 @@ export function StatusView({ agent, dir, onBack }: Props) {
             {data.currentTask && <Box gap={1}><Text bold>Task:</Text><Text>{data.currentTask}</Text></Box>}
             <Box gap={1}><Text bold>Cloud:</Text><Text>{fmt(tokens.cloud.input)} in / {fmt(tokens.cloud.output)} out</Text></Box>
             <Box gap={1}><Text bold>MeshLLM:</Text><Text>{fmt(tokens.meshllm.input)} in / {fmt(tokens.meshllm.output)} out</Text></Box>
-            <Box gap={1}><Text bold>Ollama:</Text><Text>{fmt(tokens.ollama.input)} in / {fmt(tokens.ollama.output)} out</Text></Box>
+            <Box gap={1}><Text bold>Local AI:</Text><Text>{fmt(localIn)} in / {fmt(localOut)} out</Text></Box>
             <Box gap={1}><Text bold>Tasks:</Text><Text>{completed}/{tasks.length} completed</Text></Box>
             <Box gap={1}><Text bold>PRs:</Text><Text>{data.prs?.length ?? 0}</Text></Box>
 
