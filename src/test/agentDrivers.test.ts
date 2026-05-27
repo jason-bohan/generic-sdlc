@@ -7,8 +7,10 @@ import {
     buildCursorSpawnSpec,
     buildGenericSpawnSpec,
     buildGooseSpawnSpec,
+    buildOpenCodeSpawnSpec,
     buildSpawnSpec,
     findAiderCli,
+    findOpenCodeCli,
     readDriverConfig,
     resolveCursorSafeDriverConfig,
     runInlineQuery,
@@ -38,6 +40,14 @@ function writeFakeAider() {
     writeFileSync(fakeAider, isWin ? '@echo off\r\nexit /b 0\r\n' : '#!/usr/bin/env sh\nexit 0\n');
     if (!isWin) chmodSync(fakeAider, 0o755);
     return fakeAider;
+}
+
+function writeFakeOpenCode() {
+    mkdirSync(FAKE_BIN, { recursive: true });
+    const fakeOpenCode = resolve(FAKE_BIN, isWin ? 'opencode.cmd' : 'opencode');
+    writeFileSync(fakeOpenCode, isWin ? '@echo off\r\nexit /b 0\r\n' : '#!/usr/bin/env sh\nexit 0\n');
+    if (!isWin) chmodSync(fakeOpenCode, 0o755);
+    return fakeOpenCode;
 }
 
 beforeEach(() => {
@@ -233,6 +243,62 @@ describe('buildGooseSpawnSpec', () => {
         if ('error' in spec) {
             expect(spec.error).toContain('Goose CLI');
         }
+    });
+});
+
+// ─── OpenCode ────────────────────────────────────────────────────────────────
+
+describe('OpenCode driver', () => {
+    it('finds opencode on PATH', () => {
+        const fakeOpenCode = writeFakeOpenCode();
+        prependPath(FAKE_BIN);
+
+        const found = findOpenCodeCli();
+        expect(found && (isWin ? found.toLowerCase() : found)).toBe(isWin ? fakeOpenCode.toLowerCase() : fakeOpenCode);
+    });
+
+    it('builds args supported by opencode run', () => {
+        const fakeOpenCode = writeFakeOpenCode();
+        prependPath(FAKE_BIN);
+
+        const spec = buildOpenCodeSpawnSpec('frontend', TMP, PROMPT_FILE, 'anthropic/claude-sonnet-4-5', OUTPUT);
+
+        expect('error' in spec).toBe(false);
+        if ('error' in spec) return;
+        expect(spec.cmd).toBe(fakeOpenCode);
+        expect(spec.args).toEqual([
+            'run',
+            '--dir', TMP,
+            '--file', PROMPT_FILE,
+            '--dangerously-skip-permissions',
+            '--model', 'anthropic/claude-sonnet-4-5',
+            'Follow the instructions in the attached prompt file.',
+        ]);
+    });
+
+    it('omits the model flag when model is auto', () => {
+        writeFakeOpenCode();
+        prependPath(FAKE_BIN);
+
+        const spec = buildOpenCodeSpawnSpec('qa', TMP, PROMPT_FILE, 'auto', OUTPUT);
+
+        expect('error' in spec).toBe(false);
+        if ('error' in spec) return;
+        expect(spec.args).not.toContain('--model');
+    });
+
+    it('routes opencode driver through opencode spec', () => {
+        const fakeOpenCode = writeFakeOpenCode();
+        prependPath(FAKE_BIN);
+
+        const cfg: AgentDriverConfig = { type: 'opencode' };
+        const spec = buildSpawnSpec(cfg, 'frontend', 'do work', TMP, PROMPT_FILE, undefined, OUTPUT);
+
+        expect('error' in spec).toBe(false);
+        if ('error' in spec) return;
+        expect(spec.cmd).toBe(fakeOpenCode);
+        expect(spec.args).toContain('--dir');
+        expect(spec.args).toContain('--file');
     });
 });
 
