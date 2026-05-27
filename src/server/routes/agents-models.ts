@@ -203,7 +203,6 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
         if (!cachedCliModels || (now - cacheTimestamp) >= MODEL_CACHE_TTL_MS) {
             cachedCliModels = await fetchModelsFromCli();
             cacheTimestamp = now;
-            console.log(`[models] Fetched ${cachedCliModels.length} models from CLI`);
         }
 
         // Drop noisy variants — keep only meaningful tiers
@@ -223,7 +222,6 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
             for (const m of fallback) {
                 if (!seen.has(m.id)) { filtered.push(m); seen.add(m.id); }
             }
-            console.log('[models] CLI returned no cloud models, merged fallback set');
         }
 
         // If OpenCode is enabled, merge its cloud models so they appear in the picker
