@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Box, Text } from 'ink';
+import { Box, Text, useInput } from 'ink';
 import TextInput from 'ink-text-input';
 import Spinner from 'ink-spinner';
 import { API_BASE } from './workspace';
@@ -7,6 +7,33 @@ import { API_BASE } from './workspace';
 type MessageRole = 'user' | 'assistant' | 'notice';
 interface Message { role: MessageRole; content: string }
 interface Props { agent: string; onBack?: () => void }
+
+const COMMANDS = [
+    { cmd: '/help',   desc: 'show this list',            args: false },
+    { cmd: '/clear',  desc: 'clear conversation',         args: false },
+    { cmd: '/models', desc: 'list available models',      args: false },
+    { cmd: '/model',  desc: 'show or switch model',       args: true  },
+    { cmd: '/system', desc: 'show or set system prompt',  args: true  },
+    { cmd: '/exit',   desc: 'back to menu',               args: false },
+];
+
+function SlashMenu({ items, selectedIndex }: { items: typeof COMMANDS; selectedIndex: number }) {
+    if (items.length === 0) return null;
+    return (
+        <Box flexDirection="column" borderStyle="round" borderColor="gray" marginBottom={1}>
+            {items.map((item, i) => (
+                <Box key={item.cmd} gap={1} paddingX={1}>
+                    <Text color={i === selectedIndex ? 'cyan' : 'white'} bold={i === selectedIndex}>
+                        {item.cmd.padEnd(10)}
+                    </Text>
+                    <Text color={i === selectedIndex ? 'white' : 'gray'}>
+                        {item.desc}
+                    </Text>
+                </Box>
+            ))}
+        </Box>
+    );
+}
 
 function splitMarkdown(content: string): Array<{ kind: 'text'; value: string } | { kind: 'code'; lang: string; value: string }> {
     const parts: Array<{ kind: 'text'; value: string } | { kind: 'code'; lang: string; value: string }> = [];
@@ -150,6 +177,13 @@ export function DirectChatView({ agent, onBack }: Props) {
     const [provider, setProvider] = useState<string | null>(null);
     const [systemPrompt, setSystemPrompt] = useState(DEFAULT_SYSTEM);
     const [error, setError] = useState<string | null>(null);
+    const [menuIndex, setMenuIndex] = useState(-1);
+
+    // Commands filtered by what's been typed after /
+    const menuItems = input.startsWith('/')
+        ? COMMANDS.filter(c => c.cmd.startsWith(input.split(' ')[0]))
+        : [];
+    const menuOpen = menuItems.length > 0 && !loading;
 
     useEffect(() => {
         fetch(`${API_BASE}/api/agent/model?agentId=${encodeURIComponent(agent)}`)
@@ -157,6 +191,34 @@ export function DirectChatView({ agent, onBack }: Props) {
             .then((d: { model: string | null }) => setModel(d.model || 'auto'))
             .catch(() => setModel('auto'));
     }, [agent]);
+
+    // Reset menu index when filtered list changes
+    useEffect(() => {
+        setMenuIndex(-1);
+    }, [input]);
+
+    useInput((_ch, key) => {
+        if (!menuOpen) return;
+
+        if (key.downArrow) {
+            setMenuIndex(prev => Math.min(prev + 1, menuItems.length - 1));
+            return;
+        }
+        if (key.upArrow) {
+            setMenuIndex(prev => Math.max(prev - 1, -1));
+            return;
+        }
+        if ((key.return || key.tab) && menuIndex >= 0) {
+            const selected = menuItems[menuIndex];
+            setInput(selected.args ? `${selected.cmd} ` : selected.cmd);
+            setMenuIndex(-1);
+            return;
+        }
+        if (key.escape) {
+            setInput('');
+            setMenuIndex(-1);
+        }
+    }, { isActive: !loading });
 
     function notice(content: string) {
         setMessages(prev => [...prev, { role: 'notice', content }]);
@@ -223,6 +285,13 @@ export function DirectChatView({ agent, onBack }: Props) {
 
     async function send(text: string) {
         if (!text.trim() || loading) return;
+        // If a menu item is selected, complete it instead of submitting
+        if (menuOpen && menuIndex >= 0) {
+            const selected = menuItems[menuIndex];
+            setInput(selected.args ? `${selected.cmd} ` : selected.cmd);
+            setMenuIndex(-1);
+            return;
+        }
         setInput('');
 
         if (text.trim().startsWith('/')) {
@@ -276,13 +345,13 @@ export function DirectChatView({ agent, onBack }: Props) {
                 <Text dimColor>agent=<Text color="cyan">{agent}</Text></Text>
                 {provider && <Text dimColor>provider=<Text color="green">{provider}</Text></Text>}
             </Box>
-            <Text dimColor>{model ? `model=${model}` : 'model=loading'} · /help for commands · [Esc] back</Text>
+            <Text dimColor>{model ? `model=${model}` : 'model=loading'} · type / for commands · [Esc] back</Text>
 
             <Box flexDirection="column" marginTop={1} marginBottom={1}>
                 {recent.length === 0 && (
                     <Box flexDirection="column" borderStyle="single" borderColor="gray" paddingX={1}>
                         <Text color="green">Ready.</Text>
-                        <Text dimColor>Ask anything, or type /help for slash commands.</Text>
+                        <Text dimColor>Ask anything, or type / for slash commands.</Text>
                     </Box>
                 )}
                 {recent.map((m, i) => {
@@ -310,12 +379,19 @@ export function DirectChatView({ agent, onBack }: Props) {
                 {error && <Text color="red">Error: {error}</Text>}
             </Box>
 
+            {menuOpen && <SlashMenu items={menuItems} selectedIndex={menuIndex} />}
+
             <Box gap={1}>
                 <Text color="cyan" bold>{'>'}</Text>
                 {loading ? (
                     <Text><Spinner type="dots" /> Waiting...</Text>
                 ) : (
-                    <TextInput value={input} onChange={setInput} onSubmit={send} />
+                    <TextInput
+                        value={input}
+                        onChange={setInput}
+                        onSubmit={send}
+                        focus={menuIndex === -1}
+                    />
                 )}
             </Box>
         </Box>
