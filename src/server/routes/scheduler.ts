@@ -19,6 +19,7 @@ import { getExternalMode } from '../external-mode';
 import {
     getSchedulerConfig,
     getAgentModel,
+    isAgilityConfigured,
     mapV1TaskStatus,
     recordWorkflowMilestone,
     tryRecordWorkflowArtifact,
@@ -43,8 +44,7 @@ const AGENT_CATEGORY_NAME: Record<string, string> = {
 
 async function loadPlanningTasksForStory(rootDir: string, storyNumber: string): Promise<RawTask[]> {
     if (isLocalStoryNumber(storyNumber)) return loadLocalTasksForStory(rootDir, storyNumber);
-    const configFile = resolve(rootDir, '.sdlc-framework.config.json');
-    if (!isMockExternalMode(configFile) && !process.env.V1_BASE_URL && !process.env.AGILITY_BASE_URL) return [];
+    if (!isAgilityConfigured(rootDir)) return [];
     const parentData = await v1Fetch(rootDir, '/Story', { sel: 'Number', where: `Number='${storyNumber}'` });
     const storyAsset = (parentData.Assets || [])[0];
     if (!storyAsset) return [];

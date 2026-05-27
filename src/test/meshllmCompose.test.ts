@@ -4,17 +4,9 @@ import { describe, expect, it } from 'vitest';
 import YAML from 'yaml';
 
 describe('MeshLLM Docker Compose service', () => {
-    it('defines an optional MeshLLM service exposing the OpenAI-compatible API', () => {
+    it('does not include a meshllm service in the default compose stack', () => {
         const compose = YAML.parse(readFileSync(resolve(process.cwd(), 'docker-compose.yml'), 'utf8')) as any;
-        const service = compose.services.meshllm;
-
-        expect(service).toBeTruthy();
-        expect(service.profiles).toContain('meshllm');
-        // Image is pre-built by bin/docker-up.ps1 -MeshLLM; compose just runs it
-        expect(service.image).toBe('sdlc-framework-mesh-llm:client');
-        expect(service.pull_policy).toBe('never');
-        expect(service.environment.APP_MODE).toBe('console');
-        expect(service.ports).toContain('9337:9337');
+        expect(compose.services.meshllm).toBeUndefined();
     });
 
     it('can override MeshLLM into local model serving mode', () => {
@@ -37,9 +29,8 @@ describe('MeshLLM Docker Compose service', () => {
         expect(devices[0].capabilities).toContain('gpu');
     });
 
-    it('points the containerized SDLC Framework server at the MeshLLM service name', () => {
+    it('does not wire MESHLLM_HOST into the server environment', () => {
         const compose = YAML.parse(readFileSync(resolve(process.cwd(), 'docker-compose.yml'), 'utf8')) as any;
-
-        expect(compose.services.server.environment.MESHLLM_HOST).toContain('http://meshllm:9337');
+        expect(compose.services.server.environment.MESHLLM_HOST).toBeUndefined();
     });
 });
