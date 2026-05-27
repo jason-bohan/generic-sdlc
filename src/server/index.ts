@@ -15,13 +15,12 @@ import chalk from 'chalk';
 import { initDb, closeDb } from './db';
 import { createApp } from './app';
 import { startAdoBridge, stopAdoBridge } from './ado-bridge';
-import { startOllamaManager, stopOllamaManager, isEmbeddingReady } from './ollamaManager';
+import { stopOllamaManager } from './ollamaManager';
 import { withSecurity } from './security';
 import { probeMeshllm } from './meshllmProvider';
 import { startMeshllm } from './meshllmLauncher';
 import { probeMlx, startMlxIfConfigured } from './mlxProvider';
 import { meshllmLog, mlxLog } from './logger';
-import { buildRagIndex } from './ragIndex';
 import { startHookRunner, stopHookRunner } from './hook-runner';
 import { startAutoFinetune } from './autoFinetune';
 import { getActiveProject } from './project-config';
@@ -112,7 +111,6 @@ server.listen(PORT, () => {
         bootAdoBridge();
     }
     if (!process.env.VITEST) {
-        startOllamaManager(ROOT_DIR);
         probeMeshllm().then(async (available) => {
             if (available) {
                 meshllmLog.success('available as inference provider');
@@ -135,18 +133,6 @@ server.listen(PORT, () => {
         }).catch(() => {});
         startHookRunner({ rootDir: ROOT_DIR });
         startAutoFinetune(ROOT_DIR);
-        // Pre-warm RAG index for the help chatbot once embedding model is ready
-        void (async () => {
-            const ollamaBase = process.env.OLLAMA_HOST || 'http://localhost:11434';
-            for (let i = 0; i < 20; i++) {
-                await new Promise(r => setTimeout(r, 3000));
-                if (isEmbeddingReady()) {
-                    log.info('Warming help RAG index…');
-                    buildRagIndex(ROOT_DIR, ROOT_DIR, ollamaBase).catch(() => {});
-                    break;
-                }
-            }
-        })();
     }
 });
 

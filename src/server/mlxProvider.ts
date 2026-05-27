@@ -143,12 +143,14 @@ async function startMlxServer(
 
     const port = portFromHost(host, defaultPort);
     const bindHost = process.env.MLX_BIND_HOST?.trim();
-    const spawnArgs = ['-m', 'mlx_lm.server', '--model', model, '--port', String(port)];
+    const spawnArgs = ['--model', model, '--port', String(port)];
     if (bindHost) spawnArgs.push('--host', bindHost);
 
+    // MLX_SERVER_CMD lets you point to the venv binary, e.g. ~/mlx-env/bin/mlx_lm.server
+    const serverCmd = process.env.MLX_SERVER_CMD?.trim() || 'mlx_lm.server';
     const spawnFn = deps.spawnFn ?? spawn;
     log.info(`spawning ${label} --model ${model} --port ${port}${bindHost ? ` --host ${bindHost}` : ''}…`);
-    const child = spawnFn('python', spawnArgs, { stdio: 'ignore', detached: false });
+    const child = spawnFn(serverCmd, spawnArgs, { stdio: 'ignore', detached: false });
     child.on('error', (err) => log.warn(`${label}: ${err.message}`));
     child.on('exit', (code) => log.info(`${label} exited (code=${code})`));
 
