@@ -17,7 +17,7 @@ import { MODE_LABELS } from './executionMode';
 interface Props { agent: string | null; dir: string }
 
 type SchedulerWorkflowMode = 'notify' | 'autonomous';
-type Screen = 'menu' | 'assign' | 'chat' | 'dashboard' | 'approve' | 'status' | 'agents' | 'tasks' | 'create-story' | 'switch-agent' | 'set-mode' | 'set-scheduler-mode' | 'toggle-cursor-ai' | 'toggle-claude-ai' | 'set-loop-provider';
+type Screen = 'menu' | 'assign' | 'chat' | 'dashboard' | 'approve' | 'status' | 'agents' | 'tasks' | 'create-story' | 'switch-agent' | 'set-mode' | 'set-scheduler-mode' | 'toggle-cursor-ai' | 'toggle-claude-ai' | 'toggle-opencode' | 'set-loop-provider';
 
 const API_BASE = 'http://localhost:3847';
 const MAINFRAME_ID = 'sdlc-framework';
@@ -64,6 +64,7 @@ export function InteractiveView({ agent: initialAgent, dir: initialDir }: Props)
     const [schedulerMode, setSchedulerMode] = useState<SchedulerWorkflowMode>('notify');
     const [cursorAiEnabled, setCursorAiEnabled] = useState(true);
     const [claudeEnabled, setClaudeEnabled] = useState(true);
+    const [opencodeEnabled, setOpenCodeEnabled] = useState(true);
     const [lpCurrentKey, setLpCurrentKey] = useState<string | null>(null);
     const [lpKeyInput, setLpKeyInput] = useState('');
     const [lpModelInput, setLpModelInput] = useState('');
@@ -87,6 +88,10 @@ export function InteractiveView({ agent: initialAgent, dir: initialDir }: Props)
         fetch(`${API_BASE}/api/claude-ai`)
             .then(r => r.json())
             .then(d => { if (typeof d.enabled === 'boolean') setClaudeEnabled(d.enabled); })
+            .catch(() => {});
+        fetch(`${API_BASE}/api/opencode-ai`)
+            .then(r => r.json())
+            .then(d => { if (typeof d.enabled === 'boolean') setOpenCodeEnabled(d.enabled); })
             .catch(() => {});
         fetch(`${API_BASE}/api/loop-provider`)
             .then(r => r.json())
@@ -169,6 +174,7 @@ export function InteractiveView({ agent: initialAgent, dir: initialDir }: Props)
         ...MAINFRAME_MENU_ITEMS,
         { label: `Cursor AI: ${cursorAiEnabled ? 'ON' : 'OFF'}`, value: 'toggle-cursor-ai' as const },
         { label: `Claude AI: ${claudeEnabled ? 'ON' : 'OFF'}`, value: 'toggle-claude-ai' as const },
+        { label: `OpenCode: ${opencodeEnabled ? 'ON' : 'OFF'}`, value: 'toggle-opencode' as const },
         { label: `OpenRouter${lpCurrentKey ? ` (${lpCurrentKey})` : ' — not configured'}`, value: 'set-loop-provider' as const },
     ];
     const menuItems = isMainframe ? mainframeMenuItems : AGENT_MENU_ITEMS;
@@ -288,6 +294,10 @@ export function InteractiveView({ agent: initialAgent, dir: initialDir }: Props)
                             const next = !claudeEnabled;
                             setClaudeEnabled(next);
                             fetch(`${API_BASE}/api/claude-ai`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: next }) }).catch(() => {});
+                        } else if (item.value === 'toggle-opencode') {
+                            const next = !opencodeEnabled;
+                            setOpenCodeEnabled(next);
+                            fetch(`${API_BASE}/api/opencode-ai`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: next }) }).catch(() => {});
                         } else if (isMainframe && (item.value === 'assign' || item.value === 'chat' || item.value === 'approve' || item.value === 'tasks')) {
                             setPickingAgentFor(item.value);
                         } else {

@@ -36,6 +36,8 @@
         "postinstall": "node -e \"['tools/mcp-agility','tools/mcp-sdlc-framework'].forEach(d=>{try{require('fs').statSync(d+'/package.json');require('child_process').execSync('npm install --production',{cwd:d,stdio:'inherit'})}catch(e){}})\""
     },
     "dependencies": {
+        "@react-three/drei": "^10.7.7",
+        "@react-three/fiber": "^9.6.1",
         "@scalar/express-api-reference": "^0.9.14",
         "@tanstack/react-router": "^1.170.4",
         "@tauri-apps/api": "^2.11.0",
@@ -53,7 +55,8 @@
         "ink-text-input": "^6.0.0",
         "luxon": "^3.5.0",
         "react-markdown": "^10.1.0",
-        "remark-gfm": "^4.0.1"
+        "remark-gfm": "^4.0.1",
+        "three": "^0.184.0"
     },
     "engines": {
         "node": ">=22.0.0 <24.0.0"
@@ -66,6 +69,7 @@
         "@types/node": "^25.6.0",
         "@types/react": "^19.2.14",
         "@types/react-dom": "^19.2.3",
+        "@types/three": "^0.184.0",
         "@vitejs/plugin-react": "^6.0.1",
         "concurrently": "^9.2.1",
         "cypress": "^15.14.2",

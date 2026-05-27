@@ -15,6 +15,7 @@ import type { Message } from './types';
 import { parseJsonUtf8File } from '../json-file';
 
 export const registryEvents = new EventEmitter();
+registryEvents.setMaxListeners(50);
 
 const TERMINAL_PHASES = new Set(['idle', 'complete', 'error']);
 

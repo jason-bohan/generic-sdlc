@@ -44,3 +44,22 @@ export function setClaudeEnabled(configPath: string, enabled: boolean): AiProvid
     return { enabled };
 }
 
+export function isOpenCodeEnabled(configPath: string): boolean {
+    if (process.env.SDLC_FRAMEWORK_OPENCODE === '0') return false;
+    if (!existsSync(configPath)) return false;
+    try {
+        const cfg = parseJsonUtf8File(configPath) as Record<string, any>;
+        if (typeof cfg.opencodeEnabled === 'boolean') return cfg.opencodeEnabled;
+        return false;
+    } catch {
+        return false;
+    }
+}
+
+export function setOpenCodeEnabled(configPath: string, enabled: boolean): AiProviderPolicy {
+    const cfg = existsSync(configPath) ? parseJsonUtf8File(configPath) as Record<string, any> : {};
+    cfg.opencodeEnabled = enabled;
+    writeFileSync(configPath, JSON.stringify(cfg, null, 2));
+    return { enabled };
+}
+

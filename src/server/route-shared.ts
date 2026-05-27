@@ -206,6 +206,11 @@ export async function adoRestFetch(rootDir: string, profile: ProjectProfile, pat
     return response.json().catch(() => ({}));
 }
 
+export function isAgilityConfigured(rootDir: string): boolean {
+    const configFile = resolve(rootDir, '.sdlc-framework.config.json');
+    return isMockExternalMode(configFile) || !!(process.env.V1_BASE_URL || process.env.AGILITY_BASE_URL);
+}
+
 export function getV1Config(rootDir: string) {
     const configFile = resolve(rootDir, '.sdlc-framework.config.json');
     if (isMockExternalMode(configFile)) return { baseUrl: 'mock://agility', token: 'mock-token' };

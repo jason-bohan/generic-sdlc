@@ -22,6 +22,8 @@ describe('AICommandRoom', () => {
         toggleCursorAi: vi.fn(),
         claudeEnabled: true,
         toggleClaudeAi: vi.fn(),
+        opencodeEnabled: true,
+        toggleOpenCode: vi.fn(),
     };
 
     beforeEach(() => {
