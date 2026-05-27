@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mlxHost, probeMlx, startMlxIfConfigured } from '../server/mlxProvider';
+import { mlxHost, mlx14bHost, probeMlx, probeMlx14b, startMlxIfConfigured } from '../server/mlxProvider';
 
 describe('mlxHost()', () => {
     let saved: string | undefined;
@@ -17,6 +17,25 @@ describe('mlxHost()', () => {
     it('returns MLX_HOST when set', () => {
         process.env.MLX_HOST = 'http://localhost:9000';
         expect(mlxHost()).toBe('http://localhost:9000');
+    });
+});
+
+describe('mlx14bHost()', () => {
+    let saved: string | undefined;
+    beforeEach(() => { saved = process.env.MLX_HOST_14B; });
+    afterEach(() => {
+        if (saved === undefined) delete process.env.MLX_HOST_14B;
+        else process.env.MLX_HOST_14B = saved;
+    });
+
+    it('returns default 14B host when MLX_HOST_14B is unset', () => {
+        delete process.env.MLX_HOST_14B;
+        expect(mlx14bHost()).toBe('http://localhost:8083');
+    });
+
+    it('returns MLX_HOST_14B when set', () => {
+        process.env.MLX_HOST_14B = 'http://192.168.1.50:8083';
+        expect(mlx14bHost()).toBe('http://192.168.1.50:8083');
     });
 });
 
@@ -48,28 +67,46 @@ describe('probeMlx()', () => {
     });
 });
 
+describe('probeMlx14b()', () => {
+    const mockFetch = vi.fn();
+    beforeEach(() => { vi.stubGlobal('fetch', mockFetch); });
+    afterEach(() => { vi.unstubAllGlobals(); });
+
+    it('returns true when 14B server responds ok', async () => {
+        mockFetch.mockResolvedValue({ ok: true });
+        const result = await probeMlx14b(true);
+        expect(result).toBe(true);
+    });
+
+    it('returns false when 14B server is down', async () => {
+        mockFetch.mockRejectedValue(new Error('ECONNREFUSED'));
+        const result = await probeMlx14b(true);
+        expect(result).toBe(false);
+    });
+});
+
 describe('startMlxIfConfigured()', () => {
     const mockFetch = vi.fn();
-    let savedModel: string | undefined;
-    let savedHost: string | undefined;
+    let savedVars: Record<string, string | undefined> = {};
 
     beforeEach(() => {
         vi.stubGlobal('fetch', mockFetch);
-        savedModel = process.env.MLX_MODEL;
-        savedHost = process.env.MLX_HOST;
+        for (const k of ['MLX_MODEL', 'MLX_MODEL_14B', 'MLX_HOST', 'MLX_HOST_14B', 'MLX_BIND_HOST']) {
+            savedVars[k] = process.env[k];
+            delete process.env[k];
+        }
         mockFetch.mockResolvedValue({ ok: false }); // not running by default
     });
 
     afterEach(() => {
         vi.unstubAllGlobals();
-        if (savedModel === undefined) delete process.env.MLX_MODEL;
-        else process.env.MLX_MODEL = savedModel;
-        if (savedHost === undefined) delete process.env.MLX_HOST;
-        else process.env.MLX_HOST = savedHost;
+        for (const [k, v] of Object.entries(savedVars)) {
+            if (v === undefined) delete process.env[k];
+            else process.env[k] = v;
+        }
     });
 
-    it('skips launch when MLX_MODEL is not set', async () => {
-        delete process.env.MLX_MODEL;
+    it('skips launch when neither MLX_MODEL nor MLX_MODEL_14B is set', async () => {
         const spawnFn = vi.fn(() => ({ on: vi.fn() } as any));
         const result = await startMlxIfConfigured({ spawnFn });
         expect(result.ok).toBe(false);
@@ -77,7 +114,7 @@ describe('startMlxIfConfigured()', () => {
         expect(spawnFn).not.toHaveBeenCalled();
     });
 
-    it('skips launch when server is already running', async () => {
+    it('skips launch when 8B server is already running', async () => {
         process.env.MLX_MODEL = 'mlx-community/Qwen3-8B-4bit';
         mockFetch.mockResolvedValue({ ok: true });
         const spawnFn = vi.fn(() => ({ on: vi.fn() } as any));
@@ -86,12 +123,10 @@ describe('startMlxIfConfigured()', () => {
         expect(spawnFn).not.toHaveBeenCalled();
     });
 
-    it('spawns mlx_lm.server with correct args when MLX_MODEL is set', async () => {
+    it('spawns 8B server with correct args', async () => {
         process.env.MLX_MODEL = 'mlx-community/Qwen3-8B-4bit';
-        delete process.env.MLX_HOST;
         const spawnFn = vi.fn(() => ({ on: vi.fn() } as any));
-        const result = await startMlxIfConfigured({ spawnFn });
-        expect(result.ok).toBe(true);
+        await startMlxIfConfigured({ spawnFn });
         expect(spawnFn).toHaveBeenCalledWith(
             'python',
             ['-m', 'mlx_lm.server', '--model', 'mlx-community/Qwen3-8B-4bit', '--port', '8082'],
@@ -99,16 +134,35 @@ describe('startMlxIfConfigured()', () => {
         );
     });
 
-    it('uses port from MLX_HOST when set', async () => {
-        process.env.MLX_MODEL = 'mlx-community/Qwen3-8B-4bit';
-        process.env.MLX_HOST = 'http://localhost:9000';
+    it('spawns 14B server on port 8083', async () => {
+        process.env.MLX_MODEL_14B = 'mlx-community/Qwen3-14B-4bit';
         const spawnFn = vi.fn(() => ({ on: vi.fn() } as any));
         await startMlxIfConfigured({ spawnFn });
         expect(spawnFn).toHaveBeenCalledWith(
             'python',
-            ['-m', 'mlx_lm.server', '--model', 'mlx-community/Qwen3-8B-4bit', '--port', '9000'],
+            ['-m', 'mlx_lm.server', '--model', 'mlx-community/Qwen3-14B-4bit', '--port', '8083'],
             expect.anything(),
         );
+    });
+
+    it('spawns both 8B and 14B when both are configured', async () => {
+        process.env.MLX_MODEL = 'mlx-community/Qwen3-8B-4bit';
+        process.env.MLX_MODEL_14B = 'mlx-community/Qwen3-14B-4bit';
+        const spawnFn = vi.fn(() => ({ on: vi.fn() } as any));
+        await startMlxIfConfigured({ spawnFn });
+        expect(spawnFn).toHaveBeenCalledTimes(2);
+        const ports = spawnFn.mock.calls.map((c: any) => c[1]).map((args: string[]) => args[args.indexOf('--port') + 1]);
+        expect(ports).toContain('8082');
+        expect(ports).toContain('8083');
+    });
+
+    it('uses port from MLX_HOST for 8B', async () => {
+        process.env.MLX_MODEL = 'mlx-community/Qwen3-8B-4bit';
+        process.env.MLX_HOST = 'http://localhost:9000';
+        const spawnFn = vi.fn(() => ({ on: vi.fn() } as any));
+        await startMlxIfConfigured({ spawnFn });
+        const args: string[] = spawnFn.mock.calls[0][1];
+        expect(args[args.indexOf('--port') + 1]).toBe('9000');
     });
 
     it('passes --host when MLX_BIND_HOST is set', async () => {
@@ -116,17 +170,13 @@ describe('startMlxIfConfigured()', () => {
         process.env.MLX_BIND_HOST = '0.0.0.0';
         const spawnFn = vi.fn(() => ({ on: vi.fn() } as any));
         await startMlxIfConfigured({ spawnFn });
-        expect(spawnFn).toHaveBeenCalledWith(
-            'python',
-            ['-m', 'mlx_lm.server', '--model', 'mlx-community/Qwen3-8B-4bit', '--port', '8082', '--host', '0.0.0.0'],
-            expect.anything(),
-        );
-        delete process.env.MLX_BIND_HOST;
+        const args: string[] = spawnFn.mock.calls[0][1];
+        expect(args).toContain('--host');
+        expect(args[args.indexOf('--host') + 1]).toBe('0.0.0.0');
     });
 
     it('omits --host when MLX_BIND_HOST is not set', async () => {
         process.env.MLX_MODEL = 'mlx-community/Qwen3-8B-4bit';
-        delete process.env.MLX_BIND_HOST;
         const spawnFn = vi.fn(() => ({ on: vi.fn() } as any));
         await startMlxIfConfigured({ spawnFn });
         const args: string[] = spawnFn.mock.calls[0][1];
