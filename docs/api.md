@@ -115,11 +115,11 @@ Approves a pending-approval agent to begin its workflow.
 { "agentId": "frontend" }
 ```
 
-### `POST /api/scheduler/step-advance`
-Advances an agent paused in step mode to its next phase.
+### `POST /api/agent/continue`
+Continues an agent paused by step mode, a stop hook, or a handoff gate.
 
 ```json
-{ "agentId": "frontend" }
+{ "agentId": "frontend", "phaseHint": "validating", "selectedTaskIds": ["Task:9999"] }
 ```
 
 ### `POST /api/scheduler/create-task`
@@ -129,8 +129,8 @@ Creates a task through the planning adapter and appends it to the agent's status
 { "agentId": "frontend", "storyNumber": "B-12345", "name": "Implement component", "estimate": 2 }
 ```
 
-### `POST /api/scheduler/update-task`
-Updates a task's status.
+### `POST /api/planning/task-status`
+Updates a task's status through the configured planning adapter.
 
 ```json
 { "agentId": "frontend", "taskId": "Task:9999", "status": "completed" }
@@ -245,11 +245,23 @@ Posts a full chat message with trigger matching (used by agent CLI scripts).
 
 ## Config
 
-### `GET /api/config`
-Returns the current `.sdlc-framework.config.json`.
+### `GET /api/active-project`
+Returns the current active project profile.
 
-### `GET /api/projects`
-Returns available project profiles.
+### `GET` / `POST /api/execution-mode`
+Reads or updates the work-item creation mode (`local`, `balanced`, or `speed`).
+
+### `GET` / `POST /api/scheduler-mode`
+Reads or updates scheduler workflow mode (`notify` or `autonomous`).
+
+### `GET` / `POST /api/external-mode`
+Reads or updates live/mock integration mode.
+
+### `GET` / `PUT /api/cursor-ai`, `/api/claude-ai`, `/api/opencode-ai`
+Reads or updates provider-specific AI enablement switches.
+
+### `GET /api/project/standards`
+Discovers rules, skills, `AGENTS.md`, and key paths for a configured project.
 
 ### `POST /api/notify`
 Sends a notification through the configured notification adapter.
@@ -258,5 +270,5 @@ Sends a notification through the configured notification adapter.
 { "title": "Test", "message": "Hello from Bruno", "color": "6366f1" }
 ```
 
-### `POST /api/ado/vote-pr`
-Casts a vote on a review request through the configured review adapter compatibility route.
+### `GET /api/openapi.json`
+Returns the generated OpenAPI 3.1 document used by the Scalar UI at `/`.

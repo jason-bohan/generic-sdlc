@@ -69,11 +69,11 @@ function buildSystemPrompt(agentId: string, _frameworkDir: string): string {
         '## Runtime instructions',
         '- Your workspace is the directory passed in the initial prompt.',
         '- CRITICAL: Always act by calling a tool. Never write a plan or explanation without first calling a tool to gather information or take an action. If you find yourself writing "I will..." or "Step 1:", stop and call a tool instead.',
-        '- Use the provided tools (read_file, write_file, list_directory, run_command, search_in_files, update_status) to do your work.',
+        '- Use the provided tools (read_file, write_file, list_directory, run_command, search_in_files, update_status, create_task, complete_phase) to do your work.',
         '- If a file is not found at a relative path, try the absolute path shown in the prompt.',
         '- Call update_status after completing each phase so the dashboard stays current.',
+        '- CRITICAL: You MUST call complete_phase at the end of every phase. Do NOT output text describing completion — call the tool. The runner will stop automatically after complete_phase succeeds.',
         '- When you receive a [/btw] message from the user, address it at the next logical break point.',
-        '- When your work is complete, output a brief summary and stop calling tools.',
     ].join('\n');
 }
 
@@ -219,6 +219,11 @@ export function startRunner(
             appendFileSync(logFile, `[result] ${evTs} ${data?.name} → ${data?.outputLength ?? 0}b\n`);
         } else if (type === 'message') {
             appendFileSync(logFile, `[message] ${evTs} ${String(data?.content ?? '').slice(0, 500)}\n`);
+        } else if (type === 'phase_complete') {
+            const nextPhase = (data as { nextPhase?: string })?.nextPhase ?? '?';
+            console.log(`[agent-runner:${agentId}] phase complete → ${nextPhase}`);
+            appendFileSync(logFile, `[phase_complete] ${evTs} → ${nextPhase}\n`);
+            appendFileSync(spawnLog, `${evTs} | ${agentId} | loop | session=${sessionId} PHASE_COMPLETE → ${nextPhase}\n`);
         } else if (type === 'injection') {
             appendFileSync(logFile, `[btw] ${evTs} injected\n`);
         } else if (type === 'complete') {

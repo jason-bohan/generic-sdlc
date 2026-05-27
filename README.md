@@ -2,7 +2,7 @@
 
 **SDLC Framework** is a multi-agent SDLC automation platform. Six autonomous AI agents collaborate on software projects end-to-end — from work-item intake through coding, review, CI, and release — with zero human intervention or full step-by-step control.
 
-The API is intentionally integration-agnostic. SDLC Framework models generic SDLC primitives — work items, tasks, branches, review requests, builds, notifications, and releases — then maps them to adapters for tools such as Azure DevOps, Digital.ai Agility, GitHub, Jira, Teams, Slack, or local demo state. It works with **Cursor**, **Claude Code**, **Goose**, OpenAI-compatible loop providers, or any CLI-driven agent via a configurable driver.
+The API is intentionally integration-agnostic. SDLC Framework models generic SDLC primitives — work items, tasks, branches, review requests, builds, notifications, and releases — then maps them to adapters for tools such as Azure DevOps, Digital.ai Agility, GitHub, Jira, Teams, Slack, or local demo state. It works with **Cursor**, **Claude Code**, **OpenCode**, **Aider**, **Goose**, OpenAI-compatible loop providers, or any CLI-driven agent via a configurable driver.
 
 ---
 
@@ -59,8 +59,10 @@ Adapter examples shipped today include Digital.ai Agility/VersionOne for plannin
 | Requirement | Version | Notes |
 |------------|---------|-------|
 | **Node.js** | 22.x (`>=22.0.0 <24.0.0`) | Must match the target workspace runtime |
-| **Cursor** | Latest (optional) | Default driver — MCP servers auto-configured via `.cursor/mcp.json` |
+| **Cursor** | Latest (optional) | Agent driver option — MCP servers auto-configured via `.cursor/mcp.json` |
 | **Claude Code** | Latest (optional) | Alternative driver — set `scheduler.driver: "claude-code"` |
+| **OpenCode** | Latest (optional) | Alternative driver — set `scheduler.driver: "opencode"` |
+| **Aider** | Latest (optional) | Headless/local coding driver — set `scheduler.driver: "aider"` |
 | **Ollama** | Latest (optional) | Local AI — setup script installs if missing |
 | **Goose CLI** | Latest (optional) | Local execution mode — setup script installs |
 | **MeshLLM** | Latest (optional) | Cloud inference acceleration — server falls back to Ollama if absent |
@@ -72,7 +74,7 @@ Adapter examples shipped today include Digital.ai Agility/VersionOne for plannin
 
 ```bash
 # Clone and install
-git clone <repo-url> && cd SDLC Framework
+git clone <repo-url> && cd sdlc-framework
 nvs use 22
 npm run setup       # installs deps, creates .env/config, checks optional tools
 ```
@@ -99,7 +101,7 @@ sdlc-framework --test     # with mock integrations (no live planning/review/noti
 - **Dashboard** — open http://localhost:3847
 - **API docs (Scalar)** — open http://localhost:3001
 - **SQLite TUI** — `npm run db` (requires Harlequin)
-- **Tests** — `npm test` (198 Vitest unit tests)
+- **Tests** — `npm test` (Vitest unit and integration tests)
 - **Cypress** — `npm run cypress:open` (dashboard E2E tests)
 
 ---
@@ -134,8 +136,15 @@ Copy from `.sdlc-framework.config.example.json`, or let `npm run setup` generate
     "sdlc-framework": { "workspacePath": "c:\\repos\\SDLC Framework" }
   },
   "executionMode": "balanced",
+  "cursorAiEnabled": false,
   "scheduler": {
     "mode": "notify",
+    "driver": "loop",
+    "loopProvider": {
+      "baseUrl": "http://localhost:11434/v1",
+      "model": "qwen3:8b",
+      "apiKey": ""
+    },
     "agents": {
       "frontend": { "autoStart": false, "stepMode": false, "displayName": "Lasair" },
       "reviewer": { "autoStart": false, "stepMode": false },
@@ -157,12 +166,63 @@ Copy from `.sdlc-framework.config.example.json`, or let `npm run setup` generate
 |---------|--------|-------------|
 | `executionMode` | `local` / `balanced` / `speed` | How work-item enrichment runs (Ollama, hybrid, or cloud) |
 | `cursorAiEnabled` | `true` / `false` | Server-side kill switch for Cursor AI usage; dashboard header can toggle it |
-| `scheduler.mode` | `immediate` / `notify` | Auto-start agents on assignment vs. require approval |
-| `scheduler.driver` | `cursor` / `claude-code` / `goose` / `generic` | Which IDE CLI agents are spawned through (default: `cursor`) |
+| `scheduler.mode` | `notify` / `autonomous` | Require approval after assignment vs. start immediately |
+| `scheduler.driver` | `cursor` / `claude-code` / `opencode` / `aider` / `goose` / `generic` / `loop` | Which CLI or loop provider agents are spawned through; setup detects the best available option |
+| `scheduler.loopProvider.baseUrl` | OpenAI-compatible `/v1` URL | Routes the in-process `loop` driver and inline queries to Ollama, MeshLLM, OpenRouter, or another compatible provider |
+| `scheduler.loopProvider.model` | model slug | Default model for `loop`, Aider inline queries, and OpenAI-compatible routing |
 | `scheduler.agents.<id>.stepMode` | `true` / `false` | Pause agent after each phase for manual review |
+| `scheduler.agents.<id>.driver` | driver name | Optional per-agent driver override, such as routing `reviewer` through `opencode` |
 | `scheduler.agents.<id>.displayName` | any string | Custom name shown in dashboard and notifications |
 | `scheduler.agents.<id>.model` | model slug | Override which AI model the agent uses |
 | `projects.<name>.workspacePath` | absolute path | Where the project repo lives on your machine |
+
+### OpenCode Driver
+
+OpenCode is a supported scheduler driver for agent coding sessions. Use it globally:
+
+```json
+{
+  "scheduler": {
+    "driver": "opencode"
+  }
+}
+```
+
+Or route one agent to OpenCode while the rest use the global driver:
+
+```json
+{
+  "scheduler": {
+    "driver": "loop",
+    "agents": {
+      "reviewer": { "driver": "opencode", "model": "auto" }
+    }
+  }
+}
+```
+
+OpenCode can be disabled with `opencodeEnabled: false` in config or `SDLC_FRAMEWORK_OPENCODE=0`. If Cursor, Claude Code, or OpenCode are disabled or unavailable, the scheduler falls back toward Aider, Goose, then the in-process `loop` driver.
+
+### MeshLLM Routing
+
+MeshLLM is supported as an OpenAI-compatible model endpoint. Point `MESHLLM_HOST` at a MeshLLM server, or configure the loop provider directly:
+
+```json
+{
+  "scheduler": {
+    "driver": "loop",
+    "loopProvider": {
+      "baseUrl": "http://localhost:9337/v1",
+      "model": "auto",
+      "apiKey": "meshllm",
+      "maxTokens": 4096,
+      "temperature": 0.2
+    }
+  }
+}
+```
+
+The API exposes `GET /api/meshllm/health`, `GET /api/meshllm/models`, `GET /api/meshllm/nodes`, `POST /api/meshllm/nodes/select`, and `POST /api/meshllm/generate`. MeshLLM token usage is tracked separately from cloud and Ollama usage in the dashboard.
 
 ### Workspace Paths
 
@@ -185,6 +245,8 @@ Created by setup. Key vars:
 | `TEAMS_WEBHOOK_URL` | Optional Microsoft Teams notification webhook |
 | `OLLAMA_HOST` | Ollama server URL (default `http://localhost:11434`) |
 | `MESHLLM_HOST` | Optional MeshLLM OpenAI-compatible server URL (default `http://localhost:9337`) |
+| `MESHLLM_START_COMMAND` | Optional command used by the dashboard to start a local MeshLLM service |
+| `SDLC_FRAMEWORK_OPENCODE` | Set to `0` to block OpenCode usage even when configured |
 | `HF_HOME` | HuggingFace model cache for fine-tuning (optional, set by `ml/unsloth/setup-env.ps1`) |
 
 ---
@@ -212,17 +274,16 @@ Professional demos should be repeatable without hardcoding one customer's tools 
 Recommended structure:
 
 ```text
-demo-data/
+data/
   presets/
-    enterprise-agility.json
-    startup-github.json
-    minimal-jira.json
+    golden-agile-backlog.json
 ```
 
 Run a demo by selecting a preset at startup:
 
 ```powershell
-$env:DEMO_PRESET = "enterprise-agility"
+$env:PM_PROVIDER = "mock"
+$env:DEMO_PRESET = "golden-agile-backlog"
 npm run dev
 ```
 
@@ -237,8 +298,8 @@ Work-item creation supports three modes, selectable from the dashboard or config
 | Mode | Engine | Description |
 |------|--------|-------------|
 | **Local** | Goose + Ollama | Fully local — Goose CLI orchestrates with Ollama SLM |
-| **Balanced** | Ollama + REST API | Ollama enriches work-item fields, REST API writes through the configured planning adapter |
-| **Speed** | Cursor Cloud AI | Cloud-powered enrichment via `cursor agent` CLI |
+| **Balanced** | Ollama/MeshLLM + REST API | Local or MeshLLM-compatible inference enriches work-item fields, REST API writes through the configured planning adapter |
+| **Speed** | Active agent driver | Cloud or CLI-powered enrichment via the configured `scheduler.driver`, including OpenCode when selected |
 
 All modes track token usage per work item in a SQLite ledger visible from the dashboard.
 
@@ -260,9 +321,10 @@ npm run setup                  # First-run setup on macOS, Linux, or Windows
 ```powershell
 npm run btw                    # /btw inter-agent messaging CLI
 npm run ollama                 # Ollama delegator (generate, embedding, RAG)
+npm run docker:up:meshllm      # Start the optional local MeshLLM Compose service
 npm run pr:watch               # Watch configured review requests for changes
 npm run plan                   # Generate implementation plans
-npm run cypress:YourProject         # Run Cypress against YourProject project
+npm run cypress:YourProject    # Run Cypress against YourProject project
 ```
 
 ---
@@ -303,7 +365,7 @@ See [MCP: SDLC Framework SDLC Orchestration](docs/mcp-sdlc-framework.md) for the
 ## Testing
 
 ```powershell
-npm test              # 212 Vitest unit tests
+npm test              # Vitest unit and integration tests
 npm run test:watch    # Watch mode
 npm run cypress:run   # Headless Cypress (dashboard E2E)
 npm run cypress:open  # Interactive Cypress runner

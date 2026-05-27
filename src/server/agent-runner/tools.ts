@@ -154,14 +154,25 @@ export const AGENT_TOOLS: ToolDefinition[] = [
         type: 'function',
         function: {
             name: 'complete_phase',
-            description: 'Mark the current SDLC phase as complete and advance to the next phase. Call this ONLY after all tasks are created.',
+            description: 'Mark the current SDLC phase as complete and advance to the next phase. Call this to signal phase completion — do NOT use http_request for this. Required at the end of every phase.',
             parameters: {
                 type: 'object',
                 properties: {
-                    next_phase: { type: 'string', description: 'Next phase to move to, e.g. "analyzing"' },
-                    summary: { type: 'string', description: 'Short summary of what was done in this phase' },
-                    branch_plan: { type: 'string', description: 'Branch name plan, e.g. "fix/1-validate-task-title"' },
-                    risks: { type: 'string', description: 'Any identified risks or open questions' },
+                    next_phase: { type: 'string', description: 'Next phase id to advance to (e.g. "analyzing", "generating-code", "creating-pr")' },
+                    summary: { type: 'string', description: 'Short human-readable summary of what was accomplished in this phase' },
+                    branch_plan: { type: 'string', description: 'Git branch name for this story, e.g. "fix/2-validate-input". Required for phases that produce branchPlan.' },
+                    risks: { type: 'string', description: 'Risks or blockers identified. Required for phases that produce risks; use "None identified" only after actually checking.' },
+                    open_questions: { type: 'string', description: 'Open questions or unknowns. Required for phases that produce openQuestions; use "None" only after actually checking.' },
+                    test_matrix: { type: 'string', description: 'Test plan or test matrix description. Required for phases that produce testMatrix.' },
+                    code_changes: { type: 'string', description: 'Summary of code changes made (for generating-code / validating phases)' },
+                    classification: { type: 'string', description: 'Story classification, e.g. "feature", "bug", "refactor"' },
+                    affected_repo: { type: 'string', description: 'Name of the affected repository or project' },
+                    review_verdict: { type: 'string', description: 'Review decision: "approved", "request-changes", or "rejected" (for reviewing-pr phase)' },
+                    design_spec: { type: 'string', description: 'Design specification summary (for designing phase)' },
+                    validation_results: { type: 'string', description: 'Validation/lint/build results summary' },
+                    test_results: { type: 'string', description: 'Test run results summary' },
+                    static_analysis: { type: 'string', description: 'Static analysis results summary' },
+                    build: { type: 'string', description: 'Build outcome summary' },
                 },
                 required: ['next_phase', 'summary'],
             },
@@ -367,7 +378,8 @@ async function toolCreateTask(
     } catch { /* use default */ }
 
     try {
-        const res = await fetch('http://localhost:3001/api/scheduler/create-task', {
+        const serverBaseUrl = process.env.SDLC_SERVER_URL || 'http://localhost:3001';
+        const res = await fetch(`${serverBaseUrl}/api/scheduler/create-task`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ agentId, storyNumber, name, estimate }),
@@ -411,40 +423,76 @@ async function toolCompletePhase(
     let workflowItemId: number | null = null;
     let storyNumber = '1';
     let tasks: unknown[] = [];
+    let currentPhase = 'reading-story';
     try {
         const s = parseJsonUtf8File(statusFile) as Record<string, unknown>;
         if (typeof s.workflowItemId === 'number') workflowItemId = s.workflowItemId;
         if (typeof s.storyNumber === 'string') storyNumber = s.storyNumber;
         if (Array.isArray(s.tasks)) tasks = s.tasks;
+        if (typeof s.currentPhase === 'string' && s.currentPhase) currentPhase = s.currentPhase;
     } catch { /* use defaults */ }
 
-    if (!workflowItemId) return 'Error: workflowItemId not found in status file';
+    if (!workflowItemId) return 'Error: workflowItemId not found in status file. The workflow must be registered before completing a phase.';
 
-    const payload = {
-        workflowItemId,
-        agentId,
-        phase: 'reading-story',
-        nextPhase,
-        outputs: {
-            tasks,
-            taskIds: tasks.map((t: unknown) => (t as Record<string, unknown>)?.id ?? '').filter(Boolean),
-            branchPlan: args.branch_plan ?? `fix/${storyNumber}-fix`,
-            testMatrix: 'Unit tests for validation logic',
-            risks: args.risks ?? 'None identified',
-            openQuestions: 'None',
-            auditEvent: { action: 'reading-story-complete', storyNumber, agentId },
+    const taskIds = tasks.map((t: unknown) => (t as Record<string, unknown>)?.id ?? '').filter(Boolean);
+
+    const outputs: Record<string, unknown> = {
+        tasks,
+        taskIds,
+        auditEvent: {
+            action: `${currentPhase}-complete`,
+            storyNumber,
+            agentId,
+            nextPhase,
+            timestamp: new Date().toISOString(),
         },
-        message: summary,
     };
+    const putIfProvided = (key: string, value: unknown) => {
+        if (value !== undefined && value !== null) outputs[key] = value;
+    };
+    const stringArg = (key: string) => args[key] === undefined || args[key] === null ? undefined : String(args[key]);
+    putIfProvided('branchPlan', stringArg('branch_plan'));
+    putIfProvided('risks', stringArg('risks'));
+    putIfProvided('openQuestions', stringArg('open_questions'));
+    if (args.test_matrix !== undefined && args.test_matrix !== null) {
+        outputs.testMatrix = Array.isArray(args.test_matrix) ? args.test_matrix : [String(args.test_matrix)];
+    }
+    putIfProvided('codeChanges', stringArg('code_changes'));
+    putIfProvided('classification', stringArg('classification'));
+    putIfProvided('affectedRepo', stringArg('affected_repo'));
+    putIfProvided('handoff', args.handoff);
+    putIfProvided('designSpec', stringArg('design_spec'));
+    putIfProvided('validationResults', stringArg('validation_results'));
+    putIfProvided('reviewVerdict', stringArg('review_verdict'));
+    if (Array.isArray(args.review_threads)) outputs.reviewThreads = args.review_threads;
+    putIfProvided('testResults', stringArg('test_results'));
+    putIfProvided('staticAnalysis', stringArg('static_analysis'));
+    putIfProvided('build', stringArg('build'));
+    putIfProvided('pr', args.pr);
+    putIfProvided('mockPr', args.mock_pr);
+
+    const serverBaseUrl = process.env.SDLC_SERVER_URL || 'http://localhost:3001';
+    const payload = { workflowItemId, agentId, phase: currentPhase, nextPhase, outputs, message: summary };
 
     try {
-        const res = await fetch('http://localhost:3001/api/workflows/complete-phase', {
+        const res = await fetch(`${serverBaseUrl}/api/workflows/complete-phase`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
             signal: AbortSignal.timeout(15_000),
         });
         const text = await res.text();
+        if (res.ok) {
+            try {
+                const status = parseJsonUtf8File(statusFile) as Record<string, unknown>;
+                status.currentPhase = nextPhase;
+                writeFileSync(statusFile, JSON.stringify(status, null, 2));
+                emitStatusChange(agentId, buildStatusBroadcast(status, agentId, true, frameworkDir));
+            } catch { /* workflow completion succeeded; do not mask the server response */ }
+            // Sentinel prefix tells AgentRunner to stop the loop immediately so
+            // the next phase starts with a fresh conversation context.
+            return `PHASE_COMPLETE::${nextPhase}\nHTTP ${res.status}\n${text.slice(0, 500)}`;
+        }
         return `HTTP ${res.status}\n${text.slice(0, 1000)}`;
     } catch (e) {
         return `Error: ${e instanceof Error ? e.message : String(e)}`;
