@@ -35,6 +35,51 @@ interface MeshLLMModelsResponse {
     error?: string;
 }
 
+export interface MLXHealth {
+    isHealthy: boolean;
+    models: string[];
+    isLoading: boolean;
+}
+
+interface MLXHealthResponse {
+    available?: boolean;
+    models?: string[];
+}
+
+export function useMLXHealth(): MLXHealth {
+    const [health, setHealth] = useState<MLXHealth>({
+        isHealthy: false,
+        models: [],
+        isLoading: true
+    });
+
+    useEffect(() => {
+        const checkHealth = async () => {
+            try {
+                const response = await fetch('/api/mlx/health', { signal: AbortSignal.timeout(5000) });
+                if (response.ok) {
+                    const data = await response.json() as MLXHealthResponse;
+                    setHealth({
+                        isHealthy: data.available === true,
+                        models: data.models ?? [],
+                        isLoading: false
+                    });
+                } else {
+                    setHealth({ isHealthy: false, models: [], isLoading: false });
+                }
+            } catch {
+                setHealth({ isHealthy: false, models: [], isLoading: false });
+            }
+        };
+
+        checkHealth();
+        const interval = setInterval(checkHealth, 30000);
+        return () => clearInterval(interval);
+    }, []);
+
+    return health;
+}
+
 export interface OllamaHealth {
     isHealthy: boolean;
     activeModel: string | null;

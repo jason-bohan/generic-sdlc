@@ -27,6 +27,7 @@ import { mount as mountMeetingAgent } from './routes/meeting-agent';
 import { mount as mountAgentOutput } from './routes/agent-output';
 import { mount as mountFinetune } from './routes/finetune';
 import { mount as mountOpenRouter } from './routes/openrouter';
+import { mount as mountMlx } from './routes/mlx';
 
 export function createApp(rootDir: string): http.RequestListener {
     const configFile = resolve(rootDir, '.sdlc-framework.config.json');
@@ -52,6 +53,7 @@ export function createApp(rootDir: string): http.RequestListener {
     mountAgentOutput(use, rootDir);
     mountFinetune(use, rootDir);
     mountOpenRouter(use);
+    mountMlx(use, rootDir, configFile);
 
     return dispatch;
 }

@@ -25,3 +25,4 @@ export const meshllmLog = makeLogger('🕸️', 'meshllm',   chalk.hex('#a78bfa'
 export const adoLog    = makeLogger('🔗', 'ado-bridge', chalk.blue);
 export const ragLog    = makeLogger('🔍', 'rag',        chalk.green);
 export const dbLog     = makeLogger('🗄️', 'db',         chalk.yellow);
+export const mlxLog    = makeLogger('🍎', 'mlx',        chalk.hex('#ff9f1c'));
