@@ -8,7 +8,7 @@ import { getActiveProject, getActiveProjectName, getProjectProfile } from '../pr
 import { spawnAgent } from '../spawn-agent';
 import { isGlobalStepMode } from '../stepMode';
 import { startWorkflow, startPhaseRun } from '../orchestrator';
-import { notify } from '../providers';
+import { notify, resolveProjectTracker } from '../providers';
 import { skillSubdirForAgentId } from '../../shared/agentSkillDirs';
 import { resolveAgentDisplayName } from '../agent-display-names';
 import { dbGetWorkflowItemByStory } from '../db';
@@ -19,8 +19,6 @@ import { getExternalMode } from '../external-mode';
 import {
     getSchedulerConfig,
     getAgentModel,
-    isAgilityConfigured,
-    mapV1TaskStatus,
     recordWorkflowMilestone,
     tryRecordWorkflowArtifact,
     v1Fetch,
@@ -42,37 +40,14 @@ const AGENT_CATEGORY_NAME: Record<string, string> = {
     devops: 'DevOps',
     ux: 'UX' };
 
-async function loadPlanningTasksForStory(rootDir: string, storyNumber: string): Promise<RawTask[]> {
+async function loadPlanningTasksForStory(rootDir: string, configFile: string, storyNumber: string): Promise<RawTask[]> {
     if (isLocalStoryNumber(storyNumber)) return loadLocalTasksForStory(rootDir, storyNumber);
-    if (!isAgilityConfigured(rootDir)) return [];
-    const parentData = await v1Fetch(rootDir, '/Story', { sel: 'Number', where: `Number='${storyNumber}'` });
-    const storyAsset = (parentData.Assets || [])[0];
-    if (!storyAsset) return [];
-    const data = await v1Fetch(rootDir, '/Task', {
-        sel: 'Number,Name,Status.Name,Category.Name,Owners.Name,DetailEstimate,ToDo,Done,Actuals',
-        where: `Parent='${storyAsset.id}'`,
-    });
-    return (data.Assets || []).map((asset: { Attributes?: Record<string, { value?: unknown }> }) => {
-        const at = asset.Attributes || {};
-        const number = at.Number?.value != null ? String(at.Number.value) : '';
-        const ownersRaw = at['Owners.Name']?.value;
-        const owners = Array.isArray(ownersRaw) ? ownersRaw.map(String) : ownersRaw ? [String(ownersRaw)] : [];
-        return {
-            id: number,
-            number,
-            name: at.Name?.value != null ? String(at.Name.value) : number,
-            status: mapV1TaskStatus(at['Status.Name']?.value),
-            agilityStatus: at['Status.Name']?.value ?? null,
-            category: at['Category.Name']?.value ?? undefined,
-            hours: at.DetailEstimate?.value ?? at.ToDo?.value ?? 0,
-            todo: at.ToDo?.value ?? 0,
-            done: at.Done?.value ?? 0,
-            actuals: at.Actuals?.value ?? 0,
-            owners,
-            source: 'agility',
-            inherited: true,
-        } as RawTask;
-    }).filter((task: RawTask) => taskIdentityKey(task) || task.name);
+    try {
+        const tracker = await resolveProjectTracker(rootDir, configFile);
+        return await tracker.getTasksForStory(storyNumber);
+    } catch {
+        return [];
+    }
 }
 
 function mergeInheritedTasks(localTasks: RawTask[], inheritedTasks: RawTask[]): RawTask[] {
@@ -437,7 +412,7 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                 cypress: { lastRun: null, total: 0, passed: 0, failed: 0, skipped: 0, failures: [] },
                 events: [{ timestamp: new Date().toISOString(), type: immediate ? 'success' : 'info', message: immediate ? `Story ${storyNumber} assigned. Starting workflow.` : `Story ${storyNumber} assigned. Awaiting approval to start.` }] };
             try {
-                const inheritedTasks = await loadPlanningTasksForStory(rootDir, storyNumber);
+                const inheritedTasks = await loadPlanningTasksForStory(rootDir, configFile, storyNumber);
                 if (inheritedTasks.length > 0) {
                     status.tasks = inheritedTasks;
                     status.events.push({
@@ -523,7 +498,7 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
             status.currentPhase = 'reading-story';
             status.startedAt = new Date().toISOString();
             try {
-                const inheritedTasks = await loadPlanningTasksForStory(rootDir, String(status.storyNumber || ''));
+                const inheritedTasks = await loadPlanningTasksForStory(rootDir, configFile, String(status.storyNumber || ''));
                 status.tasks = mergeInheritedTasks(Array.isArray(status.tasks) ? status.tasks as RawTask[] : [], inheritedTasks);
                 if (inheritedTasks.length > 0) {
                     status.events.push({

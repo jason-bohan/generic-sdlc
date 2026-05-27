@@ -23,6 +23,12 @@ export async function resolveProjectTracker(rootDir: string, configFile: string)
         const { MockProjectTracker } = await import('./mock');
         return new MockProjectTracker(rootDir);
     }
+    // In mock external mode non-Agility providers (e.g. github) bypass v1Fetch/v1Post
+    // interception, so route them through Agility which is fully intercepted by mockV1Fetch/mockV1Post.
+    if (isMockExternalMode(configFile)) {
+        const { AgilityProjectTracker } = await import('./agility');
+        return new AgilityProjectTracker(rootDir, configFile);
+    }
     if (provider === 'github') {
         const { GitHubProjectTracker } = await import('./github');
         let repo = process.env.GITHUB_REPO ?? '';

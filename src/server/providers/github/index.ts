@@ -1,6 +1,7 @@
 import { execSync } from 'child_process';
 import type { IProjectTracker, FetchStoriesOptions } from '../IProjectTracker';
 import type { Team, WorkItem, WorkItemSummary } from '../types';
+import type { RawTask } from '../../status-normalize';
 
 interface GitHubIssue {
     id: number;
@@ -155,4 +156,6 @@ export class GitHubProjectTracker implements IProjectTracker {
         const issue = await res.json() as GitHubIssue;
         return issueToWorkItem(issue, this.repo);
     }
+
+    async getTasksForStory(_storyNumber: string): Promise<RawTask[]> { return []; }
 }
