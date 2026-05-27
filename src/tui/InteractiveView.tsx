@@ -11,6 +11,7 @@ import { StatusView } from './StatusView';
 import { AgentsView } from './AgentsView';
 import { TasksView } from './TasksView';
 import { CreateStoryView } from './CreateStoryView';
+import { TerminalView } from './TerminalView';
 import App from './App';
 import { getEnabledAgents, resolveWorkspaceForAgent, discoverAgentsFromStatusFiles } from './workspace';
 import type { ExecMode } from './executionMode';
@@ -19,7 +20,7 @@ import { MODE_LABELS } from './executionMode';
 interface Props { agent: string | null; dir: string }
 
 type SchedulerWorkflowMode = 'notify' | 'autonomous';
-type Screen = 'menu' | 'assign' | 'chat' | 'direct-chat' | 'dashboard' | 'approve' | 'status' | 'agents' | 'tasks' | 'create-story' | 'switch-agent' | 'set-mode' | 'set-scheduler-mode' | 'toggle-cursor-ai' | 'toggle-claude-ai' | 'toggle-opencode' | 'set-loop-provider' | 'set-agent-model';
+type Screen = 'menu' | 'assign' | 'chat' | 'direct-chat' | 'dashboard' | 'approve' | 'status' | 'agents' | 'tasks' | 'terminal' | 'create-story' | 'switch-agent' | 'set-mode' | 'set-scheduler-mode' | 'toggle-cursor-ai' | 'toggle-claude-ai' | 'toggle-opencode' | 'set-loop-provider' | 'set-agent-model';
 
 const API_BASE = 'http://localhost:3847';
 const MAINFRAME_ID = 'sdlc-framework';
@@ -34,6 +35,7 @@ const AGENT_MENU_ITEMS = [
     { label: 'Set model', value: 'set-agent-model' as const },
     { label: 'Watch dashboard', value: 'dashboard' as const },
     { label: 'View tasks', value: 'tasks' as const },
+    { label: 'View agent log', value: 'terminal' as const },
     { label: 'Pick up a story', value: 'assign' as const },
     { label: 'Create a story', value: 'create-story' as const },
     { label: 'Chat with agent (/btw)', value: 'chat' as const },
@@ -444,6 +446,7 @@ export function InteractiveView({ agent: initialAgent, dir: initialDir }: Props)
     if (screen === 'status') return <StatusView agent={agent ?? undefined} dir={agentDir} onBack={goBack} />;
     if (screen === 'agents') return <AgentsView dir={agentDir} onBack={goBack} />;
     if (screen === 'tasks') return <TasksView agent={agent!} dir={agentDir} />;
+    if (screen === 'terminal') return <TerminalView agent={agent!} dir={agentDir} onBack={goBack} />;
     if (screen === 'create-story') return <CreateStoryView dir={agentDir} agent={agent ?? undefined} onBack={goBack} />;
     return <App dir={agentDir} agent={agent === MAINFRAME_ID ? 'frontend' : (agent ?? undefined)} />;
 }

@@ -21,10 +21,11 @@
         "baseURL": "http://localhost:8083/v1"
       },
       "models": {
-        "mlx-community/Qwen2.5-Coder-14B-Instruct-4bit": { "name": "Qwen 2.5 Coder 14B Q4" }
+        "mlx-community/Qwen2.5-Coder-14B-Instruct-4bit": { "name": "Qwen 2.5 Coder 14B Q4" },
+        "mlx-community/Qwen2.5-Coder-32B-Instruct-4bit": { "name": "Qwen 2.5 Coder 32B Q4" }
       }
     }
   },
-  "model": "ollama/qwen2.5-coder:14b",
+  "model": "mlx/mlx-community/Qwen2.5-Coder-32B-Instruct-4bit",
   "small_model": "ollama/qwen3:8b"
 }
