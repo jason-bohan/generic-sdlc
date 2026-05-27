@@ -18,11 +18,10 @@
       "npm": "@ai-sdk/openai-compatible",
       "name": "MLX (local)",
       "options": {
-        "baseURL": "http://localhost:8082/v1"
+        "baseURL": "http://localhost:8083/v1"
       },
       "models": {
-        "/Users/jasonbohan/mlx-env/models/Qwen2.5-Coder-14B-Instruct-4bit": { "name": "Qwen 2.5 Coder 14B Q4" },
-        "/Users/jasonbohan/mlx-env/models/Qwen2.5-Coder-7B-Instruct-4bit": { "name": "Qwen 2.5 Coder 7B Q4" }
+        "mlx-community/Qwen2.5-Coder-14B-Instruct-4bit": { "name": "Qwen 2.5 Coder 14B Q4" }
       }
     }
   },

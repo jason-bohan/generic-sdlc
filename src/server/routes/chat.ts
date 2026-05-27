@@ -17,6 +17,7 @@ import { readBody, json } from '../router';
 import { getAgentModel } from '../route-shared';
 import { onChatMessage } from '../status-events';
 import { isCursorAiEnabled } from '../cursor-ai-policy';
+import { listMlxModels, mlxHost, mlx14bHost } from '../mlxProvider';
 import type { IncomingMessage, ServerResponse } from 'http';
 import type { UseFn } from './types';
 import { parseJsonUtf8File } from '../json-file';
@@ -408,25 +409,32 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                 }
             }
 
-            // Local: try Ollama then MLX (both OpenAI-compat)
+            // Local: prefer MLX 14B, then MLX default, then Ollama.
             const localModel = model === 'auto' || model === 'local' ? (getActiveModel() || 'llama3') : model;
+            const mlxModels = await listMlxModels();
+            const defaultMlxModel = process.env.MLX_MODEL_14B || process.env.MLX_MODEL || mlxModels[0] || localModel;
             const localTargets = [
-                { host: process.env.OLLAMA_HOST || 'http://localhost:11434', provider: 'ollama', tokenSource: 'ollama' as const },
-                { host: process.env.MLX_HOST || 'http://localhost:8082', provider: 'mlx', tokenSource: 'cloud' as const },
+                { host: mlx14bHost(), provider: 'mlx-14b', tokenSource: 'mlx' as const, model: model === 'auto' || model === 'local' ? defaultMlxModel : model },
+                { host: mlxHost(), provider: 'mlx', tokenSource: 'mlx' as const, model: model === 'auto' || model === 'local' ? defaultMlxModel : model },
+                { host: process.env.OLLAMA_HOST || 'http://localhost:11434', provider: 'ollama', tokenSource: 'ollama' as const, model: localModel },
             ];
-            for (const { host, provider, tokenSource } of localTargets) {
+            const tried = new Set<string>();
+            for (const { host, provider, tokenSource, model: targetModel } of localTargets) {
+                const key = `${host}|${targetModel}`;
+                if (tried.has(key)) continue;
+                tried.add(key);
                 try {
                     const r = await fetch(`${host}/v1/chat/completions`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ model: localModel, messages, max_tokens: 1024 }),
+                        body: JSON.stringify({ model: targetModel, messages, max_tokens: 1024 }),
                         signal: AbortSignal.timeout(60_000),
                     });
                     if (r.ok) {
                         const data = await r.json() as { choices: Array<{ message: { content: string } }>; usage?: { prompt_tokens?: number; completion_tokens?: number } };
                         const reply = data.choices?.[0]?.message?.content?.trim() ?? '';
                         updateTokens(rootDir, { agentId, source: tokenSource, input: data.usage?.prompt_tokens ?? 0, output: data.usage?.completion_tokens ?? 0 });
-                        json(res, { reply, model: localModel, provider }); return;
+                        json(res, { reply, model: targetModel, provider }); return;
                     }
                 } catch { /* try next */ }
             }

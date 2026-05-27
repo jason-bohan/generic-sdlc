@@ -91,7 +91,7 @@ describe('startMlxIfConfigured()', () => {
 
     beforeEach(() => {
         vi.stubGlobal('fetch', mockFetch);
-        for (const k of ['MLX_MODEL', 'MLX_MODEL_14B', 'MLX_HOST', 'MLX_HOST_14B', 'MLX_BIND_HOST']) {
+        for (const k of ['MLX_MODEL', 'MLX_MODEL_14B', 'MLX_HOST', 'MLX_HOST_14B', 'MLX_BIND_HOST', 'MLX_SERVER_CMD']) {
             savedVars[k] = process.env[k];
             delete process.env[k];
         }

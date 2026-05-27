@@ -2,16 +2,18 @@
 import { Box, Text, Newline, useInput } from 'ink';
 import Spinner from 'ink-spinner';
 import { readFileSync, existsSync, watchFile, unwatchFile } from 'fs';
+import { createRequire } from 'module';
 import { resolve } from 'path';
 
 import { PhaseProgress } from './PhaseProgress';
 import { TokenUsage } from './TokenUsage';
 import { TaskList } from './TaskList';
 import { EventLog } from './EventLog';
-import { getDefaultStepModePhases } from '../shared/agentPhases';
 import { HelpView } from './HelpView';
 
 const API_BASE = 'http://localhost:3847';
+const require = createRequire(import.meta.url);
+const { getDefaultStepModePhases } = require('../shared/agentPhases.ts') as typeof import('../shared/agentPhases');
 
 interface AppProps { dir?: string; agent?: string }
 

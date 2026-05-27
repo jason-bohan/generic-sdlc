@@ -11,11 +11,13 @@ import { AgentsView } from './AgentsView';
 import { InteractiveView } from './InteractiveView';
 import { TasksView } from './TasksView';
 import { CreateStoryView } from './CreateStoryView';
+import { DirectChatView } from './DirectChatView';
 
 const DEFAULT_DIR = process.env.SDLC_FRAMEWORK_WORKSPACE ?? process.cwd();
+const COMMAND_NAME = process.env.SDLC_FRAMEWORK_CLI_NAME ?? 'sdlc-framework';
 
 const program = new Command()
-    .name('sdlc-framework')
+    .name(COMMAND_NAME)
     .description('SDLC Framework agent CLI — manage agents from the terminal')
     .version('0.1.0')
     .option('--dir <path>', 'workspace directory', DEFAULT_DIR)
@@ -59,6 +61,13 @@ program
     .action((agent: string) => {
         const dir = program.opts().dir;
         render(<ChatView agent={agent} dir={dir} />);
+    });
+
+program
+    .command('chatllm [agent]')
+    .description('Direct AI chat with the configured model for an agent')
+    .action((agent?: string) => {
+        render(<DirectChatView agent={agent ?? 'frontend'} />);
     });
 
 program
