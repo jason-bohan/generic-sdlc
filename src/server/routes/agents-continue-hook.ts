@@ -17,9 +17,11 @@ import {
     resolveDevopsStatusPrId,
     storyNumberFromOwnerStatus } from '../route-shared';
 import { buildContextPreamble } from '../contextLoader';
-import { startPhaseRun } from '../orchestrator';
+import { startPhaseRun, startWorkflow } from '../orchestrator';
 import { dbGetWorkflowItemByStory, dbGetPhaseEvents } from '../db';
 import { getActiveProject } from '../project-config';
+import { getExternalMode } from '../external-mode';
+import { asSdlcAgentId } from '../status-normalize';
 import { resolve as pathResolve } from 'path';
 import type { UseFn } from './types';
 
@@ -406,6 +408,38 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                 }
             } catch { /* proceed with empty storyNum */ }
 
+            // If the workflow item is missing from this server's DB (e.g. was created on
+            // a different server instance / Docker container), recreate it from the status
+            // file so the phase contract prompt and workflowItemId are correct for this DB.
+            if (storyNum && !dbGetWorkflowItemByStory(storyNum, agentId)) {
+                const statusFile = resolve(rootDir, `.${agentId}-status.json`);
+                try {
+                    const s = parseJsonUtf8File(statusFile) as Record<string, unknown>;
+                    if (String(s.storyNumber ?? '').trim() === storyNum) {
+                        const result = startWorkflow({
+                            externalMode: getExternalMode(configFile),
+                            assignedAgentId: asSdlcAgentId(agentId),
+                            story: {
+                                number: storyNum,
+                                name: typeof s.storyName === 'string' ? s.storyName : null,
+                                description: typeof s.storyDescription === 'string' ? s.storyDescription : null,
+                                frontend: null, backend: null, qa: null,
+                                projectKey: typeof s.projectKey === 'string' ? s.projectKey : null,
+                                affectedRepo: typeof s.projectKey === 'string' ? s.projectKey : null,
+                            },
+                        });
+                        if (result.ok && result.value) {
+                            // Patch the status file so future calls use the correct local ID
+                            s.workflowItemId = result.value.item.id;
+                            writeFileSync(statusFile, JSON.stringify(s, null, 2));
+                            console.log(`[auto-resume] recreated workflow item ${result.value.item.id} for story ${storyNum}/${agentId}`);
+                        }
+                    }
+                } catch (e) {
+                    console.warn(`[auto-resume] could not recreate workflow item for ${storyNum}/${agentId}:`, e);
+                }
+            }
+
             // Prevent infinite loops: stop auto-resuming after 3 attempts in the same phase.
             const MAX_AUTO_RESUMES = 3;
             if (storyNum) {
@@ -447,9 +481,10 @@ function buildContinuePrompt(
             if (workflow) {
                 const activeProfile = getActiveProject(configFile);
                 const hasTargetCodebase = !!activeProfile?.workspacePath && activeProfile.workspacePath !== rootDir;
+                const serverBaseUrl = process.env.SDLC_SERVER_URL || 'http://localhost:3001';
                 const plan = startPhaseRun({
                     workflowItemId: workflow.id,
-                    serverBaseUrl: 'http://localhost:3001',
+                    serverBaseUrl,
                     statusFile: hasTargetCodebase
                         ? pathResolve(rootDir, `.${agentId}-status.json`)
                         : `.${agentId}-status.json`,
