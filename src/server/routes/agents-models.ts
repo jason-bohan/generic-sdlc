@@ -30,35 +30,28 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
     async function getOpenCodeModelsAsync(): Promise<ModelOption[]> {
         const cloud = getOpenCodeModels();
         const seen = new Set(cloud.map(m => m.id));
-        try {
-            const ollamaHost = process.env.OLLAMA_HOST || 'http://localhost:11434';
-            const r = await fetch(`${ollamaHost}/api/tags`, { signal: AbortSignal.timeout(3_000) });
-            if (r.ok) {
-                const data = await r.json() as { models?: Array<{ name: string }> };
-                for (const m of (data.models ?? [])) {
-                    if (!seen.has(m.name)) {
-                        cloud.push({ id: m.name, label: m.name, category: 'local' });
-                        seen.add(m.name);
-                    }
-                }
-            }
-        } catch { /* Ollama not running */ }
+
+        const ollamaHost = process.env.OLLAMA_HOST || 'http://localhost:11434';
+        const mlxHost = process.env.MLX_HOST || 'http://localhost:8082';
+
+        const [ollamaResult, mlxResult] = await Promise.allSettled([
+            fetch(`${ollamaHost}/api/tags`, { signal: AbortSignal.timeout(2_000) }).then(r => r.ok ? r.json() : null).catch(() => null),
+            fetch(`${mlxHost}/v1/models`, { signal: AbortSignal.timeout(2_000) }).then(r => r.ok ? r.json() : null).catch(() => null),
+        ]);
+
+        const ollamaData = ollamaResult.status === 'fulfilled' ? ollamaResult.value as { models?: Array<{ name: string }> } | null : null;
+        for (const m of (ollamaData?.models ?? [])) {
+            if (!seen.has(m.name)) { cloud.push({ id: m.name, label: m.name, category: 'local' }); seen.add(m.name); }
+        }
         if (!seen.has('local')) {
             cloud.push({ id: 'local', label: 'Local (Ollama)', category: 'local' });
         }
-        try {
-            const mlxHost = process.env.MLX_HOST || 'http://localhost:8082';
-            const r = await fetch(`${mlxHost}/v1/models`, { signal: AbortSignal.timeout(3_000) });
-            if (r.ok) {
-                const data = await r.json() as { data?: Array<{ id: string }> };
-                for (const m of (data.data ?? [])) {
-                    if (!seen.has(m.id)) {
-                        cloud.push({ id: m.id, label: m.id, category: 'local' });
-                        seen.add(m.id);
-                    }
-                }
-            }
-        } catch { /* MLX not running */ }
+
+        const mlxData = mlxResult.status === 'fulfilled' ? mlxResult.value as { data?: Array<{ id: string }> } | null : null;
+        for (const m of (mlxData?.data ?? [])) {
+            if (!seen.has(m.id)) { cloud.push({ id: m.id, label: m.id, category: 'local' }); seen.add(m.id); }
+        }
+
         return cloud;
     }
 
