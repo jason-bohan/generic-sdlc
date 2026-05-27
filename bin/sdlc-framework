@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+export SDLC_FRAMEWORK_CLI_NAME="${SDLC_FRAMEWORK_CLI_NAME:-sdlc-framework}"
+exec "$SCRIPT_DIR/unwritten" "$@"

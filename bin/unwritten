@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$SOURCE" ]; do
+  DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
+  TARGET="$(readlink "$SOURCE")"
+  case "$TARGET" in
+    /*) SOURCE="$TARGET" ;;
+    *) SOURCE="$DIR/$TARGET" ;;
+  esac
+done
+
+SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." >/dev/null 2>&1 && pwd)"
+CURRENT_DIR="$(pwd)"
+TSX="$ROOT_DIR/node_modules/.bin/tsx"
+
+if [ ! -x "$TSX" ]; then
+  echo "tsx not found at $TSX. Run setup in $ROOT_DIR first." >&2
+  exit 1
+fi
+
+HAS_DIR=0
+for arg in "$@"; do
+  if [ "$arg" = "--dir" ]; then
+    HAS_DIR=1
+    break
+  fi
+done
+
+export SDLC_FRAMEWORK_CLI_NAME="${SDLC_FRAMEWORK_CLI_NAME:-$(basename "$0")}"
+
+if [ "$HAS_DIR" -eq 1 ]; then
+  exec "$TSX" "$ROOT_DIR/src/tui/index.tsx" "$@"
+else
+  exec "$TSX" "$ROOT_DIR/src/tui/index.tsx" --dir "$CURRENT_DIR" "$@"
+fi
