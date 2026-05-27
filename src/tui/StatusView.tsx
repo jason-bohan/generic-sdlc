@@ -54,7 +54,8 @@ export function StatusView({ agent, dir, onBack }: Props) {
     const localIn = tokens.ollama.input + tokens.mlx.input;
     const localOut = tokens.ollama.output + tokens.mlx.output;
     const phase = data.currentPhase ?? 'idle';
-    const phaseColor = PHASE_COLORS[phase] ?? 'white';
+    const stopped = data.isRunning === false && phase !== 'idle' && phase !== 'complete';
+    const phaseColor = stopped ? 'gray' : (PHASE_COLORS[phase] ?? 'white');
     const tasks = data.tasks ?? [];
     const completed = tasks.filter((t: any) => t.status === 'completed' || t.status === 'complete').length;
     const events = data.events ?? [];
@@ -64,7 +65,7 @@ export function StatusView({ agent, dir, onBack }: Props) {
         <Box flexDirection="column" padding={1}>
             <Text bold color="yellow">sdlc-framework status — {id}</Text>
             <Box gap={1}><Text bold>Story:</Text><Text color="cyan">{data.storyNumber ?? 'None'}</Text><Text>{data.storyName ?? ''}</Text></Box>
-            <Box gap={1}><Text bold>Phase:</Text><Text color={phaseColor}>{phase}</Text></Box>
+            <Box gap={1}><Text bold>Phase:</Text><Text color={phaseColor}>{stopped ? 'idle' : phase}</Text></Box>
             {data.currentTask && <Box gap={1}><Text bold>Task:</Text><Text>{data.currentTask}</Text></Box>}
             <Box gap={1}><Text bold>Cloud:</Text><Text>{fmt(tokens.cloud.input)} in / {fmt(tokens.cloud.output)} out</Text></Box>
             <Box gap={1}><Text bold>MeshLLM:</Text><Text>{fmt(tokens.meshllm.input)} in / {fmt(tokens.meshllm.output)} out</Text></Box>
