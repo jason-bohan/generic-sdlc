@@ -42,6 +42,7 @@ export type RunnerEventType =
     | 'tool_result'
     | 'message'
     | 'injection'
+    | 'phase_complete'
     | 'complete'
     | 'error';
 

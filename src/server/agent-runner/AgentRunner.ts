@@ -7,6 +7,7 @@ import { ragQuery } from '../ragIndex';
 
 const MAX_TURNS = 80;
 const TOOL_RESULT_STORAGE_CAP = 3000;
+const PHASE_COMPLETE_SENTINEL = 'PHASE_COMPLETE::';
 
 /**
  * Some local GGUFs (e.g. via MeshLLM/llama.cpp) emit tool calls as a markdown
@@ -169,6 +170,7 @@ export class AgentRunner extends EventEmitter {
                 }
                 this.consecutiveNudges = 0;
 
+                let phaseCompleted = false;
                 for (const toolCall of msg.tool_calls) {
                     if (this._aborted) break;
 
@@ -197,10 +199,22 @@ export class AgentRunner extends EventEmitter {
                         tool_call_id: toolCall.id,
                         content: output,
                     });
+
+                    // Phase completed — stop the loop so the next phase starts with
+                    // a fresh conversation context (new session, no stale tool history).
+                    if (output.startsWith(PHASE_COMPLETE_SENTINEL)) {
+                        const nextPhase = output.slice(PHASE_COMPLETE_SENTINEL.length).split('\n')[0];
+                        this._emit('phase_complete', { nextPhase, turn: this.turnCount });
+                        this._running = false;
+                        phaseCompleted = true;
+                        break;
+                    }
                 }
 
                 // Checkpoint after each complete tool round-trip
                 this.onCheckpoint?.(compactForStorage(this.messages));
+
+                if (phaseCompleted) break;
             }
 
             this._emit('complete', { turns: this.turnCount, aborted: this._aborted, sessionId: this.sessionId });
