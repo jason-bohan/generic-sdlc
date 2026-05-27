@@ -50,7 +50,26 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
         if (base.length === 1) {
             base.push({ id: loopProvider.model, label: `${loopProvider.model} (configured)`, category: 'cloud' });
         }
-        base.push({ id: 'local', label: 'Local (Ollama)', category: 'local' });
+
+        // Fetch all local Ollama models
+        try {
+            const ollamaHost = process.env.OLLAMA_HOST || 'http://localhost:11434';
+            const r = await fetch(`${ollamaHost}/api/tags`, { signal: AbortSignal.timeout(3_000) });
+            if (r.ok) {
+                const data = await r.json() as { models?: Array<{ name: string; digest?: string; size?: number }> };
+                const ollamaModels = data.models ?? [];
+                for (const m of ollamaModels) {
+                    const id = m.name;
+                    if (!base.some(b => b.id === id)) {
+                        base.push({ id, label: id, category: 'local' });
+                    }
+                }
+            }
+        } catch { /* Ollama not running */ }
+
+        if (!base.some(m => m.id === 'local')) {
+            base.push({ id: 'local', label: 'Local (Ollama)', category: 'local' });
+        }
         return base;
     }
 
