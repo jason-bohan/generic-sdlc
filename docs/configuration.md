@@ -6,17 +6,30 @@ The main configuration file. Copy from `.sdlc-framework.config.example.json` to 
 
 ```json
 {
-  "project": {
-    "organization": "your-azure-devops-org",
-    "azureProject": "YourProject",
-    "repositoryId": "YourRepo",
-    "scope": "Your Team",
-    "team": "Your Team",
-    "owners": ["Your Name"]
+  "externalMode": "live",
+  "cursorAiEnabled": false,
+  "activeProject": "sdlc-framework",
+  "projects": {
+    "sdlc-framework": {
+      "organization": "your-azure-devops-org",
+      "azureProject": "YourProject",
+      "repositoryId": "YourRepo",
+      "targetBranch": "main",
+      "workspacePath": "",
+      "scope": "Your Team",
+      "team": "Your Team",
+      "owners": ["Your Name"]
+    }
   },
-  "executionMode": "balanced",
+  "executionMode": "local",
   "scheduler": {
     "mode": "notify",
+    "driver": "loop",
+    "loopProvider": {
+      "baseUrl": "http://localhost:11434/v1",
+      "model": "qwen3:8b",
+      "apiKey": ""
+    },
     "agents": {
       "frontend": { "autoStart": false, "stepMode": false },
       "reviewer": { "autoStart": false, "stepMode": false },
@@ -40,8 +53,8 @@ The main configuration file. Copy from `.sdlc-framework.config.example.json` to 
 |-----|--------|-------------|
 | `executionMode` | `local`, `balanced`, `speed` | Story creation engine |
 | `cursorAiEnabled` | `true`, `false` | Server-side kill switch for Cursor AI usage; dashboard header can toggle it |
-| `scheduler.mode` | `notify`, `autonomous` | Auto-start vs approval gate |
-| `scheduler.driver` | `cursor`, `claude-code`, `goose`, `generic` | IDE / CLI used to spawn agents and run inline queries (default: `cursor`) |
+| `scheduler.mode` | `notify`, `autonomous` | Approval gate vs immediate start |
+| `scheduler.driver` | `cursor`, `claude-code`, `opencode`, `aider`, `goose`, `generic`, `loop` | CLI or in-process provider used to spawn agents and run inline queries |
 | `scheduler.agents.<id>.autoStart` | `true`/`false` | Skip approval for this agent |
 | `scheduler.agents.<id>.stepMode` | `true`/`false` | Pause at phase boundaries |
 | `scheduler.agents.<id>.stepModePhases` | `string[]` | Override default pause phases |
@@ -55,10 +68,13 @@ Controls which CLI is used to spawn agents and run inline AI queries. All driver
 
 | Driver | CLI required | Notes |
 |--------|-------------|-------|
-| `cursor` | `cursor-agent` CLI | Default. Requires Cursor installation. Uses `bin/run-agent.ps1`. |
-| `claude-code` | `claude` CLI | `npm install -g @anthropic-ai/claude-code`. Uses `bin/run-agent-claude.ps1`. |
-| `goose` | `goose` CLI | Local/Ollama model. Requires Goose at `~/.local/bin/goose.exe`. |
-| `generic` | configurable | Specify command + args with `{promptFile}`, `{workspaceDir}`, `{model}` placeholders. |
+| `loop` | none | In-process OpenAI-compatible loop provider. Configure `scheduler.loopProvider`. |
+| `cursor` | `cursor-agent` CLI | Uses Cursor where available. On Windows it can use `bin/run-agent.ps1`. |
+| `claude-code` | `claude` CLI | Uses `bin/run-agent-claude.ps1` on Windows. |
+| `opencode` | `opencode` CLI | Alternative coding CLI; can be disabled with `SDLC_FRAMEWORK_OPENCODE=0`. |
+| `aider` | `aider` CLI | Headless coding-session driver; inline queries use the loop provider. |
+| `goose` | `goose` CLI | Local/Ollama-oriented driver. |
+| `generic` | configurable | Specify command + args with `{promptFile}`, `{workspaceDir}`, `{model}`, and `{agentId}` placeholders. |
 
 ### Cursor AI Kill Switch
 
@@ -102,7 +118,7 @@ If `scheduler.driver` is still `cursor`, SDLC Framework routes agent work throug
 }
 ```
 
-Hook triggers work the same regardless of driver. If using **Claude Code**, `.claude/settings.json` is pre-configured with the same `Stop` hooks as `.cursor/hooks.json`. If using another IDE, POST to `POST /api/hook/agent-stop` with `{ "agentId": "<id>" }` to trigger the watcher logic from any context.
+Hook triggers work the same regardless of driver. If using **Claude Code**, `.claude/settings.local.json` can be configured with the same `Stop` hooks as `.cursor/hooks.json`. If using another IDE, POST to `/api/hook/agent-stop` with `{ "agentId": "<id>" }` to trigger the watcher logic from any context.
 
 ### Project Workspace Paths
 
@@ -218,9 +234,10 @@ No manual MCP configuration needed on Windows when using the legacy PowerShell s
 | Tool | Required | Notes |
 |------|----------|-------|
 | Node.js 22+ | Yes | `>=22.0.0 <24.0.0` — must match YourProject |
-| Cursor | Yes | MCP servers auto-configured |
+| Cursor | Optional | Agent driver option; MCP servers auto-configured |
 | Ollama | Optional | Local AI inference |
 | Goose CLI | Optional | Local execution mode |
+| Aider/OpenCode/Claude Code | Optional | Alternative agent drivers |
 | Python 3.11+ | Optional | Harlequin TUI (`pip install harlequin`) |
 | Cypress 15.x | Optional | QA testing — installed via `npm install` |
 | Rust | Optional | Tauri desktop build only |

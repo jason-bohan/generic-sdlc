@@ -18,7 +18,7 @@ sdlc-framework/
 │   │
 │   ├── server/                 # API server
 │   │   ├── index.ts            # Entry point (http.createServer, chalk logging)
-│   │   ├── app.ts              # All 33 API routes (createApp factory)
+│   │   ├── app.ts              # createApp factory and route mounting
 │   │   ├── db.ts               # SQLite module (token_ledger, ollama_state, chat_messages)
 │   │   ├── modes.ts            # Execution modes + story creation logic
 │   │   ├── repo-context.ts     # Codebase-aware enrichment context builder
@@ -42,7 +42,7 @@ sdlc-framework/
 │   │   └── triggers.ts         # Chat trigger matching
 │   │
 │   ├── tui/                    # Terminal UI (Ink/React)
-│   └── test/                   # Vitest test suite (193 tests)
+│   └── test/                   # Vitest unit, integration, and UI tests
 │
 ├── src-tauri/                  # Tauri Rust backend (tray, file watcher)
 │
@@ -63,7 +63,8 @@ sdlc-framework/
 │   ├── office/SKILL.md         # Shared office / token-saving tools
 │
 ├── tools/
-│   └── mcp-agility/            # Agility (VersionOne) MCP server
+│   ├── mcp-agility/            # Agility (VersionOne) MCP server
+│   └── mcp-sdlc-framework/     # SDLC orchestration MCP server
 │
 ├── bruno/
 │   └── sdlc-framework/               # Bruno API collection (open in Bruno)
@@ -99,7 +100,7 @@ sdlc-framework/
 
 | Layer | Files | Notes |
 |-------|-------|-------|
-| **Agent processes** | `skills/*/SKILL.md`, `bin/run-agent.ps1` | Read/write `.{agentId}-status.json` directly |
+| **Agent processes** | `skills/*/SKILL.md`, `src/server/agent-drivers.ts`, `bin/run-agent*.ps1` | Read/write `.{agentId}-status.json` directly |
 | **API server** | `src/server/app.ts`, `src/server/index.ts` | Serves dashboard, drives handoffs |
 | **SQLite** | `src/server/db.ts`, `.sdlc-framework/sdlc-framework.db` | Token ledger, chat, ollama state |
 | **Status JSON** | `.frontend-status.json`, `.reviewer-status.json`, etc. | On-disk for agent CLI compat; filenames use **agent ID**, not display name |

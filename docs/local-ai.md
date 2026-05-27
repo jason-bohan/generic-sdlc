@@ -97,7 +97,7 @@ For a 32 GB Mac Studio or a similar local MeshLLM node, keep the 14B coder as th
       "maxTokens": 4096
     },
     "agents": {
-      "developer": { "driver": "loop" },
+      "frontend": { "driver": "loop" },
       "qa": { "driver": "loop" },
       "reviewer": {
         "driver": "loop",
@@ -136,7 +136,7 @@ Set it as the global driver in `.sdlc-framework.config.json`:
 Or route a specific agent to it:
 
 ```json
-{ "scheduler": { "agents": { "developer": { "driver": "aider" } } } }
+{ "scheduler": { "agents": { "frontend": { "driver": "aider" } } } }
 ```
 
 ### macOS installation

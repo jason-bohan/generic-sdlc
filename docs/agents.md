@@ -35,7 +35,7 @@ Story creation supports three modes, selectable from the dashboard or config:
 |-------------|-------------------|-------------|
 | **Local**   | Goose + Ollama    | Fully local — Goose CLI orchestrates with Ollama SLM |
 | **Balanced**| Ollama + REST API | Ollama enriches fields, then REST API creates the story |
-| **Speed**   | IDE CLI (cloud)   | Cloud-powered enrichment via the active `scheduler.driver` CLI |
+| **Speed**   | Active agent driver | Cloud or CLI-powered enrichment via the active `scheduler.driver` |
 
 All modes track token usage per-story in a ledger visible from the dashboard.
 
@@ -81,16 +81,15 @@ Configure the webhook URL in `.sdlc-framework.config.json` under `notifications.
 
 ## Agent Knowledge Sources
 
-Each agent has its own skill file (`skills/<agent>/SKILL.md`) that defines its identity, workflow, and tools. In addition, **all agents can read from external project codebases and the Azure DevOps wiki** when working on multi-project stories.
+Each agent has its own skill file (`skills/<agent>/SKILL.md`) that defines its identity, workflow, and tools. In addition, agents can read from configured project codebases and knowledge adapters when working on multi-project stories.
 
 ### How It Works
 
 1. **Own SKILL.md** — Each agent's primary instructions, workflow phases, and tool usage
-2. **YourProject Cursor Rules** — The YourProject repo has 22 `.mdc` rule files covering Angular standards, .NET standards, code review checklists, PR templates, design system rules, and more. Agents read these before implementing or reviewing YourProject code.
-3. **YourProject Cursor Skills** — Nx workspace, generators, task runners, CI monitoring. Agents read these before running Nx commands.
-4. **YourProject AGENTS.md** — General Nx/SCSS guidance at `{workspacePath}/src/YourProject.Web/AGENTS.md`
-5. **Azure DevOps Wiki** — All agents can search and read the Fusion.wiki for environment details, server info, setup procedures, and team conventions using the Azure DevOps MCP tools (`search_wiki`, `wiki_get_page_content`, `wiki_list_pages`).
-6. **ADO Code Search** — Agents can search the remote YourProject repository for code patterns using `search_code`.
+2. **Target repo rules** — `.mdc`, `AGENTS.md`, or project-local standards files covering framework, review, change-management, and design-system conventions.
+3. **Target repo skills** — Workspace conventions, generators, task runners, and CI monitoring notes.
+4. **Knowledge/wiki adapters** — Environment details, server info, setup procedures, and team conventions from whichever knowledge source is configured.
+5. **Code search adapters** — Local or remote code-search providers for reusable implementation patterns.
 
 ### Path Resolution
 
@@ -100,13 +99,14 @@ The fallback `GET /api/project/standards?project=YourProject` auto-discovers all
 
 ### Per-Agent Knowledge
 
-| Agent ID | Default label | Own Skill | YourProject Rules | Wiki | Cypress Support Layer |
+| Agent ID | Default label | Own Skill | Target Repo Rules | Knowledge Adapters | Cypress Support Layer |
 |---------|---------------|-----------|-------------|------|----------------------|
-| `frontend` | Lasair | `skills/frontend/SKILL.md` | Angular, TypeScript, HTML, SCSS | Yes | — |
-| `reviewer` | Brehon | `skills/reviewer/SKILL.md` | Code Review, PR Template, all standards | Yes | — |
-| `devops` | Cairde | `skills/devops/SKILL.md` | .NET, infrastructure | Yes | — |
-| `ux` | Prism  | `skills/ux/SKILL.md` | Design System, Figma, Angular | Yes | — |
-| `qa` | Vigil  | `skills/qa/SKILL.md` | All (for test validation) | Yes | Full directory map |
+| `frontend` | Lasair | `skills/frontend/SKILL.md` | UI framework, TypeScript, HTML, CSS | Yes | — |
+| `backend` | Cairn | `skills/backend/SKILL.md` | API, service, and domain standards | Yes | — |
+| `reviewer` | Brehon | `skills/reviewer/SKILL.md` | Review checklist and PR conventions | Yes | — |
+| `devops` | Cairde | `skills/devops/SKILL.md` | CI, infrastructure, release rules | Yes | — |
+| `ux` | Prism  | `skills/ux/SKILL.md` | Design system and accessibility rules | Yes | — |
+| `qa` | Vigil  | `skills/qa/SKILL.md` | Test and app standards | Yes | Project-specific test map |
 
 ### Shared Rule
 

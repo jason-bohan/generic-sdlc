@@ -1,10 +1,10 @@
 ﻿# Dashboard
 
-Two views, switchable from settings:
+Primary dashboard views:
 
 ## Simple Floor (2D)
 
-Card-based grid showing all agents with phase badges, story numbers, current tasks, and action buttons (Open Desk, /btw chat, Pick Up Story, Approve, Step toggle).
+Card-based grid showing all agents with phase badges, work-item keys, current tasks, model controls, provider status, chat, and action buttons such as Open Desk, /btw chat, Pick Up Story, Approve, Continue, Stop, and Step mode.
 
 ## 3D Office
 
@@ -26,10 +26,12 @@ Multi-room layout:
 | Simple | Minimal flat design |
 | Rock and Roll McDonald's | Maximalist fast-food energy |
 | Lumon Industries | Severance MDR floor with cross desk layout and green carpet |
+| Modern | Neutral product UI |
+| Retro Carpet | Office-carpet inspired dense dashboard |
 
 ## Stats Bar
 
-- Agent count, cloud/Ollama token consumption, active tasks, open PRs (with dropdown links)
+- Agent count, cloud/Ollama/MeshLLM token consumption, active tasks, open PRs (with dropdown links)
 - Per-story token ledger with input/output breakdown
 
 ## Org Chart
