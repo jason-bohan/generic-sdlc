@@ -15,6 +15,8 @@ export interface FloorHeaderProps {
     toggleCursorAi: () => void | Promise<void>;
     claudeEnabled: boolean;
     toggleClaudeAi: () => void | Promise<void>;
+    opencodeEnabled: boolean;
+    toggleOpenCode: () => void | Promise<void>;
     onOpenCreateStory: () => void;
     onOpenLocalBacklog?: () => void;
     onRefreshStatus?: () => void;
@@ -39,6 +41,8 @@ export function FloorHeader({
     toggleCursorAi,
     claudeEnabled,
     toggleClaudeAi,
+    opencodeEnabled,
+    toggleOpenCode,
     onOpenCreateStory,
     onOpenLocalBacklog,
     onRefreshStatus,
@@ -274,6 +278,8 @@ export function FloorHeader({
                 toggleCursorAi={toggleCursorAi}
                 claudeEnabled={claudeEnabled}
                 toggleClaudeAi={toggleClaudeAi}
+                opencodeEnabled={opencodeEnabled}
+                toggleOpenCode={toggleOpenCode}
             />
         </header>
     );

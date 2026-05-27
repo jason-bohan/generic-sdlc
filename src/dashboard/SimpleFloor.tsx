@@ -76,6 +76,7 @@ export default function SimpleFloor({
     const [globalStepMode, setGlobalStepMode] = useState(false);
     const [cursorAiEnabled, setCursorAiEnabled] = useState(true);
     const [claudeEnabled, setClaudeEnabled] = useState(true);
+    const [opencodeEnabled, setOpenCodeEnabled] = useState(true);
     const [profileName, setProfileName] = useState('');
     const { colorScheme, setColorScheme } = useTheme();
     const integrationMock = externalMode === 'mock';
@@ -86,6 +87,9 @@ export default function SimpleFloor({
         }).catch(() => {});
         fetch('/api/claude-ai').then(r => r.json()).then(d => {
             if (typeof d.enabled === 'boolean') setClaudeEnabled(d.enabled);
+        }).catch(() => {});
+        fetch('/api/opencode-ai').then(r => r.json()).then(d => {
+            if (typeof d.enabled === 'boolean') setOpenCodeEnabled(d.enabled);
         }).catch(() => {});
         fetchUserProfile().then(p => { if (p.displayName) setProfileName(p.displayName); }).catch(() => {});
     }, []);
@@ -117,6 +121,20 @@ export default function SimpleFloor({
             }
         } catch { /* silent */ }
     }, [claudeEnabled]);
+    const toggleOpenCode = useCallback(async () => {
+        try {
+            const next = !opencodeEnabled;
+            const res = await fetch('/api/opencode-ai', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ enabled: next }),
+            });
+            if (res.ok) {
+                const d = await res.json();
+                if (typeof d.enabled === 'boolean') setOpenCodeEnabled(d.enabled);
+            }
+        } catch { /* silent */ }
+    }, [opencodeEnabled]);
     const toggleGlobalStepMode = useCallback(async () => {
         try {
             const turningOff = globalStepMode;
@@ -272,6 +290,8 @@ export default function SimpleFloor({
                 toggleCursorAi={toggleCursorAi}
                 claudeEnabled={claudeEnabled}
                 toggleClaudeAi={toggleClaudeAi}
+                opencodeEnabled={opencodeEnabled}
+                toggleOpenCode={toggleOpenCode}
                 onOpenCreateStory={() => { setShowCreateStory(true); setStoryStatus('idle'); setStoryResult(''); }}
                 onOpenLocalBacklog={onOpenLocalBacklog}
                 onRefreshStatus={onRefreshStatus}

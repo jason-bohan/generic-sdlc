@@ -9,6 +9,8 @@ interface AICommandRoomProps {
     toggleCursorAi: () => void | Promise<void>;
     claudeEnabled: boolean;
     toggleClaudeAi: () => void | Promise<void>;
+    opencodeEnabled: boolean;
+    toggleOpenCode: () => void | Promise<void>;
 }
 
 type ProviderKey = 'meshllm' | 'ollama' | 'openrouter';
@@ -24,6 +26,8 @@ export function AICommandRoom({
     toggleCursorAi,
     claudeEnabled,
     toggleClaudeAi,
+    opencodeEnabled,
+    toggleOpenCode,
 }: AICommandRoomProps) {
     const panelRef = useRef<HTMLDivElement>(null);
     const meshLLMHealth = useMeshLLMHealth();
@@ -569,13 +573,39 @@ export function AICommandRoom({
                             />
                         </button>
                     </div>
+
+                    <div style={styles.toggleRow}>
+                        <div style={styles.toggleInfo}>
+                            <span style={styles.toggleIcon}>🔓</span>
+                            <div>
+                                <span style={styles.toggleTitle}>OpenCode</span>
+                                <p style={styles.toggleDesc}>Use OpenCode AI for agent tasks</p>
+                            </div>
+                        </div>
+                        <button
+                            onClick={() => { void toggleOpenCode(); }}
+                            style={{
+                                ...styles.toggle,
+                                backgroundColor: opencodeEnabled ? TOGGLE_ON_COLOR : TOGGLE_OFF_COLOR,
+                            }}
+                            aria-pressed={opencodeEnabled}
+                            aria-label="Use OpenCode AI"
+                        >
+                            <span
+                                style={{
+                                    ...styles.toggleThumb,
+                                    transform: opencodeEnabled ? 'translateX(20px)' : 'translateX(2px)',
+                                }}
+                            />
+                        </button>
+                    </div>
                 </div>
 
                 {/* Loop Provider Configuration */}
                 <div style={styles.section}>
                     <span style={styles.sectionLabel}>Fallback Provider — OpenRouter</span>
                     <p style={styles.sectionHint}>
-                        Used when both Cursor AI and Claude AI are disabled. Requires OpenRouter API key.
+                        Used when all AI providers (Cursor, Claude, OpenCode) are disabled. Requires OpenRouter API key.
                     </p>
 
                     {lpCurrentKey && (

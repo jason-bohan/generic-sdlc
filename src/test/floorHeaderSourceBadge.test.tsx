@@ -12,6 +12,8 @@ function renderHeader(overrides: Partial<FloorHeaderProps> = {}) {
         toggleCursorAi: vi.fn(),
         claudeEnabled: true,
         toggleClaudeAi: vi.fn(),
+        opencodeEnabled: true,
+        toggleOpenCode: vi.fn(),
         onOpenCreateStory: vi.fn(),
         onRefreshStatus: vi.fn(),
         notificationCount: 0,
