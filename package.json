@@ -11,10 +11,11 @@
     },
     "scripts": {
         "server": "tsx --watch src/server/index.ts",
+        "server:resilient": "bash -c 'while true; do tsx --watch src/server/index.ts; echo \"[api] restarting in 1s...\"; sleep 1; done'",
         "setup": "node scripts/setup.cjs",
         "dashboard": "vite --config vite.config.ts",
         "dashboard:build": "vite build --config vite.config.ts",
-        "dev": "concurrently -k -n api,dash \"npm run server\" \"node scripts/wait-dev-api.cjs && npm run dashboard\"",
+        "dev": "concurrently -k -n api,dash \"npm run server:resilient\" \"node scripts/wait-dev-api.cjs && npm run dashboard\"",
         "tauri": "tauri",
         "tauri:dev": "tauri dev",
         "tauri:build": "tauri build",
