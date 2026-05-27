@@ -41,7 +41,7 @@ export function AICommandRoom({
     const meshLLMHealth = useMeshLLMHealth();
     const meshLLMModels = useMeshLLMModels(open);
     const ollamaHealth = useOllamaHealth();
-    const ollamaModels = useOllamaModels();
+    const ollamaModels = useOllamaModels() ?? [];
 
     const [lpApiKey, setLpApiKey] = useState('');
     const [lpModel, setLpModel] = useState('');
