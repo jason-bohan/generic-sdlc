@@ -40,11 +40,14 @@ const AGENT_CATEGORY_NAME: Record<string, string> = {
     devops: 'DevOps',
     ux: 'UX' };
 
-async function loadPlanningTasksForStory(rootDir: string, storyNumber: string): Promise<RawTask[]> {
+async function loadPlanningTasksForStory(rootDir: string, configFile: string, storyNumber: string): Promise<RawTask[]> {
     if (isLocalStoryNumber(storyNumber)) return loadLocalTasksForStory(rootDir, storyNumber);
-    const configFile = resolve(rootDir, '.sdlc-framework.config.json');
-    const tracker = await resolveProjectTracker(rootDir, configFile);
-    return tracker.getTasksForStory(storyNumber);
+    try {
+        const tracker = await resolveProjectTracker(rootDir, configFile);
+        return await tracker.getTasksForStory(storyNumber);
+    } catch {
+        return [];
+    }
 }
 
 function mergeInheritedTasks(localTasks: RawTask[], inheritedTasks: RawTask[]): RawTask[] {
@@ -409,7 +412,7 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                 cypress: { lastRun: null, total: 0, passed: 0, failed: 0, skipped: 0, failures: [] },
                 events: [{ timestamp: new Date().toISOString(), type: immediate ? 'success' : 'info', message: immediate ? `Story ${storyNumber} assigned. Starting workflow.` : `Story ${storyNumber} assigned. Awaiting approval to start.` }] };
             try {
-                const inheritedTasks = await loadPlanningTasksForStory(rootDir, storyNumber);
+                const inheritedTasks = await loadPlanningTasksForStory(rootDir, configFile, storyNumber);
                 if (inheritedTasks.length > 0) {
                     status.tasks = inheritedTasks;
                     status.events.push({
@@ -495,7 +498,7 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
             status.currentPhase = 'reading-story';
             status.startedAt = new Date().toISOString();
             try {
-                const inheritedTasks = await loadPlanningTasksForStory(rootDir, String(status.storyNumber || ''));
+                const inheritedTasks = await loadPlanningTasksForStory(rootDir, configFile, String(status.storyNumber || ''));
                 status.tasks = mergeInheritedTasks(Array.isArray(status.tasks) ? status.tasks as RawTask[] : [], inheritedTasks);
                 if (inheritedTasks.length > 0) {
                     status.events.push({

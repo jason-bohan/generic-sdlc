@@ -84,7 +84,7 @@ export class AgilityProjectTracker implements IProjectTracker {
     async getTasksForStory(storyNumber: string): Promise<RawTask[]> {
         const parentData = await v1Fetch(this.rootDir, '/Story', { sel: 'Number', where: `Number='${storyNumber}'` }) as { Assets?: Array<{ id?: string }> };
         const storyAsset = parentData.Assets?.[0];
-        if (!storyAsset) return [];
+        if (!storyAsset?.id) return [];
         const data = await v1Fetch(this.rootDir, '/Task', {
             sel: 'Number,Name,Status.Name,Category.Name,Owners.Name,DetailEstimate,ToDo,Done,Actuals',
             where: `Parent='${storyAsset.id}'`,
