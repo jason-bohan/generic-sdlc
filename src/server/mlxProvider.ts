@@ -74,11 +74,16 @@ export async function getMlxHealth() {
     };
 }
 
+type SpawnFn = typeof spawn;
+
 /**
  * Spawns `python -m mlx_lm.server` if MLX_MODEL is configured and the server
  * isn't already running. No-ops silently when MLX_MODEL is unset.
+ * Pass `spawnFn` to inject a test double (mirrors meshllmLauncher deps pattern).
  */
-export async function startMlxIfConfigured(): Promise<{ ok: boolean; reason?: string }> {
+export async function startMlxIfConfigured(
+    deps: { spawnFn?: SpawnFn } = {},
+): Promise<{ ok: boolean; reason?: string }> {
     const model = process.env.MLX_MODEL?.trim();
     if (!model) return { ok: false, reason: 'MLX_MODEL env var not set' };
 
@@ -91,8 +96,9 @@ export async function startMlxIfConfigured(): Promise<{ ok: boolean; reason?: st
         if (url.port) port = parseInt(url.port, 10);
     } catch { /* use default */ }
 
+    const spawnFn = deps.spawnFn ?? spawn;
     log.info(`spawning mlx_lm.server --model ${model} --port ${port}…`);
-    const child = spawn('python', ['-m', 'mlx_lm.server', '--model', model, '--port', String(port)], {
+    const child = spawnFn('python', ['-m', 'mlx_lm.server', '--model', model, '--port', String(port)], {
         stdio: 'ignore',
         detached: false,
     });
