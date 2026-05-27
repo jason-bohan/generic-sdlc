@@ -110,4 +110,26 @@ describe('startMlxIfConfigured()', () => {
             expect.anything(),
         );
     });
+
+    it('passes --host when MLX_BIND_HOST is set', async () => {
+        process.env.MLX_MODEL = 'mlx-community/Qwen3-8B-4bit';
+        process.env.MLX_BIND_HOST = '0.0.0.0';
+        const spawnFn = vi.fn(() => ({ on: vi.fn() } as any));
+        await startMlxIfConfigured({ spawnFn });
+        expect(spawnFn).toHaveBeenCalledWith(
+            'python',
+            ['-m', 'mlx_lm.server', '--model', 'mlx-community/Qwen3-8B-4bit', '--port', '8082', '--host', '0.0.0.0'],
+            expect.anything(),
+        );
+        delete process.env.MLX_BIND_HOST;
+    });
+
+    it('omits --host when MLX_BIND_HOST is not set', async () => {
+        process.env.MLX_MODEL = 'mlx-community/Qwen3-8B-4bit';
+        delete process.env.MLX_BIND_HOST;
+        const spawnFn = vi.fn(() => ({ on: vi.fn() } as any));
+        await startMlxIfConfigured({ spawnFn });
+        const args: string[] = spawnFn.mock.calls[0][1];
+        expect(args).not.toContain('--host');
+    });
 });

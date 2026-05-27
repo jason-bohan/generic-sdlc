@@ -96,9 +96,13 @@ export async function startMlxIfConfigured(
         if (url.port) port = parseInt(url.port, 10);
     } catch { /* use default */ }
 
+    const bindHost = process.env.MLX_BIND_HOST?.trim();
+    const spawnArgs = ['-m', 'mlx_lm.server', '--model', model, '--port', String(port)];
+    if (bindHost) spawnArgs.push('--host', bindHost);
+
     const spawnFn = deps.spawnFn ?? spawn;
-    log.info(`spawning mlx_lm.server --model ${model} --port ${port}…`);
-    const child = spawnFn('python', ['-m', 'mlx_lm.server', '--model', model, '--port', String(port)], {
+    log.info(`spawning mlx_lm.server --model ${model} --port ${port}${bindHost ? ` --host ${bindHost}` : ''}…`);
+    const child = spawnFn('python', spawnArgs, {
         stdio: 'ignore',
         detached: false,
     });
