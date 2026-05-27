@@ -10,8 +10,6 @@
 # If WORKSPACE_PATH is not set the server starts without an external workspace.
 services:
   server:
-    ports:
-      - "3001:3001"
     volumes:
       - ${WORKSPACE_PATH:-/tmp/sdlc-workspace}:/workspace/project
       - ${WORKSPACE_PATH:-/tmp/sdlc-workspace}:${WORKSPACE_PATH:-/tmp/sdlc-workspace}

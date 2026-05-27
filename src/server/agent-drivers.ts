@@ -199,7 +199,14 @@ export function buildOpenCodeSpawnSpec(
     const modelArgs = effectiveModel ? ['--model', effectiveModel] : [];
     return {
         cmd: opencodeExe,
-        args: ['run', '--prompt-file', promptFilePath, ...modelArgs, '--workspace', workspaceDir],
+        args: [
+            'run',
+            '--dir', workspaceDir,
+            '--file', promptFilePath,
+            '--dangerously-skip-permissions',
+            ...modelArgs,
+            'Follow the instructions in the attached prompt file.',
+        ],
     };
 }
 
@@ -492,7 +499,7 @@ export function runInlineQuery(
             if (!isOpenCodeEnabled(configPath)) return _runLoopProviderInlineQuery(prompt, configPath);
             return _execInline(
                 'opencode',
-                ['run', '--text', prompt, ...modelArgs],
+                ['run', '--dir', workspaceDir, ...modelArgs, prompt],
                 workspaceDir,
                 timeout,
                 true,
