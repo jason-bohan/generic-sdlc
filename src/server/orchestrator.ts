@@ -262,6 +262,20 @@ function phaseSpecificInstructions(item: WorkflowItemRow, serverBaseUrl: string)
             '3. Call read_file on the specific files that need to change (routes, controllers, validators).',
             '4. Once you have read the code, call complete_phase with your analysis — do NOT write code yet.',
             'DO NOT describe what you plan to do. Call read_file immediately.',
+            'STRICT LIMIT: complete_phase MUST be called within your first 10 tool calls. Do not loop, do not re-read files you already read. Read → analyse → complete_phase. One pass only.',
+        ].join('\n');
+    }
+
+    if (item.active_phase === 'validating') {
+        return [
+            'Validating phase — READ-ONLY. Act immediately:',
+            '1. Call read_file on the status file to get the codeChanges output from generating-code.',
+            '2. Run the build command (e.g. npm run build or tsc --noEmit) inside the worktree using bash.',
+            '3. Run tests if a test script exists (e.g. npm test). Record pass/fail counts.',
+            '4. Call complete_phase with your results.',
+            'CRITICAL: Do NOT call write_file or modify ANY files. You are a read-only observer.',
+            'CRITICAL: Do NOT fix code issues — record them as risks and complete_phase. Fixing is for generating-code.',
+            'DO NOT describe what you plan to do. Call read_file immediately.',
         ].join('\n');
     }
 

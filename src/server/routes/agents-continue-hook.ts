@@ -18,7 +18,7 @@ import {
     storyNumberFromOwnerStatus } from '../route-shared';
 import { buildContextPreamble } from '../contextLoader';
 import { startPhaseRun } from '../orchestrator';
-import { dbGetWorkflowItemByStory } from '../db';
+import { dbGetWorkflowItemByStory, dbGetPhaseEvents } from '../db';
 import { getActiveProject } from '../project-config';
 import { resolve as pathResolve } from 'path';
 import type { UseFn } from './types';
@@ -405,6 +405,23 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                     writeFileSync(statusFile, JSON.stringify(s, null, 2));
                 }
             } catch { /* proceed with empty storyNum */ }
+
+            // Prevent infinite loops: stop auto-resuming after 3 attempts in the same phase.
+            const MAX_AUTO_RESUMES = 3;
+            if (storyNum) {
+                try {
+                    const workflow = dbGetWorkflowItemByStory(storyNum, agentId);
+                    if (workflow) {
+                        const starts = dbGetPhaseEvents(workflow.id)
+                            .filter(e => e.phase === phase && e.event_type === 'phase-started').length;
+                        if (starts >= MAX_AUTO_RESUMES) {
+                            console.warn(`[auto-resume] ${agentId} hit max auto-resumes (${MAX_AUTO_RESUMES}) in '${phase}' — stopping`);
+                            return;
+                        }
+                    }
+                } catch { /* proceed */ }
+            }
+
             const prompt = buildContinuePrompt(agentId, phase, storyNum, rootDir, configFile, '', '');
             try {
                 spawnAgent(agentId, prompt, rootDir, getAgentModel(agentId, rootDir));
