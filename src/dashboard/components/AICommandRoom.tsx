@@ -1,6 +1,14 @@
-import { useState, useEffect, useRef, type CSSProperties } from 'react';
+import { useState, useEffect, useRef, useCallback, type CSSProperties } from 'react';
 import { useMeshLLMHealth, useMeshLLMModels, useOllamaHealth, selectMeshLLMNode } from '../hooks/useAIHealth';
 import { useFocusTrap } from '../hooks/useFocusTrap';
+
+const OPENCODE_CLOUD_MODELS = [
+    { id: 'anthropic/claude-sonnet-4-5', label: 'Claude Sonnet 4.5' },
+    { id: 'anthropic/claude-haiku-4-5', label: 'Claude Haiku 4.5' },
+    { id: 'anthropic/claude-opus-4', label: 'Claude Opus 4' },
+    { id: 'openai/gpt-4o', label: 'GPT-4o' },
+    { id: 'openai/gpt-4o-mini', label: 'GPT-4o mini' },
+];
 
 interface AICommandRoomProps {
     open: boolean;
@@ -55,7 +63,37 @@ export function AICommandRoom({
     const [ollamaLaunchMessage, setOllamaLaunchMessage] = useState<string | null>(null);
     const [ollamaLaunching, setOllamaLaunching] = useState(false);
 
+    const [ocModel, setOcModel] = useState('');
+    const [ocSaving, setOcSaving] = useState(false);
+    const [ocSaveMsg, setOcSaveMsg] = useState<string | null>(null);
+
     useFocusTrap(panelRef, open);
+
+    useEffect(() => {
+        if (!open) return;
+        fetch('/api/agent/model?agentId=developer').then(r => r.json()).then((d: { model: string | null }) => {
+            setOcModel(d.model ?? '');
+        }).catch(() => {});
+    }, [open]);
+
+    const saveOcModel = useCallback(async (model: string) => {
+        setOcSaving(true);
+        setOcSaveMsg(null);
+        try {
+            const r = await fetch('/api/agent/model', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ agentId: 'developer', model: model || undefined }),
+            });
+            if (!r.ok) throw new Error(`Save failed (${r.status})`);
+            setOcSaveMsg('Saved');
+            setTimeout(() => setOcSaveMsg(null), 2000);
+        } catch (e: unknown) {
+            setOcSaveMsg(e instanceof Error ? e.message : String(e));
+        } finally {
+            setOcSaving(false);
+        }
+    }, []);
 
     useEffect(() => {
         if (!open) return;
@@ -574,30 +612,78 @@ export function AICommandRoom({
                         </button>
                     </div>
 
-                    <div style={styles.toggleRow}>
-                        <div style={styles.toggleInfo}>
-                            <span style={styles.toggleIcon}>🔓</span>
-                            <div>
-                                <span style={styles.toggleTitle}>OpenCode</span>
-                                <p style={styles.toggleDesc}>Use OpenCode AI for agent tasks</p>
+                    <div style={{ ...styles.toggleRow, flexDirection: 'column', alignItems: 'stretch', gap: 12 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div style={styles.toggleInfo}>
+                                <span style={styles.toggleIcon}>🔓</span>
+                                <div>
+                                    <span style={styles.toggleTitle}>OpenCode</span>
+                                    <p style={styles.toggleDesc}>Use OpenCode AI for agent tasks</p>
+                                </div>
                             </div>
-                        </div>
-                        <button
-                            onClick={() => { void toggleOpenCode(); }}
-                            style={{
-                                ...styles.toggle,
-                                backgroundColor: opencodeEnabled ? TOGGLE_ON_COLOR : TOGGLE_OFF_COLOR,
-                            }}
-                            aria-pressed={opencodeEnabled}
-                            aria-label="Use OpenCode AI"
-                        >
-                            <span
+                            <button
+                                onClick={() => { void toggleOpenCode(); }}
                                 style={{
-                                    ...styles.toggleThumb,
-                                    transform: opencodeEnabled ? 'translateX(20px)' : 'translateX(2px)',
+                                    ...styles.toggle,
+                                    backgroundColor: opencodeEnabled ? TOGGLE_ON_COLOR : TOGGLE_OFF_COLOR,
                                 }}
-                            />
-                        </button>
+                                aria-pressed={opencodeEnabled}
+                                aria-label="Use OpenCode AI"
+                            >
+                                <span
+                                    style={{
+                                        ...styles.toggleThumb,
+                                        transform: opencodeEnabled ? 'translateX(20px)' : 'translateX(2px)',
+                                    }}
+                                />
+                            </button>
+                        </div>
+                        {opencodeEnabled && (
+                            <div style={styles.ocModelPill}>
+                                <div style={styles.ocModelPillTop}>
+                                    <span style={styles.ocModelLabel}>Model — developer agent</span>
+                                    {ocSaveMsg && (
+                                        <span style={{ ...styles.ocModelCount, color: ocSaveMsg === 'Saved' ? 'var(--success)' : 'var(--error)' }}>
+                                            {ocSaveMsg}
+                                        </span>
+                                    )}
+                                </div>
+                                <select
+                                    value={ocModel}
+                                    disabled={ocSaving}
+                                    style={styles.ocModelSelect}
+                                    aria-label="OpenCode model for developer agent"
+                                    onChange={e => {
+                                        setOcModel(e.target.value);
+                                        void saveOcModel(e.target.value);
+                                    }}
+                                >
+                                    <option value="">auto (use OpenCode default)</option>
+                                    {(meshLLMModels.models.length > 0 || meshLLMHealth.models.length > 0) && (
+                                        <optgroup label="Local — MeshLLM">
+                                            {(meshLLMModels.models.length > 0
+                                                ? meshLLMModels.models
+                                                : meshLLMHealth.models.map(id => ({ id, label: id }))
+                                            ).map(m => (
+                                                <option key={m.id} value={m.id} style={styles.selectOption}>{m.label}</option>
+                                            ))}
+                                        </optgroup>
+                                    )}
+                                    {ollamaHealth.activeModel && (
+                                        <optgroup label="Local — Ollama">
+                                            <option value={ollamaHealth.activeModel} style={styles.selectOption}>
+                                                {ollamaHealth.activeModel}
+                                            </option>
+                                        </optgroup>
+                                    )}
+                                    <optgroup label="Cloud">
+                                        {OPENCODE_CLOUD_MODELS.map(m => (
+                                            <option key={m.id} value={m.id} style={styles.selectOption}>{m.label}</option>
+                                        ))}
+                                    </optgroup>
+                                </select>
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -1020,5 +1106,43 @@ const styles: Record<string, CSSProperties> = {
     selectOption: {
         backgroundColor: '#111827',
         color: '#f8fafc',
+    },
+    ocModelPill: {
+        display: 'flex',
+        flexDirection: 'column' as const,
+        gap: 6,
+        padding: 8,
+        borderRadius: 8,
+        border: '1px solid var(--border)',
+        backgroundColor: 'var(--bg-secondary)',
+    },
+    ocModelPillTop: {
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 6,
+    },
+    ocModelLabel: {
+        fontSize: 11,
+        fontWeight: 700,
+        color: 'var(--text-primary)',
+        fontFamily: 'var(--font-sans)',
+    },
+    ocModelCount: {
+        fontSize: 10,
+        color: 'var(--text-tertiary)',
+        fontFamily: 'var(--font-mono)',
+    },
+    ocModelSelect: {
+        width: '100%',
+        padding: '6px 8px',
+        fontSize: 11,
+        fontFamily: 'var(--font-mono)',
+        backgroundColor: 'var(--bg-card)',
+        border: '1px solid var(--border)',
+        borderRadius: 8,
+        color: 'var(--text-primary)',
+        cursor: 'pointer',
+        outline: 'none',
     },
 };
