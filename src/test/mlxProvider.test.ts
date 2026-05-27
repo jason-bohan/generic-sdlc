@@ -150,7 +150,7 @@ describe('startMlxIfConfigured()', () => {
         process.env.MLX_SERVER_CMD = '/home/user/mlx-env/bin/mlx_lm.server';
         const spawnFn = vi.fn(() => ({ on: vi.fn() } as any));
         await startMlxIfConfigured({ spawnFn });
-        expect(spawnFn.mock.calls[0][0]).toBe('/home/user/mlx-env/bin/mlx_lm.server');
+        expect((spawnFn.mock.calls[0] as unknown as [string, string[]])[0]).toBe('/home/user/mlx-env/bin/mlx_lm.server');
         delete process.env.MLX_SERVER_CMD;
     });
 
@@ -160,7 +160,7 @@ describe('startMlxIfConfigured()', () => {
         const spawnFn = vi.fn(() => ({ on: vi.fn() } as any));
         await startMlxIfConfigured({ spawnFn });
         expect(spawnFn).toHaveBeenCalledTimes(2);
-        const ports = (spawnFn.mock.calls as [string, string[]][]).map(c => c[1]).map(args => args[args.indexOf('--port') + 1]);
+        const ports = (spawnFn.mock.calls as unknown as [string, string[]][]).map(c => c[1]).map(args => args[args.indexOf('--port') + 1]);
         expect(ports).toContain('8082');
         expect(ports).toContain('8083');
     });
@@ -170,7 +170,7 @@ describe('startMlxIfConfigured()', () => {
         process.env.MLX_HOST = 'http://localhost:9000';
         const spawnFn = vi.fn(() => ({ on: vi.fn() } as any));
         await startMlxIfConfigured({ spawnFn });
-        const args: string[] = (spawnFn.mock.calls[0] as [string, string[]])[1];
+        const args: string[] = (spawnFn.mock.calls[0] as unknown as [string, string[]])[1];
         expect(args[args.indexOf('--port') + 1]).toBe('9000');
     });
 
@@ -179,7 +179,7 @@ describe('startMlxIfConfigured()', () => {
         process.env.MLX_BIND_HOST = '0.0.0.0';
         const spawnFn = vi.fn(() => ({ on: vi.fn() } as any));
         await startMlxIfConfigured({ spawnFn });
-        const args: string[] = (spawnFn.mock.calls[0] as [string, string[]])[1];
+        const args: string[] = (spawnFn.mock.calls[0] as unknown as [string, string[]])[1];
         expect(args).toContain('--host');
         expect(args[args.indexOf('--host') + 1]).toBe('0.0.0.0');
     });
@@ -188,7 +188,7 @@ describe('startMlxIfConfigured()', () => {
         process.env.MLX_MODEL = 'mlx-community/Qwen3-8B-4bit';
         const spawnFn = vi.fn(() => ({ on: vi.fn() } as any));
         await startMlxIfConfigured({ spawnFn });
-        const args: string[] = (spawnFn.mock.calls[0] as [string, string[]])[1];
+        const args: string[] = (spawnFn.mock.calls[0] as unknown as [string, string[]])[1];
         expect(args).not.toContain('--host');
     });
 });
