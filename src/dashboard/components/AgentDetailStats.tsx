@@ -12,10 +12,13 @@ export function AgentDetailStats({ elapsed, status }: AgentDetailStatsProps) {
     const cloud = status.tokens?.cloud ?? { input: 0, output: 0 };
     const meshllm = status.tokens?.meshllm ?? { input: 0, output: 0 };
     const ollama = status.tokens?.ollama ?? { input: 0, output: 0 };
+    const mlx = status.tokens?.mlx ?? { input: 0, output: 0 };
     const cloudTotal = cloud.input + cloud.output;
     const meshllmTotal = meshllm.input + meshllm.output;
-    const ollamaTotal = ollama.input + ollama.output;
-    const localLikeTotal = meshllmTotal + ollamaTotal;
+    const localIn = ollama.input + mlx.input;
+    const localOut = ollama.output + mlx.output;
+    const localTotal = localIn + localOut;
+    const localLikeTotal = meshllmTotal + localTotal;
     const tokensSaved = localLikeTotal > 0 ? Math.round((localLikeTotal / (cloudTotal + localLikeTotal)) * 100) : 0;
 
     const tasks = status.tasks ?? [];
@@ -41,9 +44,9 @@ export function AgentDetailStats({ elapsed, status }: AgentDetailStatsProps) {
                 tone="accent"
             />
             <StatCard
-                label="Ollama Tokens"
-                value={formatTokens(ollamaTotal)}
-                sub={`In: ${formatTokens(ollama.input)} / Out: ${formatTokens(ollama.output)}`}
+                label="Local AI Tokens"
+                value={formatTokens(localTotal)}
+                sub={`In: ${formatTokens(localIn)} / Out: ${formatTokens(localOut)}`}
             />
             <StatCard
                 label="Tokens Saved"

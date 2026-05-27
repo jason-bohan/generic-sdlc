@@ -9,6 +9,7 @@ interface TokenUsageDisplayProps {
   cloud: TokenCounts;
   meshllm?: TokenCounts;
   ollama: TokenCounts;
+  mlx?: TokenCounts;
   accentColor?: string;
 }
 
@@ -26,11 +27,13 @@ function Bar({ value, max, color }: { value: number; max: number; color: string 
   );
 }
 
-export function TokenUsageDisplay({ cloud, meshllm = { input: 0, output: 0 }, ollama, accentColor = '#D97706' }: TokenUsageDisplayProps) {
+export function TokenUsageDisplay({ cloud, meshllm = { input: 0, output: 0 }, ollama, mlx = { input: 0, output: 0 }, accentColor = '#D97706' }: TokenUsageDisplayProps) {
   const cloudTotal = cloud.input + cloud.output;
   const meshllmTotal = meshllm.input + meshllm.output;
-  const ollamaTotal = ollama.input + ollama.output;
-  const maxTokens = Math.max(cloudTotal, meshllmTotal, ollamaTotal, 1);
+  const localIn = ollama.input + mlx.input;
+  const localOut = ollama.output + mlx.output;
+  const localTotal = localIn + localOut;
+  const maxTokens = Math.max(cloudTotal, meshllmTotal, localTotal, 1);
 
   return (
     <div style={styles.container}>
@@ -50,14 +53,14 @@ export function TokenUsageDisplay({ cloud, meshllm = { input: 0, output: 0 }, ol
         </span>
       </div>
       <div style={styles.row}>
-        <span style={styles.label}>Ollama</span>
-        <Bar value={ollamaTotal} max={maxTokens} color="#10B981" />
+        <span style={styles.label}>Local AI</span>
+        <Bar value={localTotal} max={maxTokens} color="#10B981" />
         <span style={styles.value}>
-          {formatTokens(ollama.input)}↓ {formatTokens(ollama.output)}↑
+          {formatTokens(localIn)}↓ {formatTokens(localOut)}↑
         </span>
       </div>
       <div style={styles.footer}>
-        Total: {formatTokens(cloudTotal + meshllmTotal + ollamaTotal)} tokens
+        Total: {formatTokens(cloudTotal + meshllmTotal + localTotal)} tokens
       </div>
     </div>
   );

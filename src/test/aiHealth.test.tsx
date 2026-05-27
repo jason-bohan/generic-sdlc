@@ -59,9 +59,9 @@ describe('AI Health Hooks', () => {
         expect(screen.getByText('2 peers available')).toBeInTheDocument();
     });
 
-    it('should display Ollama health status', () => {
+    it('should display Local AI health status', () => {
         render(<AIHealth />);
-        expect(screen.getByText('Ollama')).toBeInTheDocument();
+        expect(screen.getByText('Local AI')).toBeInTheDocument();
         expect(screen.getByText('Running locally')).toBeInTheDocument();
         expect(screen.getByText('sdlc-tuned:latest')).toBeInTheDocument();
     });
@@ -85,9 +85,9 @@ describe('AI Health Hooks', () => {
         expect(screen.getByText('Checking...')).toBeInTheDocument();
     });
 
-    it('should display unhealthy state for Ollama', () => {
+    it('should display unhealthy state for Local AI when both Ollama and MLX are down', () => {
         mockUseOllamaHealth.mockReturnValue({ ...mockOllamaHealth, isHealthy: false, isLoading: false });
-        mockUseMLXHealth.mockReturnValue({ ...mockMLXHealth, isHealthy: true, models: ['qwen:7b'] });
+        mockUseMLXHealth.mockReturnValue({ ...mockMLXHealth, isHealthy: false, isLoading: false });
         render(<AIHealth />);
         expect(screen.getByText('Not available')).toBeInTheDocument();
     });

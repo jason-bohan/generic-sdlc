@@ -43,8 +43,8 @@ export function AgentCostBreakdown({ agentStatuses, displayNames }: Props) {
             return {
                 id,
                 label: displayNames[id] || id,
-                localInput:  (t.meshllm?.input ?? 0) + (t.ollama?.input ?? 0),
-                localOutput: (t.meshllm?.output ?? 0) + (t.ollama?.output ?? 0),
+                localInput:  (t.meshllm?.input ?? 0) + (t.ollama?.input ?? 0) + (t.mlx?.input ?? 0),
+                localOutput: (t.meshllm?.output ?? 0) + (t.ollama?.output ?? 0) + (t.mlx?.output ?? 0),
                 cloudInput:  t.cloud?.input  ?? 0,
                 cloudOutput: t.cloud?.output ?? 0,
             };
