@@ -12,6 +12,7 @@ import {
     findAiderCli,
     findOpenCodeCli,
     readDriverConfig,
+    resolveAgentDriverConfig,
     resolveCursorSafeDriverConfig,
     runInlineQuery,
     type AgentDriverConfig,
@@ -299,6 +300,88 @@ describe('OpenCode driver', () => {
         expect(spec.cmd).toBe(fakeOpenCode);
         expect(spec.args).toContain('--dir');
         expect(spec.args).toContain('--file');
+    });
+});
+
+// ─── OpenCode-only policy ────────────────────────────────────────────────────
+
+describe('OpenCode-only driver policy (no Claude, no Cursor)', () => {
+    it('resolveCursorSafeDriverConfig returns opencode when enabled and configured', () => {
+        writeFakeOpenCode();
+        prependPath(FAKE_BIN);
+        writeConfig({ opencodeEnabled: true, scheduler: { driver: 'opencode' } });
+
+        expect(resolveCursorSafeDriverConfig(CONFIG).type).toBe('opencode');
+    });
+
+    it('resolveCursorSafeDriverConfig does not use opencode when opencodeEnabled is false', () => {
+        writeFakeOpenCode();
+        prependPath(FAKE_BIN);
+        writeConfig({ opencodeEnabled: false, scheduler: { driver: 'opencode' } });
+
+        const resolved = resolveCursorSafeDriverConfig(CONFIG).type;
+        expect(resolved).not.toBe('opencode');
+        expect(['aider', 'goose', 'loop']).toContain(resolved);
+    });
+
+    it('resolveCursorSafeDriverConfig does not use opencode when SDLC_FRAMEWORK_OPENCODE=0', () => {
+        writeFakeOpenCode();
+        prependPath(FAKE_BIN);
+        writeConfig({ opencodeEnabled: true, scheduler: { driver: 'opencode' } });
+        const prev = process.env.SDLC_FRAMEWORK_OPENCODE;
+        process.env.SDLC_FRAMEWORK_OPENCODE = '0';
+        try {
+            const resolved = resolveCursorSafeDriverConfig(CONFIG).type;
+            expect(resolved).not.toBe('opencode');
+            expect(['aider', 'goose', 'loop']).toContain(resolved);
+        } finally {
+            if (prev === undefined) delete process.env.SDLC_FRAMEWORK_OPENCODE;
+            else process.env.SDLC_FRAMEWORK_OPENCODE = prev;
+        }
+    });
+
+    it('resolveAgentDriverConfig uses per-agent opencode override when enabled', () => {
+        writeFakeOpenCode();
+        prependPath(FAKE_BIN);
+        writeConfig({
+            opencodeEnabled: true,
+            scheduler: { driver: 'loop', agents: { frontend: { driver: 'opencode' } } },
+        });
+
+        expect(resolveAgentDriverConfig('frontend', CONFIG).type).toBe('opencode');
+    });
+
+    it('resolveAgentDriverConfig does not use opencode for per-agent override when disabled', () => {
+        writeFakeOpenCode();
+        prependPath(FAKE_BIN);
+        writeConfig({
+            opencodeEnabled: false,
+            scheduler: { driver: 'loop', agents: { frontend: { driver: 'opencode' } } },
+        });
+
+        const resolved = resolveAgentDriverConfig('frontend', CONFIG).type;
+        expect(resolved).not.toBe('opencode');
+        expect(['aider', 'goose', 'loop']).toContain(resolved);
+    });
+
+    it('resolveAgentDriverConfig global opencode driver is used when no per-agent override exists', () => {
+        writeFakeOpenCode();
+        prependPath(FAKE_BIN);
+        writeConfig({ opencodeEnabled: true, scheduler: { driver: 'opencode' } });
+
+        expect(resolveAgentDriverConfig('reviewer', CONFIG).type).toBe('opencode');
+    });
+
+    it('other agents fall back to global driver when only one agent has an opencode override', () => {
+        writeFakeOpenCode();
+        prependPath(FAKE_BIN);
+        writeConfig({
+            opencodeEnabled: true,
+            scheduler: { driver: 'loop', agents: { frontend: { driver: 'opencode' } } },
+        });
+
+        expect(resolveAgentDriverConfig('devops', CONFIG).type).toBe('loop');
+        expect(resolveAgentDriverConfig('frontend', CONFIG).type).toBe('opencode');
     });
 });
 
