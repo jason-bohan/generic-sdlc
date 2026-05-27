@@ -129,7 +129,7 @@ async function sendViaMlx(
     return { reply: data.choices?.[0]?.message?.content?.trim() ?? '', model, provider: 'mlx-14b' };
 }
 
-const DEFAULT_SYSTEM = 'You are a concise local coding assistant.';
+const DEFAULT_SYSTEM = 'You are a concise local coding assistant. When asked what model or AI you are, answer truthfully using your model name.';
 
 const HELP_TEXT = [
     '/help          show this list',
@@ -237,11 +237,13 @@ export function DirectChatView({ agent, onBack }: Props) {
         setMessages(next);
         setLoading(true);
         setError(null);
+        const resolvedModel = model && model !== 'auto' && model !== 'local' ? model : await firstMlxModel();
+        const resolvedSystem = `${systemPrompt}\nYour model name is: ${resolvedModel}`;
         try {
             const r = await fetch(`${API_BASE}/api/chat/direct`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ agentId: agent, messages: historyForApi, systemPrompt }),
+                body: JSON.stringify({ agentId: agent, messages: historyForApi, systemPrompt: resolvedSystem }),
             });
             const data = await r.json() as { reply?: string; error?: string; model?: string; provider?: string };
             if (!r.ok || data.error) { setError(data.error ?? `Error ${r.status}`); }
@@ -252,7 +254,7 @@ export function DirectChatView({ agent, onBack }: Props) {
             }
         } catch (e) {
             try {
-                const data = await sendViaMlx(historyForApi, model, systemPrompt);
+                const data = await sendViaMlx(historyForApi, model, resolvedSystem);
                 setModel(data.model);
                 setProvider(data.provider);
                 setMessages([...next, { role: 'assistant', content: data.reply }]);
