@@ -48,7 +48,8 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
 
         const mlxModels = mlxResult.status === 'fulfilled' ? mlxResult.value as string[] : [];
         for (const id of mlxModels) {
-            if (!seen.has(id)) { cloud.push({ id, label: `${id} (MLX)`, category: 'local' }); seen.add(id); }
+            const ocId = `mlx/${id}`;
+            if (!seen.has(ocId)) { cloud.push({ id: ocId, label: `${id} (MLX)`, category: 'local' }); seen.add(ocId); }
         }
 
         return cloud;

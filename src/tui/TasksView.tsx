@@ -206,7 +206,7 @@ export function TasksView({ agent, dir }: Props) {
 
             {mode === 'view' && (
                 <Box marginTop={1}>
-                    <Text dimColor>[s] sync from Agility  {storyNumber ? '[c] create task  ' : ''}[Esc] back</Text>
+                    <Text dimColor>[s] sync from planner  {storyNumber ? '[c] create task  ' : ''}[Esc] back</Text>
                 </Box>
             )}
         </Box>
