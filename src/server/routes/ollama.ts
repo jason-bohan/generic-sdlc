@@ -1,5 +1,5 @@
 import { readBody, json } from '../router';
-import { getOllamaHealth, isEmbeddingReady, getActiveModel, startOllamaManager } from '../ollamaManager';
+import { getOllamaHealth, isEmbeddingReady, getActiveModel, startOllamaManager, listOllamaModels } from '../ollamaManager';
 import { buildRagIndex } from '../ragIndex';
 import { getExecMode } from '../modes';
 import { updateTokens } from '../tokens';
@@ -11,6 +11,15 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
     use('/api/ollama/health', async (req, res) => {
         if (req.method !== 'GET') { res.statusCode = 405; res.end(); return; }
         try { json(res, await getOllamaHealth()); } catch { json(res, { error: 'health check failed' }, 500); }
+    });
+
+    // ── /api/ollama/models ──────────────────────────────────────────────────
+    use('/api/ollama/models', async (req, res) => {
+        if (req.method !== 'GET') { res.statusCode = 405; res.end(); return; }
+        try {
+            const models = await listOllamaModels();
+            json(res, { models });
+        } catch { json(res, { models: [] }); }
     });
 
     // ── /api/ollama/launch ───────────────────────────────────────────────────

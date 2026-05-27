@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, type CSSProperties } from 'react';
-import { useMeshLLMHealth, useMeshLLMModels, useOllamaHealth, selectMeshLLMNode } from '../hooks/useAIHealth';
+import { useMeshLLMHealth, useMeshLLMModels, useOllamaHealth, useOllamaModels, selectMeshLLMNode } from '../hooks/useAIHealth';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 
 const OPENCODE_CLOUD_MODELS = [
@@ -41,6 +41,7 @@ export function AICommandRoom({
     const meshLLMHealth = useMeshLLMHealth();
     const meshLLMModels = useMeshLLMModels(open);
     const ollamaHealth = useOllamaHealth();
+    const ollamaModels = useOllamaModels() ?? [];
 
     const [lpApiKey, setLpApiKey] = useState('');
     const [lpModel, setLpModel] = useState('');
@@ -669,11 +670,13 @@ export function AICommandRoom({
                                             ))}
                                         </optgroup>
                                     )}
-                                    {ollamaHealth.activeModel && (
+                                    {ollamaModels.length > 0 && (
                                         <optgroup label="Local — Ollama">
-                                            <option value={ollamaHealth.activeModel} style={styles.selectOption}>
-                                                {ollamaHealth.activeModel}
-                                            </option>
+                                            {ollamaModels.map(m => (
+                                                <option key={m.name} value={m.name} style={styles.selectOption}>
+                                                    {m.name}
+                                                </option>
+                                            ))}
                                         </optgroup>
                                     )}
                                     <optgroup label="Cloud">

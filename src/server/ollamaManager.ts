@@ -196,6 +196,27 @@ async function createModel(name: string, modelfilePath: string, timeoutMs = 10 *
     }
 }
 
+export interface OllamaModelEntry {
+    name: string;
+    digest: string;
+    size: number;
+    modified_at: string;
+}
+
+export async function listOllamaModels(): Promise<OllamaModelEntry[]> {
+    try {
+        const res = await fetch(`${ollamaHost()}/api/tags`, { signal: AbortSignal.timeout(5000) });
+        if (!res.ok) return [];
+        const data: any = await res.json();
+        return (data.models ?? []).map((m: any) => ({
+            name: m.name ?? m.model ?? 'unknown',
+            digest: m.digest ?? '',
+            size: m.size ?? 0,
+            modified_at: m.modified_at ?? '',
+        }));
+    } catch { return []; }
+}
+
 /** Fetch the digest for a model from the local Ollama API. */
 async function fetchDigest(model: string): Promise<string | null> {
     try {

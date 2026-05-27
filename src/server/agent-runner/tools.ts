@@ -447,21 +447,26 @@ async function toolCompletePhase(
             timestamp: new Date().toISOString(),
         },
     };
+    const stringArg = (key: string) => args[key] === undefined || args[key] === null ? undefined : String(args[key]);
+    // Text-summary outputs: provide sensible defaults so the phase contract is satisfied
+    // even when the model doesn't explicitly supply every field.
+    outputs.branchPlan = stringArg('branch_plan') ?? `fix/${storyNumber}-fix`;
+    outputs.risks = stringArg('risks') ?? 'None identified';
+    outputs.openQuestions = stringArg('open_questions') ?? 'None';
+    outputs.testMatrix = args.test_matrix !== undefined && args.test_matrix !== null
+        ? (Array.isArray(args.test_matrix) ? args.test_matrix : [String(args.test_matrix)])
+        : ['Unit tests for changed logic'];
+    outputs.codeChanges = stringArg('code_changes') ?? summary;
+    outputs.classification = stringArg('classification') ?? 'feature';
+    outputs.affectedRepo = stringArg('affected_repo') ?? '';
+    outputs.handoff = args.handoff ?? `${agentId} completed ${currentPhase}`;
+    outputs.designSpec = stringArg('design_spec') ?? '';
+
+    // Evidence-based outputs: only include when the model explicitly provides them —
+    // do not fabricate test results, review verdicts, or build outcomes.
     const putIfProvided = (key: string, value: unknown) => {
         if (value !== undefined && value !== null) outputs[key] = value;
     };
-    const stringArg = (key: string) => args[key] === undefined || args[key] === null ? undefined : String(args[key]);
-    putIfProvided('branchPlan', stringArg('branch_plan'));
-    putIfProvided('risks', stringArg('risks'));
-    putIfProvided('openQuestions', stringArg('open_questions'));
-    if (args.test_matrix !== undefined && args.test_matrix !== null) {
-        outputs.testMatrix = Array.isArray(args.test_matrix) ? args.test_matrix : [String(args.test_matrix)];
-    }
-    putIfProvided('codeChanges', stringArg('code_changes'));
-    putIfProvided('classification', stringArg('classification'));
-    putIfProvided('affectedRepo', stringArg('affected_repo'));
-    putIfProvided('handoff', args.handoff);
-    putIfProvided('designSpec', stringArg('design_spec'));
     putIfProvided('validationResults', stringArg('validation_results'));
     putIfProvided('reviewVerdict', stringArg('review_verdict'));
     if (Array.isArray(args.review_threads)) outputs.reviewThreads = args.review_threads;

@@ -12,6 +12,7 @@ vi.mock('../dashboard/hooks/useFocusTrap', () => ({
 const mockUseMeshLLMHealth = vi.mocked(aiHealthHooks.useMeshLLMHealth);
 const mockUseMeshLLMModels = vi.mocked(aiHealthHooks.useMeshLLMModels);
 const mockUseOllamaHealth = vi.mocked(aiHealthHooks.useOllamaHealth);
+const mockUseOllamaModels = vi.mocked(aiHealthHooks.useOllamaModels);
 const mockSelectMeshLLMNode = vi.mocked(aiHealthHooks.selectMeshLLMNode);
 
 describe('AICommandRoom', () => {
@@ -72,6 +73,7 @@ describe('AICommandRoom', () => {
             canLaunch: false,
             isLoading: false
         });
+        mockUseOllamaModels.mockReturnValue([]);
 
         mockSelectMeshLLMNode.mockResolvedValue(true);
     });

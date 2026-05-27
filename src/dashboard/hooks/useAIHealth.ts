@@ -165,6 +165,30 @@ export async function selectMeshLLMNode(nodeId: string): Promise<boolean> {
     }
 }
 
+export interface OllamaModelEntry {
+    name: string;
+    size: number;
+}
+
+export function useOllamaModels() {
+    const [models, setModels] = useState<OllamaModelEntry[]>([]);
+    useEffect(() => {
+        let cancelled = false;
+        const fetch = async () => {
+            try {
+                const r = await window.fetch('/api/ollama/models', { signal: AbortSignal.timeout(5000) });
+                if (!r.ok) return;
+                const data = await r.json() as { models: OllamaModelEntry[] };
+                if (!cancelled) setModels(data.models ?? []);
+            } catch { /* ignore */ }
+        };
+        fetch();
+        const interval = setInterval(fetch, 30000);
+        return () => { cancelled = true; clearInterval(interval); };
+    }, []);
+    return models;
+}
+
 export function useOllamaHealth(): OllamaHealth {
     const [health, setHealth] = useState<OllamaHealth>({
         isHealthy: false,

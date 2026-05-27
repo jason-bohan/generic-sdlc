@@ -47,7 +47,8 @@ describe('agent runner complete_phase tool', () => {
         );
 
         expect(result).toContain('HTTP 409');
-        const outputs = payload?.outputs as Record<string, unknown>;
+        expect(payload).not.toBeNull();
+        const outputs = (payload as unknown as { outputs: Record<string, unknown> }).outputs;
         expect(outputs).toMatchObject({
             tasks: [{ id: 'T-001', name: 'Validate form' }],
             taskIds: ['T-001'],

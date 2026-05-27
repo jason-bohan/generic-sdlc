@@ -58,6 +58,7 @@ export class AgentRunner extends EventEmitter {
     private _aborted = false;
     private turnCount = 0;
     private consecutiveNudges = 0;
+    private _phaseCompleted = false;
     private onCheckpoint?: (messages: Message[]) => void;
 
     constructor(
@@ -153,14 +154,20 @@ export class AgentRunner extends EventEmitter {
                 this.messages.push(msg);
 
                 if (!msg.tool_calls || msg.tool_calls.length === 0) {
-                    // If the model wrote a planning message instead of calling a tool,
-                    // nudge it once or twice then give up to avoid burning all turns.
                     const textContent = typeof msg.content === 'string' ? msg.content.toLowerCase() : '';
+                    // Nudge 1: model wrote planning text instead of calling a tool
                     const isPlanningText = /\b(i will|i'll|let me|now i|next i|i need to|i should|i am going to|step \d|first,|second,|third,)\b/.test(textContent);
                     if (isPlanningText && this.consecutiveNudges < 3 && this.turnCount < MAX_TURNS - 1) {
                         this.consecutiveNudges++;
                         this._emit('message', { content: `[nudge] Model wrote plan text (nudge ${this.consecutiveNudges}/3)`, turn: this.turnCount });
                         this.messages.push({ role: 'user', content: 'Call the appropriate tool now to execute that action. Do not describe what you will do — call the tool directly.' });
+                        continue;
+                    }
+                    // Nudge 2: model stopped (empty or text) before calling complete_phase
+                    if (!this._phaseCompleted && this.consecutiveNudges < 2 && this.turnCount < MAX_TURNS - 1) {
+                        this.consecutiveNudges++;
+                        this._emit('message', { content: `[nudge] Stopped without complete_phase (nudge ${this.consecutiveNudges}/2)`, turn: this.turnCount });
+                        this.messages.push({ role: 'user', content: 'You have not called complete_phase yet. You MUST call complete_phase now to advance the workflow. Do not output text — call the tool directly.' });
                         continue;
                     }
                     this.consecutiveNudges = 0;
@@ -206,6 +213,7 @@ export class AgentRunner extends EventEmitter {
                         const nextPhase = output.slice(PHASE_COMPLETE_SENTINEL.length).split('\n')[0];
                         this._emit('phase_complete', { nextPhase, turn: this.turnCount });
                         this._running = false;
+                        this._phaseCompleted = true;
                         phaseCompleted = true;
                         break;
                     }
