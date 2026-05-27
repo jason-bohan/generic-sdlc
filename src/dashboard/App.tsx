@@ -1,8 +1,13 @@
 import { RouterProvider } from '@tanstack/react-router';
+import { ThemeProvider } from './ThemeProvider';
 import { router } from './router';
 
 export default function App() {
-    return <RouterProvider router={router} />;
+    return (
+        <ThemeProvider>
+            <RouterProvider router={router} />
+        </ThemeProvider>
+    );
 }
 
 App.displayName = 'App';
