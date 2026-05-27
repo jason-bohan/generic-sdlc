@@ -116,7 +116,7 @@ export default function StoryPicker({ agentId, agentName, onClose, onAssigned }:
         setLoading(true);
         setError(null);
         fetch('/api/planning/teams')
-            .then(r => r.json())
+            .then(r => { if (!r.ok) throw new Error(`Teams request failed (${r.status})`); return r.json(); })
             .then(data => {
                 if (data.error) throw new Error(data.error);
                 setTeams(data.teams || []);
@@ -124,9 +124,9 @@ export default function StoryPicker({ agentId, agentName, onClose, onAssigned }:
             .catch(e => setError(e.message))
             .finally(() => setLoading(false));
         fetch('/api/active-project')
-            .then(r => r.json())
+            .then(r => { if (!r.ok) return null; return r.json(); })
             .then(data => {
-                if (Array.isArray(data.profile?.environments) && data.profile.environments.length > 0) {
+                if (Array.isArray(data?.profile?.environments) && data.profile.environments.length > 0) {
                     setEnvironments(data.profile.environments);
                 }
             })
@@ -139,7 +139,7 @@ export default function StoryPicker({ agentId, agentName, onClose, onAssigned }:
         setLoading(true);
         setError(null);
         fetch(`/api/planning/stories?team=${encodeURIComponent(team.name)}`)
-            .then(r => r.json())
+            .then(r => { if (!r.ok) throw new Error(`Stories request failed (${r.status})`); return r.json(); })
             .then(data => {
                 if (data.error) throw new Error(data.error);
                 const filtered = (data.stories || []).filter(
@@ -156,7 +156,7 @@ export default function StoryPicker({ agentId, agentName, onClose, onAssigned }:
         setLoading(true);
         setError(null);
         fetch(`/api/planning/story?number=${encodeURIComponent(number)}`)
-            .then(r => r.json())
+            .then(r => { if (!r.ok) throw new Error(`Story detail request failed (${r.status})`); return r.json(); })
             .then(data => {
                 if (data.error) throw new Error(data.error);
                 setSelectedStory(data);
@@ -183,6 +183,7 @@ export default function StoryPicker({ agentId, agentName, onClose, onAssigned }:
                     environment: selectedEnv || undefined,
                 }),
             });
+            if (!resp.ok) throw new Error(`Assign request failed (${resp.status})`);
             const data = await resp.json();
             if (data.error) throw new Error(data.error);
             onAssigned();

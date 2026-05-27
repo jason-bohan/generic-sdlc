@@ -27,7 +27,7 @@ export function AssignView({ agent, story, dir, onBack }: Props) {
             }
             const team = loadConfig()?.project?.team ?? 'Ninja Turtles';
             fetch(`${API_BASE}/api/planning/stories?team=${encodeURIComponent(team)}`)
-            .then(r => r.json())
+            .then(r => { if (!r.ok) throw new Error(`Stories request failed (${r.status})`); return r.json(); })
             .then(data => {
                 setStories(data.stories ?? []);
                 setLoading(false);
@@ -44,6 +44,7 @@ export function AssignView({ agent, story, dir, onBack }: Props) {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ agentId: agent, storyNumber, storyName: stories.find(s => s.number === storyNumber)?.name }),
             });
+            if (!res.ok) throw new Error(`Assign request failed (${res.status})`);
             const data = await res.json();
             if (data.error) throw new Error(data.error);
             setResult(`Assigned ${storyNumber} to ${agent}`);

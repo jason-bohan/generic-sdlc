@@ -181,6 +181,9 @@ export default function LocalBacklogView({ onBack, onAssigned }: Props) {
                 fetch('/api/planning/members?source=local'),
                 fetch('/api/planning/stories?source=local&maxResults=500'),
             ]);
+            for (const r of [teamsRes, classOfServiceRes, membersRes, storiesRes]) {
+                if (!r.ok) throw new Error(`Request failed (${r.status})`);
+            }
             const [teamsData, classOfServiceData, membersData, storiesData] = await Promise.all([
                 teamsRes.json(),
                 classOfServiceRes.json(),
@@ -192,6 +195,7 @@ export default function LocalBacklogView({ onBack, onAssigned }: Props) {
             const stories = (storiesData.stories ?? []) as LocalStory[];
             const tasksByStory = await Promise.all(stories.map(async (story) => {
                 const tasksRes = await fetch(`/api/planning/tasks?story=${encodeURIComponent(story.number)}`);
+                if (!tasksRes.ok) throw new Error(`Tasks request failed (${tasksRes.status})`);
                 const tasksData = await tasksRes.json();
                 if (tasksData.error) throw new Error(tasksData.error);
                 return {
