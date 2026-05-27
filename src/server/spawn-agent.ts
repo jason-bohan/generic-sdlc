@@ -3,7 +3,7 @@ import { existsSync, writeFileSync, appendFileSync, mkdirSync } from 'fs';
 import { resolve } from 'path';
 import { getMockModeSafetyDirective } from './test-safety';
 import { buildSpawnSpec, resolveCursorSafeDriverConfig, resolveAgentDriverConfig, LOOP_DRIVER_SENTINEL, type AgentDriverType, type DriverSpawnSpec } from './agent-drivers';
-import { isCursorAiEnabled, isClaudeEnabled } from './cursor-ai-policy';
+import { isCursorAiEnabled, isClaudeEnabled, isOpenCodeEnabled } from './cursor-ai-policy';
 import { isMockExternalMode } from './external-mode';
 import { ensureMockShims } from './mock-mode-guard';
 import { startRunner } from './agent-runner';
@@ -143,7 +143,7 @@ export function spawnAgent(
         }
         // Try fallback drivers before giving up (not when model='local' — goose is explicit)
         if (model !== 'local') {
-            const fallback = _buildFallbackSpec(driverConfig.type, agentId, effectivePrompt, workspaceDir, promptFilePath, model, outputDir, isCursorAiEnabled(configPath), isClaudeEnabled(configPath));
+            const fallback = _buildFallbackSpec(driverConfig.type, agentId, effectivePrompt, workspaceDir, promptFilePath, model, outputDir, isCursorAiEnabled(configPath), isClaudeEnabled(configPath), isOpenCodeEnabled(configPath));
             if (fallback) {
                 const msg = `primary driver '${driverConfig.type}' failed (${spec.error}), falling back to '${fallback.usedDriver}'`;
                 console.warn(`[spawn-agent] ${agentId}: ${msg}`);
@@ -159,7 +159,7 @@ export function spawnAgent(
 }
 
 // Ordered list of drivers to try when the primary spec fails.
-const DRIVER_FALLBACK_CHAIN: AgentDriverType[] = ['claude-code', 'aider', 'goose', 'cursor'];
+const DRIVER_FALLBACK_CHAIN: AgentDriverType[] = ['claude-code', 'opencode', 'aider', 'goose', 'cursor'];
 
 function _buildFallbackSpec(
     primaryType: AgentDriverType,
@@ -171,11 +171,13 @@ function _buildFallbackSpec(
     outputDir: string,
     allowCursor: boolean,
     allowClaude: boolean,
+    allowOpenCode: boolean,
 ): { spec: DriverSpawnSpec; usedDriver: AgentDriverType } | null {
     for (const type of DRIVER_FALLBACK_CHAIN) {
         if (type === primaryType) continue;
         if (type === 'cursor' && !allowCursor) continue;
         if (type === 'claude-code' && !allowClaude) continue;
+        if (type === 'opencode' && !allowOpenCode) continue;
         const spec = buildSpawnSpec({ type }, agentId, prompt, workspaceDir, promptFilePath, model, outputDir);
         if (!('error' in spec)) return { spec, usedDriver: type };
     }

@@ -2,11 +2,11 @@
 import { resolve } from 'path';
 import { execFile } from 'child_process';
 import { parseJsonUtf8File } from './json-file';
-import { isCursorAiEnabled, isClaudeEnabled } from './cursor-ai-policy';
+import { isCursorAiEnabled, isClaudeEnabled, isOpenCodeEnabled } from './cursor-ai-policy';
 import { OpenAICompatibleProvider, readLoopProviderConfig } from './agent-runner/provider';
 import { ollamaHost } from './ollamaManager';
 
-export type AgentDriverType = 'cursor' | 'claude-code' | 'aider' | 'goose' | 'generic' | 'loop';
+export type AgentDriverType = 'cursor' | 'claude-code' | 'opencode' | 'aider' | 'goose' | 'generic' | 'loop';
 
 export interface GenericDriverConfig {
     command: string;
@@ -33,7 +33,7 @@ export function readDriverConfig(configPath: string): AgentDriverConfig {
     try {
         const cfg = parseJsonUtf8File(configPath);
         const raw = cfg.scheduler?.driver as string | undefined;
-        const valid: AgentDriverType[] = ['cursor', 'claude-code', 'aider', 'goose', 'generic', 'loop'];
+        const valid: AgentDriverType[] = ['cursor', 'claude-code', 'opencode', 'aider', 'goose', 'generic', 'loop'];
         return {
             type: valid.includes(raw as AgentDriverType) ? (raw as AgentDriverType) : 'loop',
             generic: cfg.scheduler?.genericDriver };
@@ -45,7 +45,8 @@ export function readDriverConfig(configPath: string): AgentDriverConfig {
 export function resolveCursorSafeDriverConfig(configPath: string): AgentDriverConfig {
     const cfg = readDriverConfig(configPath);
     if ((cfg.type === 'cursor' && !isCursorAiEnabled(configPath)) ||
-        (cfg.type === 'claude-code' && !isClaudeEnabled(configPath))) {
+        (cfg.type === 'claude-code' && !isClaudeEnabled(configPath)) ||
+        (cfg.type === 'opencode' && !isOpenCodeEnabled(configPath))) {
         // Prefer aider (coding-optimised) → goose (general) → loop (in-process)
         if (findAiderCli()) return { ...cfg, type: 'aider' };
         if (existsSync(findGooseCli())) return { ...cfg, type: 'goose' };
@@ -60,7 +61,7 @@ export function resolveCursorSafeDriverConfig(configPath: string): AgentDriverCo
  * specific agent (e.g. "reviewer") to a different driver than the global default.
  */
 export function resolveAgentDriverConfig(agentId: string, configPath: string): AgentDriverConfig {
-    const valid: AgentDriverType[] = ['cursor', 'claude-code', 'aider', 'goose', 'generic', 'loop'];
+    const valid: AgentDriverType[] = ['cursor', 'claude-code', 'opencode', 'aider', 'goose', 'generic', 'loop'];
     try {
         if (existsSync(configPath)) {
             const cfg = parseJsonUtf8File(configPath);
@@ -68,7 +69,8 @@ export function resolveAgentDriverConfig(agentId: string, configPath: string): A
             if (perAgent && valid.includes(perAgent as AgentDriverType)) {
                 const overrideType = perAgent as AgentDriverType;
                 if ((overrideType === 'cursor' && !isCursorAiEnabled(configPath)) ||
-                    (overrideType === 'claude-code' && !isClaudeEnabled(configPath))) {
+                    (overrideType === 'claude-code' && !isClaudeEnabled(configPath)) ||
+                    (overrideType === 'opencode' && !isOpenCodeEnabled(configPath))) {
                     if (findAiderCli()) return { type: 'aider' };
                     if (existsSync(findGooseCli())) return { type: 'goose' };
                     return { type: 'loop' };
@@ -178,6 +180,49 @@ export function buildCursorSpawnSpec(
         cmd: agentCli,
         args: [...baseArgs, prompt],
         needsShell: agentCli.endsWith('.cmd') || agentCli.endsWith('.bat') };
+}
+
+// ─── OpenCode ─────────────────────────────────────────────────────────────────
+
+export function buildOpenCodeSpawnSpec(
+    agentId: string,
+    workspaceDir: string,
+    promptFilePath: string,
+    model: string | undefined,
+    outputDir: string,
+): DriverSpawnSpec | { error: string } {
+    const opencodeExe = findOpenCodeCli();
+    if (!opencodeExe) {
+        return { error: 'OpenCode CLI not found. Install from https://opencode.ai or set scheduler.driver to another option.' };
+    }
+    const effectiveModel = model && model !== 'auto' ? model : undefined;
+    const modelArgs = effectiveModel ? ['--model', effectiveModel] : [];
+    return {
+        cmd: opencodeExe,
+        args: ['run', '--prompt-file', promptFilePath, ...modelArgs, '--workspace', workspaceDir],
+    };
+}
+
+export function findOpenCodeCli(): string | null {
+    // Search PATH for opencode CLI
+    const pathEnv = process.env.PATH || '';
+    const sep = process.platform === 'win32' ? ';' : ':';
+    const names = process.platform === 'win32' ? ['opencode.cmd', 'opencode.bat', 'opencode.exe'] : ['opencode'];
+    for (const dir of pathEnv.split(sep).filter(Boolean)) {
+        for (const name of names) {
+            const candidate = resolve(dir, name);
+            if (existsSync(candidate)) return candidate;
+        }
+    }
+    // Common install locations
+    const home = process.env.USERPROFILE || process.env.HOME || '';
+    const common = [
+        resolve(home, '.local', 'bin', process.platform === 'win32' ? 'opencode.exe' : 'opencode'),
+        resolve(home, 'bin', process.platform === 'win32' ? 'opencode.exe' : 'opencode'),
+        resolve(home, '.opencode', 'bin', process.platform === 'win32' ? 'opencode.exe' : 'opencode'),
+    ];
+    for (const p of common) { if (existsSync(p)) return p; }
+    return null;
 }
 
 // ─── Claude Code ─────────────────────────────────────────────────────────────
@@ -393,6 +438,8 @@ export function buildSpawnSpec(
             return LOOP_DRIVER_SENTINEL;
         case 'claude-code':
             return buildClaudeCodeSpawnSpec(agentId, workspaceDir, promptFilePath, model, outputDir);
+        case 'opencode':
+            return buildOpenCodeSpawnSpec(agentId, workspaceDir, promptFilePath, model, outputDir);
         case 'aider':
             return buildAiderSpawnSpec(agentId, workspaceDir, promptFilePath, model, outputDir, providerBaseUrl);
         case 'goose':
@@ -439,6 +486,16 @@ export function runInlineQuery(
                 workspaceDir,
                 timeout,
                 true,  // needsShell — 'claude' resolved from PATH
+            );
+
+        case 'opencode':
+            if (!isOpenCodeEnabled(configPath)) return _runLoopProviderInlineQuery(prompt, configPath);
+            return _execInline(
+                'opencode',
+                ['run', '--text', prompt, ...modelArgs],
+                workspaceDir,
+                timeout,
+                true,
             );
 
         case 'goose': {

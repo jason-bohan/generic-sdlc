@@ -2,7 +2,7 @@
 import { resolve } from 'path';
 import { execFile } from 'child_process';
 import { readDriverConfig, findCursorCli } from '../agent-drivers';
-import { isCursorAiEnabled, isClaudeEnabled } from '../cursor-ai-policy';
+import { isCursorAiEnabled, isClaudeEnabled, isOpenCodeEnabled } from '../cursor-ai-policy';
 import { readLoopProviderConfig } from '../agent-runner/provider';
 import { readBody, json, cors } from '../router';
 import { getSchedulerConfig } from '../route-shared';
@@ -66,6 +66,11 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
             return Promise.resolve(getClaudeCodeModels());
         }
 
+        if (driver.type === 'opencode') {
+            if (!isOpenCodeEnabled(configFile)) return getNonCursorModels();
+            return getNonCursorModels();
+        }
+
         if (driver.type === 'loop') {
             return getNonCursorModels();
         }
@@ -123,7 +128,7 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
 
     let cachedCliModels: ModelOption[] | null = null;
 
-    // Called by config route when Cursor AI or Claude AI toggle changes
+    // Called by config route when Cursor AI, Claude AI, or OpenCode toggle changes
     bustModelCache = () => { cachedCliModels = null; cacheTimestamp = 0; };
 
     async function getAvailableModels(): Promise<ModelOption[]> {

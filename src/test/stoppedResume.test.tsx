@@ -135,7 +135,7 @@ describe('Stopped agent badge and resume chip', () => {
     });
 
     it('handles closing AI Command Room', () => {
-        render(<AICommandRoom open={true} onClose={mockOnClose} cursorAiEnabled={true} toggleCursorAi={vi.fn()} claudeEnabled={true} toggleClaudeAi={vi.fn()} />);
+        render(<AICommandRoom open={true} onClose={mockOnClose} cursorAiEnabled={true} toggleCursorAi={vi.fn()} claudeEnabled={true} toggleClaudeAi={vi.fn()} opencodeEnabled={true} toggleOpenCode={vi.fn()} />);
         const closeButton = screen.getByText('Close');
         fireEvent.click(closeButton);
         expect(mockOnClose).toHaveBeenCalledTimes(1);
@@ -152,7 +152,7 @@ describe('Stopped agent badge and resume chip', () => {
     });
 
     it('handles disabled AI providers correctly in AICommandRoom', () => {
-        render(<AICommandRoom open={true} onClose={mockOnClose} cursorAiEnabled={false} toggleCursorAi={vi.fn()} claudeEnabled={false} toggleClaudeAi={vi.fn()} />);
+        render(<AICommandRoom open={true} onClose={mockOnClose} cursorAiEnabled={false} toggleCursorAi={vi.fn()} claudeEnabled={false} toggleClaudeAi={vi.fn()} opencodeEnabled={false} toggleOpenCode={vi.fn()} />);
         expect(screen.getByTestId('ai-command-room')).toBeInTheDocument();
     });
 });

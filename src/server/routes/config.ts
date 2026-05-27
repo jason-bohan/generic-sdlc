@@ -4,7 +4,7 @@ import { getActiveProject, getActiveProjectName, getProjectProfile, listProjectN
 import { getExecMode, isValidMode } from '../modes';
 import { getSchedulerWorkflowMode, isValidSchedulerWorkflowMode } from '../schedulerMode';
 import { getExternalMode, isMockExternalMode } from '../external-mode';
-import { isCursorAiEnabled, setCursorAiEnabled, isClaudeEnabled, setClaudeEnabled } from '../cursor-ai-policy';
+import { isCursorAiEnabled, setCursorAiEnabled, isClaudeEnabled, setClaudeEnabled, isOpenCodeEnabled, setOpenCodeEnabled } from '../cursor-ai-policy';
 import { bustModelCache } from './agents-models';
 import { hasLiveAdoCredentialsInMockMode } from '../test-safety';
 import { getUserProfileRecord, mergeUserProfileRecord, type UserProfileRecord } from '../user-profile-store';
@@ -175,6 +175,33 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                     return;
                 }
                 const result = setClaudeEnabled(configFile, parsed.enabled);
+                bustModelCache();
+                json(res, result);
+            } catch (e: unknown) {
+                json(res, { error: e instanceof Error ? e.message : String(e) }, 500);
+            }
+            return;
+        }
+        res.statusCode = 405; res.end('Method not allowed');
+    });
+
+    // ── /api/opencode-ai ─────────────────────────────────────────────────────
+    use('/api/opencode-ai', async (req, res) => {
+        cors(res, 'GET, PUT, OPTIONS');
+        if (req.method === 'OPTIONS') { res.statusCode = 204; res.end(); return; }
+        if (req.method === 'GET') {
+            json(res, { enabled: isOpenCodeEnabled(configFile) });
+            return;
+        }
+        if (req.method === 'PUT') {
+            const body = await readBody(req);
+            try {
+                const parsed = body.trim() ? JSON.parse(body) : {};
+                if (typeof parsed.enabled !== 'boolean') {
+                    json(res, { error: 'enabled must be boolean' }, 400);
+                    return;
+                }
+                const result = setOpenCodeEnabled(configFile, parsed.enabled);
                 bustModelCache();
                 json(res, result);
             } catch (e: unknown) {
