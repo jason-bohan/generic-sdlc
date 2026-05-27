@@ -339,7 +339,7 @@ export function InteractiveView({ agent: initialAgent, dir: initialDir }: Props)
                         onSubmit={key => {
                             if (key.startsWith('sk-or-')) {
                                 fetch(`${API_BASE}/api/loop-provider/models`)
-                                    .then(r => r.json())
+                                    .then(r => { if (!r.ok) throw new Error(`Models request failed (${r.status})`); return r.json(); })
                                     .then((d: { models: Array<{ id: string; label: string }> }) => {
                                         if (d.models?.length) setLpFetchedModels(d.models);
                                     }).catch(() => {});

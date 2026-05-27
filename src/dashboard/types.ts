@@ -129,9 +129,10 @@ export interface AgentStatus {
     /** Configured model for this agent (e.g. 'auto', 'composer-2', 'local'). */
     model?: string;
     tokens: {
-        cloud: TokenMetrics;
+        cloud?: TokenMetrics;
         meshllm?: TokenMetrics;
-        ollama: TokenMetrics;
+        ollama?: TokenMetrics;
+        mlx?: TokenMetrics;
     };
     tasks: TaskItem[];
     requests?: RequestItem[];

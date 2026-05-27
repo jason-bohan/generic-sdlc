@@ -80,6 +80,10 @@ function normalizeTokens(rawTokens: unknown) {
             input: typeof tokens.ollama?.input === 'number' ? tokens.ollama.input : 0,
             output: typeof tokens.ollama?.output === 'number' ? tokens.ollama.output : 0,
         },
+        mlx: {
+            input: typeof tokens.mlx?.input === 'number' ? tokens.mlx.input : 0,
+            output: typeof tokens.mlx?.output === 'number' ? tokens.mlx.output : 0,
+        },
     };
 }
 
@@ -136,7 +140,7 @@ export function getDefaultStatus(agentId = 'frontend') {
     const name = agentId.charAt(0).toUpperCase() + agentId.slice(1);
     return {
         storyNumber: null, storyName: null, storyDescription: null, currentPhase: 'idle', currentTask: null, startedAt: null,
-        tokens: { cloud: { input: 0, output: 0 }, meshllm: { input: 0, output: 0 }, ollama: { input: 0, output: 0 } },
+        tokens: { cloud: { input: 0, output: 0 }, meshllm: { input: 0, output: 0 }, ollama: { input: 0, output: 0 }, mlx: { input: 0, output: 0 } },
         tasks: [], prs: [], requests: [],
         sessionId: null, activeSessionId: null,
         cypress: { lastRun: null, total: 0, passed: 0, failed: 0, skipped: 0, failures: [] },
