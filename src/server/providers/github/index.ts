@@ -155,4 +155,6 @@ export class GitHubProjectTracker implements IProjectTracker {
         const issue = await res.json() as GitHubIssue;
         return issueToWorkItem(issue, this.repo);
     }
+
+    async getTasksForStory(): Promise<[]> { return []; }
 }

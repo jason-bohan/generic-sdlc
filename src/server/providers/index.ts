@@ -18,6 +18,12 @@ export { MockProjectTracker, MockCodeReview, MockNotifications } from './mock';
  * New providers: implement IProjectTracker and add a case here.
  */
 export async function resolveProjectTracker(rootDir: string, configFile: string) {
+    // In mock external mode the Agility provider is fully intercepted by mockV1Fetch/mockV1Post
+    // regardless of PM_PROVIDER, so return it directly to avoid mis-routing.
+    if (isMockExternalMode(configFile)) {
+        const { AgilityProjectTracker } = await import('./agility');
+        return new AgilityProjectTracker(rootDir, configFile);
+    }
     const provider = (process.env.PM_PROVIDER ?? 'agility').toLowerCase();
     if (provider === 'mock') {
         const { MockProjectTracker } = await import('./mock');

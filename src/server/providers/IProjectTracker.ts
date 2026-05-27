@@ -1,4 +1,5 @@
 import type { Team, WorkItem, WorkItemSummary } from './types';
+import type { RawTask } from '../status-normalize';
 
 export interface FetchStoriesOptions {
     team?: string;
@@ -22,6 +23,9 @@ export interface IProjectTracker {
 
     /** Create a new work item */
     createWorkItem(fields: Partial<WorkItem>): Promise<WorkItem>;
+
+    /** Fetch existing planning tasks (subtasks/child tasks) for a story. Returns [] if the provider doesn't support it. */
+    getTasksForStory(storyNumber: string): Promise<RawTask[]>;
 
     readonly providerName: string;
 }

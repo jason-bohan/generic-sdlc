@@ -1,4 +1,5 @@
 import type { IProjectTracker, FetchStoriesOptions } from '../IProjectTracker';
+import type { RawTask } from '../../status-normalize';
 import type { ICodeReview, CreatePROptions } from '../ICodeReview';
 import type { INotifications } from '../INotifications';
 import type { Team, WorkItem, WorkItemSummary, PREvent, NotificationPayload } from '../types';
@@ -113,6 +114,8 @@ export class MockProjectTracker implements IProjectTracker {
         this.items.push(item);
         return item;
     }
+
+    async getTasksForStory(_storyNumber: string): Promise<RawTask[]> { return []; }
 }
 
 export class MockCodeReview implements ICodeReview {

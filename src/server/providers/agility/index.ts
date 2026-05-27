@@ -1,6 +1,7 @@
-import { v1Fetch, v1Post } from '../../route-shared';
+import { v1Fetch, v1Post, mapV1TaskStatus } from '../../route-shared';
 import type { IProjectTracker, FetchStoriesOptions } from '../IProjectTracker';
 import type { Team, WorkItem, WorkItemSummary } from '../types';
+import { taskIdentityKey, type RawTask } from '../../status-normalize';
 
 export class AgilityProjectTracker implements IProjectTracker {
     readonly providerName = 'agility';
@@ -78,6 +79,34 @@ export class AgilityProjectTracker implements IProjectTracker {
             await v1Post(this.rootDir, `/${oid}?op=Inactivate`, {});
         }
         return true;
+    }
+
+    async getTasksForStory(storyNumber: string): Promise<RawTask[]> {
+        const parentData = await v1Fetch(this.rootDir, '/Story', { sel: 'Number', where: `Number='${storyNumber}'` }) as { Assets?: Array<{ id?: string }> };
+        const storyAsset = parentData.Assets?.[0];
+        if (!storyAsset) return [];
+        const data = await v1Fetch(this.rootDir, '/Task', {
+            sel: 'Number,Name,Status.Name,Category.Name,Owners.Name,DetailEstimate,ToDo,Done,Actuals',
+            where: `Parent='${storyAsset.id}'`,
+        }) as { Assets?: Array<{ Attributes?: Record<string, { value?: unknown }> }> };
+        return (data.Assets ?? []).map(asset => {
+            const at = asset.Attributes ?? {};
+            const number = at.Number?.value != null ? String(at.Number.value) : '';
+            const ownersRaw = at['Owners.Name']?.value;
+            const owners = Array.isArray(ownersRaw) ? ownersRaw.map(String) : ownersRaw ? [String(ownersRaw)] : [];
+            return {
+                id: number, number,
+                name: at.Name?.value != null ? String(at.Name.value) : number,
+                status: mapV1TaskStatus(at['Status.Name']?.value),
+                agilityStatus: at['Status.Name']?.value ?? null,
+                category: at['Category.Name']?.value ?? undefined,
+                hours: at.DetailEstimate?.value ?? at.ToDo?.value ?? 0,
+                todo: at.ToDo?.value ?? 0,
+                done: at.Done?.value ?? 0,
+                actuals: at.Actuals?.value ?? 0,
+                owners, source: 'agility', inherited: true,
+            } as RawTask;
+        }).filter(task => taskIdentityKey(task) || task.name);
     }
 
     async createWorkItem(fields: Partial<WorkItem>): Promise<WorkItem> {
