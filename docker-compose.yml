@@ -21,8 +21,7 @@ services:
       - "0:3001"
     environment:
       OLLAMA_HOST: http://ollama:11434
-      MESHLLM_HOST: ${MESHLLM_HOST:-http://meshllm:9337}
-      SDLC_EXTERNAL_MODE: ${SDLC_EXTERNAL_MODE:-}
+SDLC_EXTERNAL_MODE: ${SDLC_EXTERNAL_MODE:-}
       SDLC_API_PORT: "3001"
       AZURE_DEVOPS_PAT: ${AZURE_DEVOPS_PAT:-}
       AZURE_DEVOPS_EXT_PAT: ${AZURE_DEVOPS_EXT_PAT:-}
@@ -57,25 +56,6 @@ services:
       timeout: 3s
       retries: 20
       start_period: 15s
-
-  meshllm:
-    # Optional Mesh-LLM client node. Enable with:
-    #   docker compose --profile meshllm up -d meshllm
-    #
-    # The image is built automatically on first launch from:
-    #   https://github.com/Mesh-LLM/mesh-llm.git  (docker/Dockerfile.client)
-    # Docker Compose on Windows cannot resolve remote git build contexts, so the
-    # launcher uses `docker build` directly and then runs compose up.
-    profiles: ["meshllm"]
-    image: sdlc-framework-mesh-llm:client
-    pull_policy: never
-    environment:
-      APP_MODE: console
-      MESH_HEADLESS: ${MESHLLM_HEADLESS:-1}
-    ports:
-      - "9337:9337"
-      - "3131:3131"
-    restart: unless-stopped
 
 volumes:
   sdlc-db:

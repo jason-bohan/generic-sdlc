@@ -43,6 +43,7 @@ const AGENT_CATEGORY_NAME: Record<string, string> = {
 
 async function loadPlanningTasksForStory(rootDir: string, storyNumber: string): Promise<RawTask[]> {
     if (isLocalStoryNumber(storyNumber)) return loadLocalTasksForStory(rootDir, storyNumber);
+    if (!process.env.V1_BASE_URL && !process.env.AGILITY_BASE_URL) return [];
     const parentData = await v1Fetch(rootDir, '/Story', { sel: 'Number', where: `Number='${storyNumber}'` });
     const storyAsset = (parentData.Assets || [])[0];
     if (!storyAsset) return [];
@@ -219,7 +220,7 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                         }
                     }
                 }
-                const taskNumber = `MOCK-TK-${Date.now()}`;
+                const taskNumber = `MOCK-TK-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
                 if (existsSync(mockStatusFile)) {
                     const sr = parseJsonUtf8File(mockStatusFile) as Record<string, unknown>;
                     if (sr.storyNumber && sr.storyNumber !== storyNumber) sr.tasks = [];
@@ -257,7 +258,7 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
             if ((process.env.PM_PROVIDER ?? '').toLowerCase() === 'github' || (!process.env.V1_BASE_URL && !process.env.AGILITY_BASE_URL)) {
                 const noCredCategoryName = typeof category === 'string' && !category.startsWith('TaskCategory:') ? category : AGENT_CATEGORY_NAME[agentId] ?? null;
                 const noCredStatusFile = resolve(rootDir, `.${agentId}-status.json`);
-                const taskNumber = `GH-TK-${Date.now()}`;
+                const taskNumber = `GH-TK-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
                 if (existsSync(noCredStatusFile)) {
                     const sr = parseJsonUtf8File(noCredStatusFile) as Record<string, unknown>;
                     if (sr.storyNumber && sr.storyNumber !== storyNumber) sr.tasks = [];
