@@ -336,6 +336,8 @@ export function buildAiderSpawnSpec(
     }
     const meshllmBase = providerBaseUrl || ((process.env.MESHLLM_HOST || 'http://localhost:9337') + '/v1');
     const ollamaBase = ollamaHost() + '/v1';
+    const mlxBase = (process.env.MLX_HOST_14B || process.env.MLX_HOST || 'http://localhost:8083').replace(/\/v1$/, '') + '/v1';
+    const mlxModel = process.env.MLX_MODEL_14B || process.env.MLX_MODEL || '';
     const effectiveModel = model && model !== 'auto' ? model : 'qwen3:8b';
     const agentOutputDir = resolve(workspaceDir, '.agent-output');
 
@@ -350,7 +352,12 @@ export function buildAiderSpawnSpec(
             `log_path=${q(resolve(agentOutputDir, `${agentId}-`))}$(date +%Y-%m-%dT%H-%M-%S).log`,
             `mesh_base=${q(meshllmBase)}`,
             `ollama_base=${q(ollamaBase)}`,
-            `if curl -fsS "$mesh_base/models" >/dev/null 2>&1; then`,
+            `mlx_base=${q(mlxBase)}`,
+            `mlx_model=${q(mlxModel)}`,
+            `if [ -n "$mlx_model" ] && curl -fsS "$mlx_base/models" >/dev/null 2>&1; then`,
+            `  echo "Backend: MLX ($mlx_model)" >> "$log_path"`,
+            `  exec ${q(aiderExe)} --model "openai/$mlx_model" --openai-api-base "$mlx_base" --openai-api-key fake --yes-always --no-auto-commits --map-tokens 0 --no-show-model-warnings --no-check-update --message-file ${q(promptFilePath)} >> "$log_path" 2>&1`,
+            `elif curl -fsS "$mesh_base/models" >/dev/null 2>&1; then`,
             `  echo "Backend: MeshLLM" >> "$log_path"`,
             `  exec ${q(aiderExe)} --model ${q(`openai/${effectiveModel}`)} --openai-api-base "$mesh_base" --openai-api-key meshllm --yes-always --no-auto-commits --map-tokens 0 --no-show-model-warnings --no-check-update --message-file ${q(promptFilePath)} >> "$log_path" 2>&1`,
             'else',
@@ -381,9 +388,13 @@ export function buildAiderSpawnSpec(
         `$ts = (Get-Date -Format 'yyyy-MM-ddTHH-mm-ss')`,
         `$logPath = Join-Path $logDir "${agentId}-$($ts).log"`,
         `Write-Host "  Log  : $logPath" -ForegroundColor DarkGray`,
-        `$useMesh = $false`,
-        `try { $null = Invoke-WebRequest -Uri '${meshllmBase}/models' -TimeoutSec 3 -UseBasicParsing -ErrorAction Stop; $useMesh = $true } catch {}`,
-        `if ($useMesh) {`,
+        `$useMlx = $false; $useMesh = $false`,
+        `if ('${q(mlxModel)}' -ne '') { try { $null = Invoke-WebRequest -Uri '${q(mlxBase)}/models' -TimeoutSec 3 -UseBasicParsing -ErrorAction Stop; $useMlx = $true } catch {} }`,
+        `if (-not $useMlx) { try { $null = Invoke-WebRequest -Uri '${meshllmBase}/models' -TimeoutSec 3 -UseBasicParsing -ErrorAction Stop; $useMesh = $true } catch {} }`,
+        `if ($useMlx) {`,
+        `    Write-Host '  Backend: MLX' -ForegroundColor Cyan`,
+        `    & '${q(aiderExe)}' --model 'openai/${q(mlxModel)}' --openai-api-base '${q(mlxBase)}' --openai-api-key 'fake' --yes-always --no-auto-commits --map-tokens 0 --no-show-model-warnings --no-check-update --message-file '${q(promptFilePath)}' 2>&1 | Tee-Object -FilePath $logPath -Append`,
+        `} elseif ($useMesh) {`,
         `    Write-Host '  Backend: MeshLLM' -ForegroundColor Green`,
         `    & '${q(aiderExe)}' --model 'openai/${effectiveModel}' --openai-api-base '${meshllmBase}' --openai-api-key 'meshllm' --yes-always --no-auto-commits --map-tokens 0 --no-show-model-warnings --no-check-update --message-file '${q(promptFilePath)}' 2>&1 | Tee-Object -FilePath $logPath -Append`,
         `} else {`,

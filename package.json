@@ -4,6 +4,7 @@
     "private": true,
     "description": "SDLC Framework — Multi-agent cooperative workgroup for Cursor",
     "bin": {
+        "aicode": "bin/aicode",
         "chatllm": "bin/chatllm",
         "sdlc-framework": "bin/sdlc-framework",
         "unwritten": "bin/unwritten"
