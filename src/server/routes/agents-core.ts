@@ -210,4 +210,37 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
             json(res, { ok: true, prId, ...result });
         } catch (e: unknown) { json(res, { error: e instanceof Error ? e.message : String(e) }, 500); }
     });
+
+    // ── /api/agent/model ─────────────────────────────────────────────────────
+    // GET  ?agentId=developer   → { agentId, model }
+    // PUT  { agentId, model }   → { ok, agentId, model }
+    use('/api/agent/model', async (req, res) => {
+        cors(res, 'GET, PUT, OPTIONS');
+        if (req.method === 'OPTIONS') { res.statusCode = 204; res.end(); return; }
+        if (req.method === 'GET') {
+            const url = new URL(req.url!, `http://${req.headers.host}`);
+            const agentId = url.searchParams.get('agentId') || '';
+            if (!agentId) { json(res, { error: 'agentId required' }, 400); return; }
+            const cfg = getSchedulerConfig(rootDir);
+            json(res, { agentId, model: cfg.scheduler?.agents?.[agentId]?.model ?? null });
+            return;
+        }
+        if (req.method === 'PUT') {
+            const body = await readBody(req);
+            try {
+                const { agentId, model } = JSON.parse(body) as { agentId?: string; model?: string };
+                if (!agentId) { json(res, { error: 'agentId required' }, 400); return; }
+                const cfg = existsSync(configFile) ? parseJsonUtf8File(configFile) as Record<string, any> : {};
+                if (!cfg.scheduler) cfg.scheduler = {};
+                if (!cfg.scheduler.agents) cfg.scheduler.agents = {};
+                if (!cfg.scheduler.agents[agentId]) cfg.scheduler.agents[agentId] = {};
+                if (model) cfg.scheduler.agents[agentId].model = model;
+                else delete cfg.scheduler.agents[agentId].model;
+                writeFileSync(configFile, JSON.stringify(cfg, null, 2));
+                json(res, { ok: true, agentId, model: model || null });
+            } catch (e: unknown) { json(res, { error: e instanceof Error ? e.message : String(e) }, 500); }
+            return;
+        }
+        res.statusCode = 405; res.end('Method not allowed');
+    });
 }
