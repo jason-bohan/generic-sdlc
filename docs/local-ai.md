@@ -244,6 +244,91 @@ See `ml/unsloth/REPORT.md` for full training metrics and benchmark results.
 
 ---
 
+## MLX (Apple Silicon)
+
+[MLX](https://github.com/ml-explore/mlx) is Apple's ML framework that runs models directly on Metal (MPS) rather than through Ollama's runner. On Apple Silicon, MLX is significantly faster than Ollama for the same model.
+
+### Setup
+
+Run the setup script to install `mlx-lm` and download a 4-bit quantized model:
+
+```sh
+./scripts/setup-mlx.sh
+```
+
+This creates a Python virtualenv at `~/mlx-env`, installs `mlx-lm`, downloads the model to `~/mlx-env/models/`, and registers a launch agent so the MLX server starts on login.
+
+### Manual setup
+
+```sh
+python3 -m venv ~/mlx-env
+source ~/mlx-env/bin/activate
+pip install mlx-lm
+# Download a 4-bit model
+mlx_lm download --hf-path mlx-community/Qwen2.5-Coder-14B-Instruct-4bit
+# Or use hf CLI:
+hf download mlx-community/Qwen2.5-Coder-14B-Instruct-4bit --local-dir ~/mlx-env/models/Qwen2.5-Coder-14B-Instruct-4bit
+```
+
+### Serving
+
+Start the OpenAI-compatible server:
+
+```sh
+source ~/mlx-env/bin/activate
+mlx_lm server --model ~/mlx-env/models/Qwen2.5-Coder-14B-Instruct-4bit --host 127.0.0.1 --port 8082
+```
+
+The server listens at `http://localhost:8082/v1` and exposes standard OpenAI endpoints (`/v1/models`, `/v1/chat/completions`).
+
+### Persistence (macOS)
+
+The setup script installs a launch agent at `~/Library/LaunchAgents/com.user.mlx-server.plist` so the MLX server starts automatically on login and stays running. To manage it manually:
+
+```sh
+launchctl load   ~/Library/LaunchAgents/com.user.mlx-server.plist   # start on login
+launchctl unload ~/Library/LaunchAgents/com.user.mlx-server.plist   # stop
+```
+
+### Environment variable
+
+Set `MLX_HOST` to override the default endpoint (default `http://localhost:8082`):
+
+```sh
+export MLX_HOST=http://localhost:8082
+```
+
+### Server integration
+
+The SDLC Framework probes MLX during startup and exposes health and model-list endpoints:
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/api/mlx/health` | GET | MLX availability, host, loaded models |
+| `/api/mlx/models` | GET | List of available models |
+
+MLX status is shown in the dashboard's AI Health section alongside Ollama and MeshLLM.
+
+### Using with opencode
+
+Add MLX as a provider in `opencode.json`:
+
+```json
+"mlx": {
+  "name": "MLX (local)",
+  "options": {
+    "baseURL": "http://localhost:8082/v1"
+  },
+  "models": {
+    "path-to-model": { "name": "Qwen 2.5 Coder 14B Q4" }
+  }
+}
+```
+
+Then select it with `/model mlx/<model-id>`.
+
+---
+
 ## Local Mock Integrations
 
 Plain `sdlc-framework` runs in live mode. Use `sdlc-framework --test` to run the TUI with local mock Agility, Azure DevOps, and Teams integrations, or set `"externalMode": "mock"` / `SDLC_EXTERNAL_MODE=mock` for other entry points such as the web dashboard. Mock state is stored in `.sdlc-framework/mock/state.json`; story pickup, task creation, PR creation, pipeline runs, and notifications stay local.

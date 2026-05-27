@@ -10,6 +10,7 @@ vi.mock('../dashboard/hooks/useFocusTrap', () => ({
 
 const mockUseMeshLLMHealth = vi.mocked(aiHealthHooks.useMeshLLMHealth);
 const mockUseOllamaHealth = vi.mocked(aiHealthHooks.useOllamaHealth);
+const mockUseMLXHealth = vi.mocked(aiHealthHooks.useMLXHealth);
 const mockSelectMeshLLMNode = vi.mocked(aiHealthHooks.selectMeshLLMNode);
 
 describe('AI Health Hooks', () => {
@@ -25,6 +26,12 @@ describe('AI Health Hooks', () => {
         isLoading: false
     };
 
+    const mockMLXHealth = {
+        isHealthy: false,
+        models: [],
+        isLoading: false
+    };
+
     const mockOllamaHealth = {
         isHealthy: true,
         activeModel: 'sdlc-tuned:latest',
@@ -37,6 +44,7 @@ describe('AI Health Hooks', () => {
         vi.clearAllMocks();
         mockUseMeshLLMHealth.mockReturnValue(mockMeshLLMHealth);
         mockUseOllamaHealth.mockReturnValue(mockOllamaHealth);
+        mockUseMLXHealth.mockReturnValue(mockMLXHealth);
         mockSelectMeshLLMNode.mockResolvedValue(true);
     });
 
@@ -66,6 +74,7 @@ describe('AI Health Hooks', () => {
 
     it('should display unhealthy state for MeshLLM', () => {
         mockUseMeshLLMHealth.mockReturnValue({ ...mockMeshLLMHealth, isHealthy: false, isLoading: false });
+        mockUseMLXHealth.mockReturnValue({ ...mockMLXHealth, isHealthy: true, models: ['qwen:7b'] });
         render(<AIHealth />);
         expect(screen.getByText('Not available')).toBeInTheDocument();
     });
@@ -78,6 +87,7 @@ describe('AI Health Hooks', () => {
 
     it('should display unhealthy state for Ollama', () => {
         mockUseOllamaHealth.mockReturnValue({ ...mockOllamaHealth, isHealthy: false, isLoading: false });
+        mockUseMLXHealth.mockReturnValue({ ...mockMLXHealth, isHealthy: true, models: ['qwen:7b'] });
         render(<AIHealth />);
         expect(screen.getByText('Not available')).toBeInTheDocument();
     });

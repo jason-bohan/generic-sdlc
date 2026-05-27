@@ -1,8 +1,9 @@
-import { useMeshLLMHealth, useOllamaHealth } from './hooks/useAIHealth';
+import { useMeshLLMHealth, useOllamaHealth, useMLXHealth } from './hooks/useAIHealth';
 
 export function AIHealth() {
     const mesh = useMeshLLMHealth();
     const ollama = useOllamaHealth();
+    const mlx = useMLXHealth();
 
     return (
         <div>
@@ -12,6 +13,14 @@ export function AIHealth() {
                     ? <span>Checking...</span>
                     : mesh.isHealthy
                         ? <><span>Connected to mesh</span><span>{mesh.peers} peers available</span></>
+                        : <span>Not available</span>}
+            </div>
+            <div>
+                <span>MLX</span>
+                {mlx.isLoading
+                    ? <span>Checking...</span>
+                    : mlx.isHealthy
+                        ? <><span>Running locally</span><span>{mlx.models[0] ?? 'ready'}</span></>
                         : <span>Not available</span>}
             </div>
             <div>
