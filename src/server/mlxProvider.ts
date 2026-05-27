@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process';
 import { mlxLog as log } from './logger';
 
 const MLX_DEFAULT_HOST = 'http://localhost:8082';
@@ -71,4 +72,32 @@ export async function getMlxHealth() {
         models,
         lastChecked: new Date().toISOString(),
     };
+}
+
+/**
+ * Spawns `python -m mlx_lm.server` if MLX_MODEL is configured and the server
+ * isn't already running. No-ops silently when MLX_MODEL is unset.
+ */
+export async function startMlxIfConfigured(): Promise<{ ok: boolean; reason?: string }> {
+    const model = process.env.MLX_MODEL?.trim();
+    if (!model) return { ok: false, reason: 'MLX_MODEL env var not set' };
+
+    const already = await probeMlx(true);
+    if (already) return { ok: true };
+
+    let port = 8082;
+    try {
+        const url = new URL(mlxHost());
+        if (url.port) port = parseInt(url.port, 10);
+    } catch { /* use default */ }
+
+    log.info(`spawning mlx_lm.server --model ${model} --port ${port}…`);
+    const child = spawn('python', ['-m', 'mlx_lm.server', '--model', model, '--port', String(port)], {
+        stdio: 'ignore',
+        detached: false,
+    });
+    child.on('error', (err) => log.warn(`mlx_lm.server: ${err.message}`));
+    child.on('exit', (code) => log.info(`mlx_lm.server exited (code=${code})`));
+
+    return { ok: true };
 }

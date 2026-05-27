@@ -19,7 +19,7 @@ import { startOllamaManager, stopOllamaManager, isEmbeddingReady } from './ollam
 import { withSecurity } from './security';
 import { probeMeshllm } from './meshllmProvider';
 import { startMeshllm } from './meshllmLauncher';
-import { probeMlx } from './mlxProvider';
+import { probeMlx, startMlxIfConfigured } from './mlxProvider';
 import { meshllmLog, mlxLog } from './logger';
 import { buildRagIndex } from './ragIndex';
 import { startHookRunner, stopHookRunner } from './hook-runner';
@@ -123,9 +123,15 @@ server.listen(PORT, () => {
                 else meshllmLog.info(`auto-launch skipped: ${result.reason ?? 'no launch source configured'}`);
             }
         }).catch(() => {});
-        probeMlx().then((available) => {
-            if (available) mlxLog.success('available as inference provider');
-            else mlxLog.info('not running');
+        probeMlx().then(async (available) => {
+            if (available) {
+                mlxLog.success('available as inference provider');
+            } else {
+                mlxLog.info('not running — attempting auto-launch…');
+                const result = await startMlxIfConfigured();
+                if (result.ok) mlxLog.info('launch command sent — health will confirm when ready');
+                else mlxLog.info(`auto-launch skipped: ${result.reason ?? 'MLX_MODEL not configured'}`);
+            }
         }).catch(() => {});
         startHookRunner({ rootDir: ROOT_DIR });
         startAutoFinetune(ROOT_DIR);
