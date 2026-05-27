@@ -49,14 +49,14 @@ describe('LocalBacklogView', () => {
     it('renders local stories and switches tab views', async () => {
         const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
             const url = String(input);
-            if (url.includes('/api/planning/teams')) return { json: async () => ({ teams: board.teams }) };
-            if (url.includes('/api/planning/class-of-service')) return { json: async () => ({ values: board.classOfService }) };
-            if (url.includes('/api/planning/members')) return { json: async () => ({ members: board.members }) };
-            if (url.includes('/api/planning/story') && init?.method === 'PUT') return { json: async () => ({ ok: true, story: board.stories[0], source: 'local' }) };
-            if (url.includes('/api/planning/story?')) return { json: async () => ({ ...board.stories[0], project: 'SDLC Framework', source: 'local' }) };
-            if (url.includes('/api/planning/stories')) return { json: async () => ({ stories: board.stories, total: board.stories.length, source: 'local' }) };
-            if (url.includes('/api/planning/tasks')) return { json: async () => ({ tasks: board.stories[0].tasks, source: 'local' }) };
-            return { json: async () => ({ error: `Unhandled test URL ${url}` }) };
+            if (url.includes('/api/planning/teams')) return { ok: true, json: async () => ({ teams: board.teams }) };
+            if (url.includes('/api/planning/class-of-service')) return { ok: true, json: async () => ({ values: board.classOfService }) };
+            if (url.includes('/api/planning/members')) return { ok: true, json: async () => ({ members: board.members }) };
+            if (url.includes('/api/planning/story') && init?.method === 'PUT') return { ok: true, json: async () => ({ ok: true, story: board.stories[0], source: 'local' }) };
+            if (url.includes('/api/planning/story?')) return { ok: true, json: async () => ({ ...board.stories[0], project: 'SDLC Framework', source: 'local' }) };
+            if (url.includes('/api/planning/stories')) return { ok: true, json: async () => ({ stories: board.stories, total: board.stories.length, source: 'local' }) };
+            if (url.includes('/api/planning/tasks')) return { ok: true, json: async () => ({ tasks: board.stories[0].tasks, source: 'local' }) };
+            return { ok: true, json: async () => ({ error: `Unhandled test URL ${url}` }) };
         });
         vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
 

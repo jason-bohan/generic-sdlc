@@ -8,6 +8,15 @@ const OPENCODE_CLOUD_MODELS = [
     { id: 'anthropic/claude-opus-4', label: 'Claude Opus 4' },
     { id: 'openai/gpt-4o', label: 'GPT-4o' },
     { id: 'openai/gpt-4o-mini', label: 'GPT-4o mini' },
+    { id: 'openai/o3-mini', label: 'o3-mini' },
+    { id: 'opencode/big-pickle', label: 'Big Pickle (OpenCode)' },
+    { id: 'deepseek/deepseek-chat', label: 'DeepSeek Chat' },
+    { id: 'deepseek/deepseek-coder', label: 'DeepSeek Coder' },
+    { id: 'deepseek/deepseek-r1', label: 'DeepSeek R1' },
+    { id: 'google/gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
+    { id: 'google/gemini-2.0-flash', label: 'Gemini 2.0 Flash' },
+    { id: 'mistral/mistral-large', label: 'Mistral Large' },
+    { id: 'meta/llama-3.3-70b', label: 'Llama 3.3 70B' },
 ];
 
 interface AICommandRoomProps {

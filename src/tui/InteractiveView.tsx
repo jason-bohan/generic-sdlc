@@ -1,9 +1,11 @@
 ﻿import React, { useState, useEffect, useCallback } from 'react';
 import { Box, Text, useInput } from 'ink';
+import Spinner from 'ink-spinner';
 import SelectInput from 'ink-select-input';
 import TextInput from 'ink-text-input';
 import { AssignView } from './AssignView';
 import { ChatView } from './ChatView';
+import { DirectChatView } from './DirectChatView';
 import { ApproveView } from './ApproveView';
 import { StatusView } from './StatusView';
 import { AgentsView } from './AgentsView';
@@ -17,7 +19,7 @@ import { MODE_LABELS } from './executionMode';
 interface Props { agent: string | null; dir: string }
 
 type SchedulerWorkflowMode = 'notify' | 'autonomous';
-type Screen = 'menu' | 'assign' | 'chat' | 'dashboard' | 'approve' | 'status' | 'agents' | 'tasks' | 'create-story' | 'switch-agent' | 'set-mode' | 'set-scheduler-mode' | 'toggle-cursor-ai' | 'toggle-claude-ai' | 'toggle-opencode' | 'set-loop-provider';
+type Screen = 'menu' | 'assign' | 'chat' | 'direct-chat' | 'dashboard' | 'approve' | 'status' | 'agents' | 'tasks' | 'create-story' | 'switch-agent' | 'set-mode' | 'set-scheduler-mode' | 'toggle-cursor-ai' | 'toggle-claude-ai' | 'toggle-opencode' | 'set-loop-provider' | 'set-agent-model';
 
 const API_BASE = 'http://localhost:3847';
 const MAINFRAME_ID = 'sdlc-framework';
@@ -28,6 +30,8 @@ const SCHEDULER_LABELS: Record<SchedulerWorkflowMode, string> = {
 };
 
 const AGENT_MENU_ITEMS = [
+    { label: 'Chat with AI', value: 'direct-chat' as const },
+    { label: 'Set model', value: 'set-agent-model' as const },
     { label: 'Watch dashboard', value: 'dashboard' as const },
     { label: 'View tasks', value: 'tasks' as const },
     { label: 'Pick up a story', value: 'assign' as const },
@@ -71,6 +75,8 @@ export function InteractiveView({ agent: initialAgent, dir: initialDir }: Props)
     const [lpStep, setLpStep] = useState<'key' | 'model' | 'done'>('key');
     const [lpFetchedModels, setLpFetchedModels] = useState<Array<{ id: string; label: string }>>([]);
     const [lpSaving, setLpSaving] = useState(false);
+    const [agentModels, setAgentModels] = useState<Array<{ id: string; label: string }>>([]);
+    const [agentModelsLoading, setAgentModelsLoading] = useState(false);
 
     useEffect(() => {
         fetch(`${API_BASE}/api/execution-mode`)
@@ -113,6 +119,16 @@ export function InteractiveView({ agent: initialAgent, dir: initialDir }: Props)
             setLpSaving(false);
         }
     }, []);
+
+    useEffect(() => {
+        if (screen !== 'set-agent-model') return;
+        setAgentModelsLoading(true);
+        fetch(`${API_BASE}/api/agent/models`)
+            .then(r => r.json())
+            .then((d: { models?: Array<{ id: string; label: string }> }) => setAgentModels(d.models ?? []))
+            .catch(() => setAgentModels([]))
+            .finally(() => setAgentModelsLoading(false));
+    }, [screen]);
 
     const isMainframe = initialAgent === MAINFRAME_ID || agent === MAINFRAME_ID;
     const agentDir = (agent && agent !== MAINFRAME_ID)
@@ -173,7 +189,7 @@ export function InteractiveView({ agent: initialAgent, dir: initialDir }: Props)
     const mainframeMenuItems = [
         ...MAINFRAME_MENU_ITEMS,
         { label: `Cursor AI: ${cursorAiEnabled ? 'ON' : 'OFF'}`, value: 'toggle-cursor-ai' as const },
-        { label: `Claude AI: ${claudeEnabled ? 'ON' : 'OFF'}`, value: 'toggle-claude-ai' as const },
+        { label: `Anthropic: ${claudeEnabled ? 'ON' : 'OFF'}`, value: 'toggle-claude-ai' as const },
         { label: `OpenCode: ${opencodeEnabled ? 'ON' : 'OFF'}`, value: 'toggle-opencode' as const },
         { label: `OpenRouter${lpCurrentKey ? ` (${lpCurrentKey})` : ' — not configured'}`, value: 'set-loop-provider' as const },
     ];
@@ -378,6 +394,46 @@ export function InteractiveView({ agent: initialAgent, dir: initialDir }: Props)
         return (
             <Box padding={1}>
                 <Text color="green">{lpSaving ? 'Saving…' : 'Saved ✓'}</Text>
+            </Box>
+        );
+    }
+
+    if (screen === 'direct-chat') return <DirectChatView agent={agent!} onBack={goBack} />;
+
+    if (screen === 'set-agent-model') {
+        if (agentModelsLoading) {
+            return (
+                <Box flexDirection="column" padding={1}>
+                    <Text bold color="yellow">Set model — {agent}</Text>
+                    <Text><Spinner type="dots" /> Loading models...</Text>
+                </Box>
+            );
+        }
+        if (agentModels.length === 0) {
+            return (
+                <Box flexDirection="column" padding={1}>
+                    <Text bold color="yellow">Set model — {agent}</Text>
+                    <Text color="red">No models available. Is the server running?</Text>
+                    <Text dimColor>[Esc] back</Text>
+                </Box>
+            );
+        }
+        return (
+            <Box flexDirection="column" padding={1}>
+                <Text bold color="yellow">Set model — {agent}</Text>
+                <Text dimColor>Select the model this agent will use:</Text>
+                <SelectInput
+                    items={agentModels.map(m => ({ label: m.label, value: m.id }))}
+                    onSelect={item => {
+                        fetch(`${API_BASE}/api/agent/model`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ agentId: agent, model: item.value }),
+                        }).catch(() => {});
+                        setScreen('menu');
+                    }}
+                />
+                <Text dimColor>[Esc] back</Text>
             </Box>
         );
     }

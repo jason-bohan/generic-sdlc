@@ -158,6 +158,16 @@ git -C <workspacePath> worktree add \
     .claude/worktrees/frontend-<storyNumber> feat/<storyNumber>-frontend
 ```
 
+**Symlink `node_modules` into the worktree** — avoids re-downloading packages. The worktree shares the main repo's filesystem, so a symlink is safe.
+
+```bash
+# macOS / Linux
+ln -s <workspacePath>/node_modules .claude/worktrees/frontend-<storyNumber>/node_modules
+
+# Windows (junction, run as admin or with developer mode on)
+cmd /c mklink /J .claude\worktrees\frontend-<storyNumber>\node_modules <workspacePath>\node_modules
+```
+
 **Copy `.env` into the worktree** — git never tracks it, but the server loads it from the worktree root at startup:
 
 ```bash

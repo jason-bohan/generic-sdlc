@@ -27,6 +27,54 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
         ];
     }
 
+    async function getOpenCodeModelsAsync(): Promise<ModelOption[]> {
+        const cloud = getOpenCodeModels();
+        const seen = new Set(cloud.map(m => m.id));
+
+        const ollamaHost = process.env.OLLAMA_HOST || 'http://localhost:11434';
+        const mlxHost = process.env.MLX_HOST || 'http://localhost:8082';
+
+        const [ollamaResult, mlxResult] = await Promise.allSettled([
+            fetch(`${ollamaHost}/api/tags`, { signal: AbortSignal.timeout(2_000) }).then(r => r.ok ? r.json() : null).catch(() => null),
+            fetch(`${mlxHost}/v1/models`, { signal: AbortSignal.timeout(2_000) }).then(r => r.ok ? r.json() : null).catch(() => null),
+        ]);
+
+        const ollamaData = ollamaResult.status === 'fulfilled' ? ollamaResult.value as { models?: Array<{ name: string }> } | null : null;
+        for (const m of (ollamaData?.models ?? [])) {
+            if (!seen.has(m.name)) { cloud.push({ id: m.name, label: m.name, category: 'local' }); seen.add(m.name); }
+        }
+        if (!seen.has('local')) {
+            cloud.push({ id: 'local', label: 'Local (Ollama)', category: 'local' });
+        }
+
+        const mlxData = mlxResult.status === 'fulfilled' ? mlxResult.value as { data?: Array<{ id: string }> } | null : null;
+        for (const m of (mlxData?.data ?? [])) {
+            if (!seen.has(m.id)) { cloud.push({ id: m.id, label: m.id, category: 'local' }); seen.add(m.id); }
+        }
+
+        return cloud;
+    }
+
+    function getOpenCodeModels(): ModelOption[] {
+        return [
+            { id: 'auto', label: 'Auto (strongest available)', category: 'auto' },
+            { id: 'anthropic/claude-sonnet-4-5', label: 'Claude Sonnet 4.5', category: 'cloud', tag: 'OC' },
+            { id: 'anthropic/claude-haiku-4-5', label: 'Claude Haiku 4.5', category: 'cloud', tag: 'OC' },
+            { id: 'anthropic/claude-opus-4', label: 'Claude Opus 4', category: 'cloud', tag: 'OC' },
+            { id: 'openai/gpt-4o', label: 'GPT-4o', category: 'cloud', tag: 'OC' },
+            { id: 'openai/gpt-4o-mini', label: 'GPT-4o mini', category: 'cloud', tag: 'OC' },
+            { id: 'openai/o3-mini', label: 'o3-mini', category: 'cloud', tag: 'OC' },
+            { id: 'opencode/big-pickle', label: 'Big Pickle (OpenCode)', category: 'cloud', tag: 'OC' },
+            { id: 'deepseek/deepseek-chat', label: 'DeepSeek Chat', category: 'cloud', tag: 'OC' },
+            { id: 'deepseek/deepseek-coder', label: 'DeepSeek Coder', category: 'cloud', tag: 'OC' },
+            { id: 'deepseek/deepseek-r1', label: 'DeepSeek R1', category: 'cloud', tag: 'OC' },
+            { id: 'google/gemini-2.5-pro', label: 'Gemini 2.5 Pro', category: 'cloud', tag: 'OC' },
+            { id: 'google/gemini-2.0-flash', label: 'Gemini 2.0 Flash', category: 'cloud', tag: 'OC' },
+            { id: 'mistral/mistral-large', label: 'Mistral Large', category: 'cloud', tag: 'OC' },
+            { id: 'meta/llama-3.3-70b', label: 'Llama 3.3 70B', category: 'cloud', tag: 'OC' },
+        ];
+    }
+
     async function getNonCursorModels(): Promise<ModelOption[]> {
         const loopProvider = readLoopProviderConfig(configFile);
         const base: ModelOption[] = [
@@ -87,7 +135,7 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
 
         if (driver.type === 'opencode') {
             if (!isOpenCodeEnabled(configFile)) return getNonCursorModels();
-            return getNonCursorModels();
+            return getOpenCodeModelsAsync();
         }
 
         if (driver.type === 'loop') {
@@ -155,7 +203,6 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
         if (!cachedCliModels || (now - cacheTimestamp) >= MODEL_CACHE_TTL_MS) {
             cachedCliModels = await fetchModelsFromCli();
             cacheTimestamp = now;
-            console.log(`[models] Fetched ${cachedCliModels.length} models from CLI`);
         }
 
         // Drop noisy variants — keep only meaningful tiers
@@ -175,7 +222,15 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
             for (const m of fallback) {
                 if (!seen.has(m.id)) { filtered.push(m); seen.add(m.id); }
             }
-            console.log('[models] CLI returned no cloud models, merged fallback set');
+        }
+
+        // If OpenCode is enabled, merge its cloud models so they appear in the picker
+        if (isOpenCodeEnabled(configFile)) {
+            const ocModels = getOpenCodeModels();
+            const seen = new Set(filtered.map(m => m.id));
+            for (const m of ocModels) {
+                if (!seen.has(m.id)) { filtered.push(m); seen.add(m.id); }
+            }
         }
 
         return filtered;
