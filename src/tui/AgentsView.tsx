@@ -1,11 +1,13 @@
 ﻿import React, { useState, useEffect } from 'react';
 import { Box, Text } from 'ink';
 import { readFileSync, existsSync } from 'fs';
+import { createRequire } from 'module';
 import { resolve } from 'path';
 import { discoverAgentsFromStatusFiles } from './workspace';
-import { AGENT_DISPLAY_NAME_DEFAULTS } from '../shared/agentDisplayDefaults';
 
 const API_BASE = 'http://localhost:3847';
+const require = createRequire(import.meta.url);
+const { AGENT_DISPLAY_NAME_DEFAULTS } = require('../shared/agentDisplayDefaults.ts') as typeof import('../shared/agentDisplayDefaults');
 
 const KNOWN_AGENTS: Record<string, { name: string; role: string }> = {
     frontend: { name: AGENT_DISPLAY_NAME_DEFAULTS.frontend, role: 'Frontend Engineer' },

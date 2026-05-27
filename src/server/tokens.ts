@@ -4,7 +4,7 @@ import { recordStoryTokens } from './ledger';
 import type { TokenPhase } from './ledger';
 import { parseJsonUtf8File } from './json-file';
 
-export type TokenSource = 'cloud' | 'meshllm' | 'ollama';
+export type TokenSource = 'cloud' | 'meshllm' | 'ollama' | 'mlx';
 
 export interface TokenUpdate {
     agentId: string;
@@ -23,9 +23,10 @@ export interface TokenState {
     cloud: TokenMetrics;
     meshllm: TokenMetrics;
     ollama: TokenMetrics;
+    mlx: TokenMetrics;
 }
 
-const VALID_SOURCES: TokenSource[] = ['cloud', 'meshllm', 'ollama'];
+const VALID_SOURCES: TokenSource[] = ['cloud', 'meshllm', 'ollama', 'mlx'];
 
 export function isValidTokenSource(source: string): source is TokenSource {
     return VALID_SOURCES.includes(source as TokenSource);
@@ -35,7 +36,8 @@ export function defaultTokenState(): TokenState {
     return {
         cloud: { input: 0, output: 0 },
         meshllm: { input: 0, output: 0 },
-        ollama: { input: 0, output: 0 } };
+        ollama: { input: 0, output: 0 },
+        mlx: { input: 0, output: 0 } };
 }
 
 function appendEvent(raw: Record<string, unknown>, message: string): void {

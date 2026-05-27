@@ -4,6 +4,7 @@ import { execFile } from 'child_process';
 import { readDriverConfig, findCursorCli } from '../agent-drivers';
 import { isCursorAiEnabled, isClaudeEnabled, isOpenCodeEnabled } from '../cursor-ai-policy';
 import { readLoopProviderConfig } from '../agent-runner/provider';
+import { listMlxModels } from '../mlxProvider';
 import { readBody, json, cors } from '../router';
 import { getSchedulerConfig } from '../route-shared';
 import type { UseFn } from './types';
@@ -32,11 +33,9 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
         const seen = new Set(cloud.map(m => m.id));
 
         const ollamaHost = process.env.OLLAMA_HOST || 'http://localhost:11434';
-        const mlxHost = process.env.MLX_HOST || 'http://localhost:8082';
-
         const [ollamaResult, mlxResult] = await Promise.allSettled([
             fetch(`${ollamaHost}/api/tags`, { signal: AbortSignal.timeout(2_000) }).then(r => r.ok ? r.json() : null).catch(() => null),
-            fetch(`${mlxHost}/v1/models`, { signal: AbortSignal.timeout(2_000) }).then(r => r.ok ? r.json() : null).catch(() => null),
+            listMlxModels().catch(() => []),
         ]);
 
         const ollamaData = ollamaResult.status === 'fulfilled' ? ollamaResult.value as { models?: Array<{ name: string }> } | null : null;
@@ -47,9 +46,9 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
             cloud.push({ id: 'local', label: 'Local (Ollama)', category: 'local' });
         }
 
-        const mlxData = mlxResult.status === 'fulfilled' ? mlxResult.value as { data?: Array<{ id: string }> } | null : null;
-        for (const m of (mlxData?.data ?? [])) {
-            if (!seen.has(m.id)) { cloud.push({ id: m.id, label: m.id, category: 'local' }); seen.add(m.id); }
+        const mlxModels = mlxResult.status === 'fulfilled' ? mlxResult.value as string[] : [];
+        for (const id of mlxModels) {
+            if (!seen.has(id)) { cloud.push({ id, label: `${id} (MLX)`, category: 'local' }); seen.add(id); }
         }
 
         return cloud;
@@ -118,6 +117,13 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
         if (!base.some(m => m.id === 'local')) {
             base.push({ id: 'local', label: 'Local (Ollama)', category: 'local' });
         }
+        try {
+            for (const id of await listMlxModels()) {
+                if (!base.some(b => b.id === id)) {
+                    base.push({ id, label: `${id} (MLX)`, category: 'local' });
+                }
+            }
+        } catch { /* MLX not running */ }
         return base;
     }
 

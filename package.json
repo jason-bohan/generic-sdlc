@@ -3,6 +3,11 @@
     "version": "2.0.0-alpha.0",
     "private": true,
     "description": "SDLC Framework — Multi-agent cooperative workgroup for Cursor",
+    "bin": {
+        "chatllm": "bin/chatllm",
+        "sdlc-framework": "bin/sdlc-framework",
+        "unwritten": "bin/unwritten"
+    },
     "scripts": {
         "server": "tsx --watch src/server/index.ts",
         "setup": "node scripts/setup.cjs",
@@ -13,6 +18,7 @@
         "tauri:dev": "tauri dev",
         "tauri:build": "tauri build",
         "btw": "tsx scripts/btw.ts",
+        "chatllm": "tsx scripts/chatllm.ts",
         "ollama": "tsx scripts/ollama-delegate.ts",
         "test": "vitest run",
         "test:watch": "vitest",
