@@ -143,5 +143,5 @@ server.once('close', () => {
     closeDb();
 });
 
-process.on('SIGTERM', () => { log.info('SIGTERM received — shutting down'); server.close(); });
-process.on('SIGINT',  () => { log.info('SIGINT received — shutting down');  server.close(); });
+process.on('SIGTERM', () => { server.close(); });
+process.on('SIGINT',  () => { server.close(); });
