@@ -40,7 +40,7 @@
         "tui": "tsx src/tui/index.tsx",
         "sdlc-framework": "tsx src/tui/index.tsx",
         "db": "harlequin .sdlc-framework/sdlc-framework.db",
-        "preinstall": "node -e \"var v=process.versions.node.split('.')[0];if(v>=24){console.error('\\x1b[31mERROR: Node v'+process.versions.node+' detected. SDLC Framework requires Node 22.x. Switch with: nvs use 22\\x1b[0m');process.exit(1)}\"",
+        "preinstall": "node -e \"var v=process.versions.node.split('.')[0];if(v>=25){console.error('\\x1b[31mERROR: Node v'+process.versions.node+' detected. SDLC Framework requires Node 24.x. Switch with: nvs use 24\\x1b[0m');process.exit(1)}\"",
         "postinstall": "node -e \"['tools/mcp-agility','tools/mcp-sdlc-framework'].forEach(d=>{try{require('fs').statSync(d+'/package.json');require('child_process').execSync('npm install --production',{cwd:d,stdio:'inherit'})}catch(e){}})\""
     },
     "dependencies": {
@@ -67,7 +67,7 @@
         "three": "^0.184.0"
     },
     "engines": {
-        "node": ">=22.0.0 <24.0.0"
+        "node": ">=24.0.0 <25.0.0"
     },
     "devDependencies": {
         "@tauri-apps/cli": "^2.10.1",
