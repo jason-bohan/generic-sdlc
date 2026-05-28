@@ -61,6 +61,11 @@ function resetAgentsForStory(rootDir: string, storyNumber: string): string[] {
     return reset;
 }
 
+const EXTERNAL_TRACKER_PROVIDERS = new Set(['github', 'linear']);
+function usesExternalTracker(): boolean {
+    return EXTERNAL_TRACKER_PROVIDERS.has((process.env.PM_PROVIDER ?? '').toLowerCase());
+}
+
 export function mount(use: UseFn, rootDir: string, configFile: string): void {
     const v1ApiAdapter = createV1ApiAdapter(rootDir, configFile);
 
@@ -72,11 +77,11 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                 json(res, { teams: loadLocalAgilityState(rootDir).teams, source: 'local' });
                 return;
             }
-            if ((process.env.PM_PROVIDER ?? '').toLowerCase() === 'github') {
+            if (usesExternalTracker()) {
                 const { resolveProjectTracker } = await import('../providers/index.js');
                 const tracker = await resolveProjectTracker(rootDir, configFile);
                 const teams = await tracker.getTeams();
-                json(res, { teams, source: 'github' });
+                json(res, { teams, source: process.env.PM_PROVIDER!.toLowerCase() });
                 return;
             }
             const data = await v1Fetch(rootDir, '/Team', { sel: 'Name', where: "AssetState='64'", sort: 'Name' });
@@ -143,8 +148,7 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                 json(res, { stories: items, total: stories.length, source: 'local' });
                 return;
             }
-            // GitHub Issues provider — activated via PM_PROVIDER=github
-            if ((process.env.PM_PROVIDER ?? '').toLowerCase() === 'github') {
+            if (usesExternalTracker()) {
                 const { resolveProjectTracker } = await import('../providers/index.js');
                 const tracker = await resolveProjectTracker(rootDir, configFile);
                 const summaries = await tracker.getStories({ team, status, text, maxResults: Number(maxResults) || 20 });
@@ -153,7 +157,7 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                     status: s.status, teamId: s.teamId ?? '', team: s.team ?? '',
                     estimate: s.estimate ?? null, priority: s.priority ?? '', source: s.source,
                 }));
-                json(res, { stories: items, total: items.length, source: 'github' });
+                json(res, { stories: items, total: items.length, source: process.env.PM_PROVIDER!.toLowerCase() });
                 return;
             }
 
@@ -204,11 +208,12 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
             }
             if (req.method !== 'GET') { res.statusCode = 405; res.end('Method not allowed'); return; }
             if (!number && !oidParam) { json(res, { error: 'number or oid query param required' }, 400); return; }
-            if ((process.env.PM_PROVIDER ?? '').toLowerCase() === 'github') {
+            if (usesExternalTracker()) {
                 const { resolveProjectTracker } = await import('../providers/index.js');
                 const tracker = await resolveProjectTracker(rootDir, configFile);
                 const item = await tracker.getWorkItem(number || oidParam || '');
-                if (!item) { json(res, { error: `GitHub issue ${number} not found` }, 404); return; }
+                const providerName = process.env.PM_PROVIDER!.toLowerCase();
+                if (!item) { json(res, { error: `${providerName} issue ${number} not found` }, 404); return; }
                 json(res, {
                     id: item.id,
                     number: item.number,
@@ -219,7 +224,7 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                     type: item.type,
                     url: item.url,
                     acceptanceCriteria: '',
-                    source: 'github',
+                    source: providerName,
                 });
                 return;
             }
