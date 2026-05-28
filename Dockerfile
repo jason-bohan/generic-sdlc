@@ -1,4 +1,4 @@
-FROM node:22-alpine
+FROM node:24-alpine
 
 # curl: health checks; docker-cli + compose + git: sibling container management and remote builds
 # libstdc++ + libgcc + icu-libs: required by PowerShell Core (pwsh) on Alpine
