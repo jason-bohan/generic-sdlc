@@ -1,8 +1,66 @@
 import { createHmac } from 'crypto';
+import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { resolve } from 'path';
 import { readBody, json } from '../router';
 import { parseJsonUtf8File } from '../json-file';
 import type { UseFn } from './types';
+
+// ── GitHub webhook types ──────────────────────────────────────────────────────
+
+interface GitHubIssuePayload {
+    action: 'opened' | 'edited' | 'closed' | 'reopened' | string;
+    issue: {
+        number: number;
+        title: string;
+        body: string | null;
+        html_url: string;
+        state: 'open' | 'closed';
+    };
+    repository: { full_name: string };
+}
+
+// ── GitHub → Linear state mapping ────────────────────────────────────────────
+
+function loadGhLinearMap(rootDir: string): Record<string, string> {
+    const file = resolve(rootDir, '.github-linear-map.json');
+    if (!existsSync(file)) return {};
+    try { return JSON.parse(readFileSync(file, 'utf-8')) as Record<string, string>; } catch { return {}; }
+}
+
+function saveGhLinearMap(rootDir: string, map: Record<string, string>): void {
+    writeFileSync(resolve(rootDir, '.github-linear-map.json'), JSON.stringify(map, null, 2));
+}
+
+// ── Linear GraphQL helper ─────────────────────────────────────────────────────
+
+async function linearGql<T>(query: string, variables: Record<string, unknown> = {}): Promise<T> {
+    const apiKey = process.env.LINEAR_API_KEY ?? '';
+    if (!apiKey) throw new Error('LINEAR_API_KEY is not set');
+    const res = await fetch('https://api.linear.app/graphql', {
+        method: 'POST',
+        headers: { Authorization: apiKey, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query, variables }),
+    });
+    const body = await res.json() as { data?: T; errors?: Array<{ message: string }> };
+    if (body.errors?.length) throw new Error(body.errors.map(e => e.message).join('; '));
+    return body.data as T;
+}
+
+async function getLinearStateId(name: string): Promise<string | null> {
+    const teamId = process.env.LINEAR_TEAM_ID ?? '';
+    const data = await linearGql<{ workflowStates: { nodes: Array<{ id: string; name: string; type: string }> } }>(`
+        query($filter: WorkflowStateFilter) { workflowStates(filter: $filter) { nodes { id name type } } }
+    `, { filter: teamId ? { team: { id: { eq: teamId } } } : {} });
+    const lower = name.toLowerCase();
+    return data.workflowStates.nodes.find(s => s.name.toLowerCase().includes(lower))?.id ?? null;
+}
+
+// ── GitHub signature verification ─────────────────────────────────────────────
+
+function verifyGitHubSignature(secret: string, rawBody: string, signature: string): boolean {
+    const expected = `sha256=${createHmac('sha256', secret).update(rawBody).digest('hex')}`;
+    return expected === signature;
+}
 
 interface LinearIssuePayload {
     action: string;
@@ -178,4 +236,110 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
         }
     });
 
+    // ── POST /api/webhooks/github/test ────────────────────────────────────────
+    // Must be registered before /api/webhooks/github due to prefix-match routing.
+    use('/api/webhooks/github/test', async (req, res) => {
+        if (req.method !== 'POST') { res.statusCode = 405; res.end('Method not allowed'); return; }
+        const body = await readBody(req);
+        try {
+            const { action, number, title, body: issueBody } = JSON.parse(body);
+            if (!number || !action) { json(res, { error: 'number and action required' }, 400); return; }
+            const fakePayload: GitHubIssuePayload = {
+                action,
+                issue: { number, title: title ?? `Test issue #${number}`, body: issueBody ?? '', html_url: `https://github.com/test/repo/issues/${number}`, state: 'open' },
+                repository: { full_name: process.env.GITHUB_REPO ?? 'test/repo' },
+            };
+            const webhookUrl = `http://localhost:${process.env.PORT ?? 3001}/api/webhooks/github`;
+            const webhookRes = await fetch(webhookUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'x-github-event': 'issues' },
+                body: JSON.stringify(fakePayload),
+            });
+            json(res, await webhookRes.json());
+        } catch (e) {
+            json(res, { error: e instanceof Error ? e.message : String(e) }, 500);
+        }
+    });
+
+    // ── POST /api/webhooks/github ─────────────────────────────────────────────
+    // Receives GitHub issue events and mirrors them to Linear.
+    // Configure in GitHub: Settings → Webhooks → Add webhook
+    //   Payload URL: https://<your-host>/api/webhooks/github
+    //   Content type: application/json
+    //   Events: Issues
+    //   Secret: copy into GITHUB_WEBHOOK_SECRET env var
+    use('/api/webhooks/github', async (req, res) => {
+        if (req.method !== 'POST') { res.statusCode = 405; res.end('Method not allowed'); return; }
+
+        const rawBody = await readBody(req);
+
+        const secret = process.env.GITHUB_WEBHOOK_SECRET ?? '';
+        if (secret) {
+            const sig = (req.headers['x-hub-signature-256'] as string) ?? '';
+            if (!sig || !verifyGitHubSignature(secret, rawBody, sig)) {
+                json(res, { error: 'Invalid signature' }, 401);
+                return;
+            }
+        }
+
+        const event = (req.headers['x-github-event'] as string) ?? '';
+        if (event !== 'issues') {
+            json(res, { ok: true, skipped: true, reason: `unhandled event: ${event}` });
+            return;
+        }
+
+        let payload: GitHubIssuePayload;
+        try { payload = JSON.parse(rawBody) as GitHubIssuePayload; }
+        catch { json(res, { error: 'Invalid JSON' }, 400); return; }
+
+        const { action, issue } = payload;
+        const mapKey = `${payload.repository.full_name}#${issue.number}`;
+        const teamId = process.env.LINEAR_TEAM_ID ?? '';
+        const description = `${issue.body ?? ''}\n\nRef: ${issue.html_url}`.trim();
+
+        try {
+            if (action === 'opened') {
+                if (!teamId) { json(res, { error: 'LINEAR_TEAM_ID is required to create issues' }, 500); return; }
+                const data = await linearGql<{ issueCreate: { success: boolean; issue: { id: string; identifier: string } } }>(`
+                    mutation($input: IssueCreateInput!) { issueCreate(input: $input) { success issue { id identifier } } }
+                `, { input: { teamId, title: issue.title, description } });
+                if (!data.issueCreate.success) { json(res, { error: 'Linear issueCreate failed' }, 500); return; }
+                const map = loadGhLinearMap(rootDir);
+                map[mapKey] = data.issueCreate.issue.id;
+                saveGhLinearMap(rootDir, map);
+                json(res, { ok: true, action, linearId: data.issueCreate.issue.id, identifier: data.issueCreate.issue.identifier });
+                return;
+            }
+
+            const map = loadGhLinearMap(rootDir);
+            const linearId = map[mapKey];
+            if (!linearId) {
+                json(res, { ok: true, skipped: true, reason: `no Linear issue mapped for ${mapKey}` });
+                return;
+            }
+
+            if (action === 'edited') {
+                await linearGql(`
+                    mutation($id: String!, $input: IssueUpdateInput!) { issueUpdate(id: $id, input: $input) { success } }
+                `, { id: linearId, input: { title: issue.title, description } });
+                json(res, { ok: true, action, linearId });
+                return;
+            }
+
+            if (action === 'closed' || action === 'reopened') {
+                const stateName = action === 'closed' ? 'done' : 'todo';
+                const stateId = await getLinearStateId(stateName);
+                if (!stateId) { json(res, { error: `Could not find Linear state for "${stateName}"` }, 500); return; }
+                await linearGql(`
+                    mutation($id: String!, $stateId: String!) { issueUpdate(id: $id, input: { stateId: $stateId }) { success } }
+                `, { id: linearId, stateId });
+                json(res, { ok: true, action, linearId, stateName });
+                return;
+            }
+
+            json(res, { ok: true, skipped: true, reason: `unhandled action: ${action}` });
+        } catch (e) {
+            json(res, { error: e instanceof Error ? e.message : String(e) }, 500);
+        }
+    });
 }
