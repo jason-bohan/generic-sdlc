@@ -25,7 +25,7 @@ import {
     v1Post } from '../route-shared';
 import type { UseFn } from './types';
 import { parseJsonUtf8File } from '../json-file';
-import { isLocalStoryNumber, createLocalTask, loadLocalTasksForStory, updateLocalStoryStatus } from '../local-agility';
+import { isLocalStoryNumber, createLocalTask, loadLocalTasksForStory, updateLocalStoryStatus } from '../local-planning';
 
 const AGENT_TASK_CATEGORY: Record<string, string> = {
     frontend: 'TaskCategory:111',

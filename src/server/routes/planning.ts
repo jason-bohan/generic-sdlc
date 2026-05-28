@@ -21,14 +21,14 @@ import {
     deleteLocalStory,
     findLocalStory,
     isLocalStoryNumber,
-    loadLocalAgilityState,
+    loadLocalPlanningState,
     loadLocalTasksForStory,
     reorderLocalStories,
     syncAgentTasksToLocalDB,
     updateLocalStory,
     updateLocalStoryStatus,
     updateLocalTaskStatus,
-} from '../local-agility';
+} from '../local-planning';
 
 const STATUS_FILE_RE = /^\.([a-z][\w-]*)-status\.json$/;
 
@@ -74,7 +74,7 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
         try {
             const url = new URL(req.url!, `http://${req.headers.host}`);
             if (url.searchParams.get('source') === 'local') {
-                json(res, { teams: loadLocalAgilityState(rootDir).teams, source: 'local' });
+                json(res, { teams: loadLocalPlanningState(rootDir).teams, source: 'local' });
                 return;
             }
             if (usesExternalTracker()) {
@@ -94,7 +94,7 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
         try {
             const url = new URL(req.url!, `http://${req.headers.host}`);
             if (url.searchParams.get('source') === 'local') {
-                json(res, { values: loadLocalAgilityState(rootDir).classOfService, source: 'local' });
+                json(res, { values: loadLocalPlanningState(rootDir).classOfService, source: 'local' });
                 return;
             }
             const data = await v1Fetch(rootDir, '/ClassOfService', { sel: 'Name', sort: 'Name' });
@@ -107,7 +107,7 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
         try {
             const url = new URL(req.url!, `http://${req.headers.host}`);
             if (url.searchParams.get('source') === 'local') {
-                json(res, { members: loadLocalAgilityState(rootDir).members, source: 'local' });
+                json(res, { members: loadLocalPlanningState(rootDir).members, source: 'local' });
                 return;
             }
             const data = await v1Fetch(rootDir, '/Member', { sel: 'Name,Nickname,Email', where: "AssetState='64'", sort: 'Name', page: '200,0' });
@@ -125,7 +125,7 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
             const maxResults = url.searchParams.get('maxResults') || '20';
             if (url.searchParams.get('source') === 'local') {
                 const limit = Math.max(1, Number(maxResults) || 20);
-                let stories = loadLocalAgilityState(rootDir).stories.filter((s) => !s.deleted);
+                let stories = loadLocalPlanningState(rootDir).stories.filter((s) => !s.deleted);
                 stories.sort((a, b) => (a.sortOrder ?? Infinity) - (b.sortOrder ?? Infinity));
                 if (team) stories = stories.filter((story) => story.team === team || story.teamId === team);
                 if (status) stories = stories.filter((story) => story.status === status);
@@ -234,7 +234,7 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                 json(res, {
                     ...story,
                     project: story.scope,
-                    url: `local-agility://${story.number}`,
+                    url: `local-planning://${story.number}`,
                     source: 'local',
                 });
                 return;
@@ -424,7 +424,7 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                     qa: fields.qa,
                     owner,
                 });
-                json(res, { success: true, ok: true, story, number: story.number, name: story.name, url: `local-agility://${story.number}`, source: 'local', enriched, mode: getExecMode(configFile) });
+                json(res, { success: true, ok: true, story, number: story.number, name: story.name, url: `local-planning://${story.number}`, source: 'local', enriched, mode: getExecMode(configFile) });
                 return;
             }
             let activeMode: ExecMode = (overrideMode && isValidMode(overrideMode)) ? overrideMode : getExecMode(configFile);
