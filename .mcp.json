@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "linear": {
+      "command": "sh",
+      "args": ["-c", "set -a && . .env && set +a && node $(npm root -g)/linear-mcp/build/index.js"]
+    }
+  }
+}
