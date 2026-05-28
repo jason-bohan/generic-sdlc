@@ -13,7 +13,7 @@ export { MockProjectTracker, MockCodeReview, MockNotifications } from './mock';
 
 /**
  * Resolve the active project tracker.
- * PM_PROVIDER=agility (default) | jira | github | mock
+ * PM_PROVIDER=agility (default) | github | linear | mock
  *
  * New providers: implement IProjectTracker and add a case here.
  */
@@ -23,8 +23,8 @@ export async function resolveProjectTracker(rootDir: string, configFile: string)
         const { MockProjectTracker } = await import('./mock');
         return new MockProjectTracker(rootDir);
     }
-    // In mock external mode non-Agility providers (e.g. github) bypass v1Fetch/v1Post
-    // interception, so route them through Agility which is fully intercepted by mockV1Fetch/mockV1Post.
+    // In mock external mode non-Agility providers bypass v1Fetch/v1Post interception,
+    // so route them through Agility which is fully intercepted by mockV1Fetch/mockV1Post.
     if (isMockExternalMode(configFile)) {
         const { AgilityProjectTracker } = await import('./agility');
         return new AgilityProjectTracker(rootDir, configFile);
@@ -40,6 +40,12 @@ export async function resolveProjectTracker(rootDir: string, configFile: string)
         }
         if (!repo) throw new Error('GitHub provider requires GITHUB_REPO env var or github.repo in config');
         return new GitHubProjectTracker(repo);
+    }
+    if (provider === 'linear') {
+        const apiKey = process.env.LINEAR_API_KEY ?? '';
+        if (!apiKey) throw new Error('Linear provider requires LINEAR_API_KEY env var');
+        const { LinearProjectTracker } = await import('./linear');
+        return new LinearProjectTracker(apiKey);
     }
     // Default: Agility/VersionOne — delegates to existing v1Fetch infrastructure
     const { AgilityProjectTracker } = await import('./agility');
