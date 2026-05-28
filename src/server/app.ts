@@ -28,6 +28,7 @@ import { mount as mountAgentOutput } from './routes/agent-output';
 import { mount as mountFinetune } from './routes/finetune';
 import { mount as mountOpenRouter } from './routes/openrouter';
 import { mount as mountMlx } from './routes/mlx';
+import { mount as mountWebhooks } from './routes/webhooks';
 
 export function createApp(rootDir: string): http.RequestListener {
     const configFile = resolve(rootDir, '.sdlc-framework.config.json');
@@ -54,6 +55,7 @@ export function createApp(rootDir: string): http.RequestListener {
     mountFinetune(use, rootDir);
     mountOpenRouter(use);
     mountMlx(use, rootDir, configFile);
+    mountWebhooks(use, rootDir, configFile);
 
     return dispatch;
 }
