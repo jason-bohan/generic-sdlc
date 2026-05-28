@@ -10,16 +10,19 @@ const TOOL_RESULT_STORAGE_CAP = 3000;
 const PHASE_COMPLETE_SENTINEL = 'PHASE_COMPLETE::';
 
 /**
- * Some local GGUFs (e.g. via MeshLLM/llama.cpp) emit tool calls as a markdown
- * ```json {"name":..,"arguments":..} ``` block instead of the structured
- * tool_calls field. Parse and promote to a proper tool call object.
+ * Some local providers emit tool calls as text instead of the structured tool_calls field:
+ * - MeshLLM/llama.cpp: ```json {"name":..,"arguments":..} ``` markdown blocks
+ * - MLX (Qwen2.5-Coder etc.): <tools>{"name":..,"arguments":..}</tools> XML blocks
+ * Parse and promote to a proper tool call object.
  */
-function _extractTextToolCall(content: string): import('./types').ToolCall | null {
-    // Try markdown code block first: ```json { ... } ```
-    const blockMatch = content.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
+export function _extractTextToolCall(content: string): import('./types').ToolCall | null {
+    // Try MLX-style <tools>{ ... }</tools> block first
+    const xmlMatch = content.match(/<tools>\s*(\{[\s\S]*?\})\s*<\/tools>/);
+    // Try markdown code block: ```json { ... } ```
+    const blockMatch = !xmlMatch ? content.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/) : null;
     // Fall back to bare JSON object anywhere in the content
-    const bareMatch = !blockMatch ? content.match(/(\{[\s\S]*\})/) : null;
-    const jsonStr = blockMatch ? blockMatch[1] : (bareMatch ? bareMatch[1] : null);
+    const bareMatch = !xmlMatch && !blockMatch ? content.match(/(\{[\s\S]*\})/) : null;
+    const jsonStr = xmlMatch ? xmlMatch[1] : (blockMatch ? blockMatch[1] : (bareMatch ? bareMatch[1] : null));
     if (!jsonStr) return null;
     try {
         const parsed = JSON.parse(jsonStr) as Record<string, unknown>;
