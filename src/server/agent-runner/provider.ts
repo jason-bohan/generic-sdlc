@@ -2,13 +2,14 @@
 import type { Message, ToolDefinition, CompletionResponse, ProviderConfig } from './types';
 import { parseJsonUtf8File } from '../json-file';
 
-export type LoopProviderName = 'meshllm' | 'ollama' | 'openrouter' | 'custom';
-export type LoopProviderToggles = Record<'meshllm' | 'ollama' | 'openrouter', boolean>;
+export type LoopProviderName = 'meshllm' | 'ollama' | 'openrouter' | 'mlx' | 'custom';
+export type LoopProviderToggles = Record<'meshllm' | 'ollama' | 'openrouter' | 'mlx', boolean>;
 
 export const DEFAULT_LOOP_PROVIDER_TOGGLES: LoopProviderToggles = {
     meshllm: true,
     ollama: true,
     openrouter: true,
+    mlx: true,
 };
 
 export function detectLoopProvider(baseUrl: string): LoopProviderName {
@@ -16,6 +17,7 @@ export function detectLoopProvider(baseUrl: string): LoopProviderName {
     if (base.includes('openrouter.ai')) return 'openrouter';
     if (base.includes(':9337') || base.includes('meshllm')) return 'meshllm';
     if (base.includes(':11434') || base.includes('ollama')) return 'ollama';
+    if (base.includes(':8082') || base.includes(':8083') || base.includes('mlx')) return 'mlx';
     return 'custom';
 }
 
@@ -30,6 +32,7 @@ export function readLoopProviderToggles(configPath: string): LoopProviderToggles
             meshllm: providerEnabled?.meshllm ?? DEFAULT_LOOP_PROVIDER_TOGGLES.meshllm,
             ollama: providerEnabled?.ollama ?? DEFAULT_LOOP_PROVIDER_TOGGLES.ollama,
             openrouter: providerEnabled?.openrouter ?? DEFAULT_LOOP_PROVIDER_TOGGLES.openrouter,
+            mlx: providerEnabled?.mlx ?? DEFAULT_LOOP_PROVIDER_TOGGLES.mlx,
         };
     } catch {
         return { ...DEFAULT_LOOP_PROVIDER_TOGGLES };
@@ -107,12 +110,15 @@ export function readLoopProviderConfig(configPath: string, modelOverride?: strin
     const explicitKey = process.env.LOOP_PROVIDER_API_KEY;
     const openrouterKey = process.env.OPENROUTER_API_KEY;
     const meshllmHost = process.env.MESHLLM_HOST;
+    const mlxHost = process.env.MLX_HOST;
+    const mlx14bHost = process.env.MLX_HOST_14B;
 
     // Priority for unoverridden defaults:
     // 1. LOOP_PROVIDER_BASE_URL explicitly set → use that
     // 2. MESHLLM_HOST is set → prefer local mesh over cloud free tiers
-    // 3. OPENROUTER_API_KEY → fall back to OpenRouter
-    // 4. Local MeshLLM on default port
+    // 3. MLX_HOST_14B / MLX_HOST → local Apple Silicon inference
+    // 4. OPENROUTER_API_KEY → fall back to OpenRouter
+    // 5. Local MeshLLM on default port
     const envApiKey = explicitKey || openrouterKey;
     let defaultBase: string;
     let defaultModel: string;
@@ -125,6 +131,14 @@ export function readLoopProviderConfig(configPath: string, modelOverride?: strin
         defaultBase = `${meshllmHost.replace(/\/$/, '')}/v1`;
         defaultModel = process.env.LOOP_PROVIDER_MODEL || 'auto';
         defaultKey = explicitKey || undefined;
+    } else if (mlx14bHost) {
+        defaultBase = `${mlx14bHost.replace(/\/$/, '')}/v1`;
+        defaultModel = process.env.LOOP_PROVIDER_MODEL || 'auto';
+        defaultKey = undefined;
+    } else if (mlxHost) {
+        defaultBase = `${mlxHost.replace(/\/$/, '')}/v1`;
+        defaultModel = process.env.LOOP_PROVIDER_MODEL || 'auto';
+        defaultKey = undefined;
     } else if (openrouterKey) {
         defaultBase = 'https://openrouter.ai/api/v1';
         defaultModel = process.env.LOOP_PROVIDER_MODEL || 'deepseek/deepseek-v3.2';
@@ -161,10 +175,15 @@ export function readLoopProviderConfig(configPath: string, modelOverride?: strin
         if (resolvedProvider === 'meshllm' && providerEnabled.meshllm) return resolved;
         if (resolvedProvider === 'ollama' && providerEnabled.ollama) return resolved;
         if (resolvedProvider === 'openrouter' && providerEnabled.openrouter) return resolved;
+        if (resolvedProvider === 'mlx' && providerEnabled.mlx) return resolved;
         if (resolvedProvider === 'custom') return resolved;
 
         if (providerEnabled.meshllm) {
             return { ...resolved, baseUrl: 'http://localhost:9337/v1', model: configModel ?? process.env.LOOP_PROVIDER_MODEL ?? 'auto', apiKey: undefined };
+        }
+        if (providerEnabled.mlx) {
+            const mlxBase = mlx14bHost || mlxHost || 'http://localhost:8082';
+            return { ...resolved, baseUrl: `${mlxBase.replace(/\/$/, '')}/v1`, model: configModel ?? process.env.LOOP_PROVIDER_MODEL ?? 'auto', apiKey: undefined };
         }
         if (providerEnabled.openrouter && configApiKey) {
             return { ...resolved, baseUrl: 'https://openrouter.ai/api/v1', model: configModel ?? process.env.LOOP_PROVIDER_MODEL ?? 'deepseek/deepseek-v3.2', apiKey: configApiKey };
