@@ -18,7 +18,7 @@ export interface WorkItem {
     /** Lane-level breakdown for multi-discipline agents */
     lanes?: { frontend?: string; backend?: string; qa?: string };
     url?: string;
-    source: 'agility' | 'jira' | 'github' | 'local' | 'mock';
+    source: 'agility' | 'jira' | 'github' | 'linear' | 'local' | 'mock';
 }
 
 export interface WorkItemSummary {
