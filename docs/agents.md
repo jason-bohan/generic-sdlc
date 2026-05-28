@@ -4,7 +4,7 @@
 
 | Agent ID (`skills/<id>/`) | Default display name | Role          | Status      | Description |
 |---------------------------|---------------------|---------------|-------------|-------------|
-| `frontend`                | Lasair              | Frontend Dev  | Active      | Picks up stories from Agility, codes, creates PRs. |
+| `frontend`                | Lasair              | Frontend Dev  | Active      | Picks up stories from the backlog, codes, creates PRs. |
 | `reviewer`                | Brehon              | PR Reviewer   | Active      | Reviews PRs, leaves comments, approves/rejects. |
 | `devops`                  | Cairde              | DevOps        | Active      | Monitors CI builds, manages PR completion and merge. |
 | `ux`                      | Prism               | UX / Design   | Active      | Figma integration, WCAG AA audits, design handoffs. |
@@ -17,15 +17,15 @@ Agent **IDs** (`frontend`, `reviewer`, …) are stable keys in config, status fi
 
 The full handoff chain runs without human intervention (unless step mode is on):
 
-1. **Story Creation** — Create stories in Agility from the dashboard or TUI with LLM-enriched fields
+1. **Story Creation** — Create stories in the planning board from the dashboard or TUI with LLM-enriched fields
 2. **Assignment** — Assign a story to an agent; scheduler mode controls auto-start vs. approval
 3. **Coding** — Agent reads story, creates tasks, analyzes codebase, generates code, validates
-4. **PR Creation** — Agent pushes a feature branch and creates an Azure DevOps PR
+4. **PR Creation** — Agent pushes a feature branch and creates a pull request
 5. **Review** — Reviewer agent reviews the PR, posts comments, approves or requests changes
 6. **Build** — DevOps agent monitors the CI pipeline, reports pass/fail
 7. **Merge** — On build pass, PR auto-completes and the story owner wraps up
 
-The **ADO Bridge** (`src/server/ado-bridge.ts`) polls Azure DevOps for PR and build state changes, driving handoffs between agents automatically.
+The **ADO Bridge** (`src/server/ado-bridge.ts`) polls the code review provider for PR and build state changes, driving handoffs between agents automatically.
 
 ## Execution Modes
 
@@ -45,7 +45,7 @@ Enrichment prompts receive a **repo context snapshot** (tech stack, directory tr
 
 ## Agent Scheduler
 
-Agents pick up work from **Agility (Digital.ai / VersionOne)** via the dashboard:
+Agents pick up work from the **planning board** via the dashboard:
 
 1. Click an idle or complete agent → **Pick Up Story**
 2. Select a team → browse open stories
@@ -63,7 +63,7 @@ Configuration in `.sdlc-framework.config.json` controls behavior:
 Per-agent toggle to pause autonomous execution at key milestones for manual control:
 
 - **Toggle** from the agent card on the dashboard (Step switch) or TUI (`s` key)
-- **Pauses** at agent-specific phase boundaries. **Frontend (`frontend`)** pauses at `analyzing`, `generating-code`, `validating`, `creating-pr`, `watching-reviews`, `addressing-feedback`, and `running-cypress` by default. The first pause happens after the agent reads the story, plans the work, and creates/signs up for Agility tasks.
+- **Pauses** at agent-specific phase boundaries. **Frontend (`frontend`)** pauses at `analyzing`, `generating-code`, `validating`, `creating-pr`, `watching-reviews`, `addressing-feedback`, and `running-cypress` by default. The first pause happens after the agent reads the story, plans the work, and creates/signs up for tasks.
 - **Advance** by clicking "Next" on the card, or pressing `n` in the TUI
 - **Handoff suppression** — automatic spawning of downstream agents (**reviewer**, **devops**) is suppressed when step mode is active
 - **Reactive** — toggling mid-run takes effect on the next driver loop iteration
@@ -113,8 +113,8 @@ The fallback `GET /api/project/standards?project=YourProject` auto-discovers all
 `.cursor/rules/YourProject-research.mdc` is the shared reference for all agents. It contains:
 - Complete table of YourProject coding standards (relative paths)
 - YourProject Nx skills (relative paths)
-- Azure DevOps wiki search/read instructions with key page URLs
-- ADO code search instructions
+- Wiki search/read instructions with key page URLs
+- Code search instructions
 - Local codebase directory map
 
 ## QA agent (`qa`)
@@ -128,7 +128,7 @@ The **QA** agent (default label **Vigil**) operates in two modes depending on th
 | **Report** | `POST /api/test-results` → dashboard | Same |
 | **Triage failures** | Notifies `frontend` (UI) or `backend` (API) | Same |
 
-The QA skill has the full YourProject Cypress support layer directory map plus Azure DevOps wiki access for environment setup. See `skills/qa/SKILL.md`.
+The QA skill has the full YourProject Cypress support layer directory map plus wiki access for environment setup. See `skills/qa/SKILL.md`.
 
 ### Dashboard Integration
 

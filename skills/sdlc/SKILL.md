@@ -81,11 +81,11 @@ Mock mode must be enforced below prompts.
 
 When `externalMode` or `integrations.mode` is `mock`:
 
-- Azure DevOps MCP tools are prohibited.
+- Code review provider MCP tools are prohibited.
 - `git push` is prohibited.
-- Live Azure PR URLs are rejected.
+- Live PR URLs are rejected.
 - CI/build/review progress is simulated through SDLC Framework mock state.
-- Agility calls must target the local mock API at `$api/mock-v1` with `AGILITY_API_KEY=mock-token`.
+- Planning board calls must target the local mock API at `$api/mock-v1` with `AGILITY_API_KEY=mock-token`.
 
 ### 4. Role-Specific Workflow Graphs
 

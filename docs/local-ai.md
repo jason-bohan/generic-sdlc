@@ -17,12 +17,12 @@ The inference model is resolved in priority order:
 
 ## Custom Modelfile
 
-`Modelfile` at the project root defines a custom model baked with a system prompt tuned for Agility story generation:
+`Modelfile` at the project root defines a custom model baked with a system prompt tuned for story generation:
 
 ```
 FROM qwen3:8b
 SYSTEM """
-You are a product owner AI that generates Agility story fields as HTML.
+You are a product owner AI that generates story fields as HTML.
 [rules, exact JSON format, example output]
 """
 PARAMETER temperature 0.1
@@ -331,9 +331,9 @@ Then select it with `/model mlx/<model-id>`.
 
 ## Local Mock Integrations
 
-Plain `sdlc-framework` runs in live mode. Use `sdlc-framework --test` to run the TUI with local mock Agility, Azure DevOps, and Teams integrations, or set `"externalMode": "mock"` / `SDLC_EXTERNAL_MODE=mock` for other entry points such as the web dashboard. Mock state is stored in `.sdlc-framework/mock/state.json`; story pickup, task creation, PR creation, pipeline runs, and notifications stay local.
+Plain `sdlc-framework` runs in live mode. Use `sdlc-framework --test` to run the TUI with local mock planning, code-review, and Teams integrations, or set `"externalMode": "mock"` / `SDLC_EXTERNAL_MODE=mock` for other entry points such as the web dashboard. Mock state is stored in `.sdlc-framework/mock/state.json`; story pickup, task creation, PR creation, pipeline runs, and notifications stay local.
 
-When the dashboard server is running, mock mode also exposes a VersionOne-compatible local API for MCP testing:
+When the dashboard server is running, mock mode also exposes a planning board compatible local API for MCP testing:
 
 ```
 AGILITY_BASE_URL=http://localhost:3847/mock-v1
