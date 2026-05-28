@@ -5,15 +5,15 @@ import { mkdtempSync } from 'fs';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
     createLocalStory,
-    loadLocalAgilityState,
+    loadLocalPlanningState,
     LOCAL_STORY_PREFIX,
     LOCAL_TASK_PREFIX,
-} from '../server/local-agility';
+} from '../server/local-planning';
 
 const roots: string[] = [];
 
 function tempRoot(): string {
-    const root = mkdtempSync(join(tmpdir(), 'sdlc-local-agility-'));
+    const root = mkdtempSync(join(tmpdir(), 'sdlc-local-planning-'));
     roots.push(root);
     return root;
 }
@@ -24,11 +24,11 @@ afterEach(() => {
     }
 });
 
-describe('local Agility default state', () => {
+describe('local planning default state', () => {
     it('seeds the hook-runner migration stories without number gaps or duplicate IDs', () => {
         const root = tempRoot();
 
-        const state = loadLocalAgilityState(root);
+        const state = loadLocalPlanningState(root);
         const numbers = state.stories.map((story) => story.number);
 
         expect(numbers).toEqual([
@@ -46,7 +46,7 @@ describe('local Agility default state', () => {
         expect(new Set(state.stories.map((story) => story.id)).size).toBe(state.stories.length);
         expect(state.nextStoryId).toBe(11);
         expect(state.nextTaskId).toBe(1);
-        expect(existsSync(join(root, '.sdlc-framework', 'local-agility', 'state.json'))).toBe(true);
+        expect(existsSync(join(root, '.sdlc-framework', 'local-planning', 'state.json'))).toBe(true);
     });
 
     it('creates the next local story after the seeded backlog', () => {

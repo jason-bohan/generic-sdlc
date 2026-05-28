@@ -1,10 +1,10 @@
-﻿import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'fs';
+﻿import { copyFileSync, existsSync, mkdirSync, readdirSync, writeFileSync } from 'fs';
 import { resolve } from 'path';
 import { parseJsonUtf8File } from './json-file';
 import { mapV1TaskStatus } from './route-shared';
 import type { RawTask } from './status-normalize';
 
-export interface LocalAgilityStory {
+export interface LocalPlanningStory {
     id: string;
     number: string;
     name: string;
@@ -27,7 +27,7 @@ export interface LocalAgilityStory {
     updatedAt: string;
 }
 
-export interface LocalAgilityTask {
+export interface LocalPlanningTask {
     id: string;
     number: string;
     name: string;
@@ -44,21 +44,21 @@ export interface LocalAgilityTask {
     updatedAt: string;
 }
 
-export interface LocalAgilityState {
+export interface LocalPlanningState {
     nextStoryId: number;
     nextTaskId: number;
     teams: Array<{ id: string; name: string }>;
     members: Array<{ id: string; name: string; nickname?: string; email?: string }>;
     classOfService: Array<{ id: string; name: string }>;
     scopes: Array<{ id: string; name: string }>;
-    stories: LocalAgilityStory[];
-    tasks: LocalAgilityTask[];
+    stories: LocalPlanningStory[];
+    tasks: LocalPlanningTask[];
 }
 
 export const LOCAL_STORY_PREFIX = 'LOCAL-B-';
 export const LOCAL_TASK_PREFIX = 'LOCAL-TK-';
 
-const DEFAULT_STATE: LocalAgilityState = {
+const DEFAULT_STATE: LocalPlanningState = {
     nextStoryId: 11,
     nextTaskId: 1,
     teams: [
@@ -190,17 +190,27 @@ export function isLocalStoryNumber(storyNumber: unknown): boolean {
 }
 
 function statePath(rootDir: string): string {
-    return resolve(rootDir, '.sdlc-framework', 'local-agility', 'state.json');
+    return resolve(rootDir, '.sdlc-framework', 'local-planning', 'state.json');
 }
 
-export function loadLocalAgilityState(rootDir: string): LocalAgilityState {
+function migrateFromLegacyPath(rootDir: string): void {
+    const legacyFile = resolve(rootDir, '.sdlc-framework', 'local-agility', 'state.json');
+    const newFile = statePath(rootDir);
+    if (existsSync(legacyFile) && !existsSync(newFile)) {
+        mkdirSync(resolve(rootDir, '.sdlc-framework', 'local-planning'), { recursive: true });
+        copyFileSync(legacyFile, newFile);
+    }
+}
+
+export function loadLocalPlanningState(rootDir: string): LocalPlanningState {
+    migrateFromLegacyPath(rootDir);
     const file = statePath(rootDir);
     if (!existsSync(file)) {
-        saveLocalAgilityState(rootDir, DEFAULT_STATE);
+        saveLocalPlanningState(rootDir, DEFAULT_STATE);
         return structuredClone(DEFAULT_STATE);
     }
     try {
-        const parsed = parseJsonUtf8File(file) as Partial<LocalAgilityState>;
+        const parsed = parseJsonUtf8File(file) as Partial<LocalPlanningState>;
         return {
             ...structuredClone(DEFAULT_STATE),
             ...parsed,
@@ -216,35 +226,35 @@ export function loadLocalAgilityState(rootDir: string): LocalAgilityState {
     }
 }
 
-export function saveLocalAgilityState(rootDir: string, state: LocalAgilityState): void {
-    mkdirSync(resolve(rootDir, '.sdlc-framework', 'local-agility'), { recursive: true });
+export function saveLocalPlanningState(rootDir: string, state: LocalPlanningState): void {
+    mkdirSync(resolve(rootDir, '.sdlc-framework', 'local-planning'), { recursive: true });
     writeFileSync(statePath(rootDir), JSON.stringify(state, null, 2));
 }
 
-function nextStoryNumber(state: LocalAgilityState): string {
+function nextStoryNumber(state: LocalPlanningState): string {
     const number = `${LOCAL_STORY_PREFIX}${String(state.nextStoryId).padStart(4, '0')}`;
     state.nextStoryId += 1;
     return number;
 }
 
-function nextTaskNumber(state: LocalAgilityState): string {
+function nextTaskNumber(state: LocalPlanningState): string {
     const number = `${LOCAL_TASK_PREFIX}${String(state.nextTaskId).padStart(4, '0')}`;
     state.nextTaskId += 1;
     return number;
 }
 
-export function findLocalStory(rootDir: string, numberOrId: string): LocalAgilityStory | undefined {
-    const state = loadLocalAgilityState(rootDir);
+export function findLocalStory(rootDir: string, numberOrId: string): LocalPlanningStory | undefined {
+    const state = loadLocalPlanningState(rootDir);
     return state.stories.find((story) => story.number === numberOrId || story.id === numberOrId);
 }
 
-export function createLocalStory(rootDir: string, input: Partial<LocalAgilityStory> & { name: string }): LocalAgilityStory {
-    const state = loadLocalAgilityState(rootDir);
+export function createLocalStory(rootDir: string, input: Partial<LocalPlanningStory> & { name: string }): LocalPlanningStory {
+    const state = loadLocalPlanningState(rootDir);
     const now = new Date().toISOString();
     const number = nextStoryNumber(state);
     const team = input.team || 'SDLC Framework';
     const teamId = input.teamId || state.teams.find((t) => t.name === team)?.id || state.teams[0]?.id || 'LocalTeam:1';
-    const story: LocalAgilityStory = {
+    const story: LocalPlanningStory = {
         id: `LocalStory:${number}`,
         number,
         name: input.name,
@@ -265,7 +275,7 @@ export function createLocalStory(rootDir: string, input: Partial<LocalAgilitySto
         updatedAt: now,
     };
     state.stories.push(story);
-    saveLocalAgilityState(rootDir, state);
+    saveLocalPlanningState(rootDir, state);
     return story;
 }
 
@@ -277,13 +287,13 @@ export function createLocalTask(rootDir: string, input: {
     priority?: string;
     owners?: string[];
     status?: string;
-}): LocalAgilityTask {
-    const state = loadLocalAgilityState(rootDir);
+}): LocalPlanningTask {
+    const state = loadLocalPlanningState(rootDir);
     const story = state.stories.find((s) => s.number === input.storyNumber);
     if (!story) throw new Error(`Local story ${input.storyNumber} not found`);
     const now = new Date().toISOString();
     const number = nextTaskNumber(state);
-    const task: LocalAgilityTask = {
+    const task: LocalPlanningTask = {
         id: `LocalTask:${number}`,
         number,
         name: input.name,
@@ -300,22 +310,22 @@ export function createLocalTask(rootDir: string, input: {
         updatedAt: now,
     };
     state.tasks.push(task);
-    saveLocalAgilityState(rootDir, state);
+    saveLocalPlanningState(rootDir, state);
     return task;
 }
 
-export function updateLocalStoryStatus(rootDir: string, storyNumber: string, status: string): LocalAgilityStory {
-    const state = loadLocalAgilityState(rootDir);
+export function updateLocalStoryStatus(rootDir: string, storyNumber: string, status: string): LocalPlanningStory {
+    const state = loadLocalPlanningState(rootDir);
     const story = state.stories.find((s) => s.number === storyNumber);
     if (!story) throw new Error(`Local story ${storyNumber} not found`);
     story.status = status;
     story.updatedAt = new Date().toISOString();
-    saveLocalAgilityState(rootDir, state);
+    saveLocalPlanningState(rootDir, state);
     return story;
 }
 
-export function updateLocalStory(rootDir: string, storyNumber: string, input: Partial<LocalAgilityStory>): LocalAgilityStory {
-    const state = loadLocalAgilityState(rootDir);
+export function updateLocalStory(rootDir: string, storyNumber: string, input: Partial<LocalPlanningStory>): LocalPlanningStory {
+    const state = loadLocalPlanningState(rootDir);
     const story = state.stories.find((s) => s.number === storyNumber || s.id === storyNumber);
     if (!story) throw new Error(`Local story ${storyNumber} not found`);
     const team = input.team ?? story.team;
@@ -337,46 +347,46 @@ export function updateLocalStory(rootDir: string, storyNumber: string, input: Pa
         owner: input.owner ?? story.owner,
         updatedAt: new Date().toISOString(),
     });
-    saveLocalAgilityState(rootDir, state);
+    saveLocalPlanningState(rootDir, state);
     return story;
 }
 
-export function updateLocalTaskStatus(rootDir: string, taskNumber: string, status: string): LocalAgilityTask {
-    const state = loadLocalAgilityState(rootDir);
+export function updateLocalTaskStatus(rootDir: string, taskNumber: string, status: string): LocalPlanningTask {
+    const state = loadLocalPlanningState(rootDir);
     const task = state.tasks.find((t) => t.number === taskNumber || t.id === taskNumber);
     if (!task) throw new Error(`Local task ${taskNumber} not found`);
     task.status = status;
     task.updatedAt = new Date().toISOString();
-    saveLocalAgilityState(rootDir, state);
+    saveLocalPlanningState(rootDir, state);
     return task;
 }
 
-export function deleteLocalStory(rootDir: string, storyNumber: string): LocalAgilityStory {
-    const state = loadLocalAgilityState(rootDir);
+export function deleteLocalStory(rootDir: string, storyNumber: string): LocalPlanningStory {
+    const state = loadLocalPlanningState(rootDir);
     const story = state.stories.find((s) => s.number === storyNumber || s.id === storyNumber);
     if (!story) throw new Error(`Local story ${storyNumber} not found`);
     story.deleted = true;
     story.updatedAt = new Date().toISOString();
-    saveLocalAgilityState(rootDir, state);
+    saveLocalPlanningState(rootDir, state);
     return story;
 }
 
 export function reorderLocalStories(rootDir: string, orderedNumbers: string[]): void {
-    const state = loadLocalAgilityState(rootDir);
+    const state = loadLocalPlanningState(rootDir);
     const indexMap = new Map(orderedNumbers.map((n, i) => [n, i]));
     for (const story of state.stories) {
         const idx = indexMap.get(story.number);
         if (idx !== undefined) story.sortOrder = idx;
     }
-    saveLocalAgilityState(rootDir, state);
+    saveLocalPlanningState(rootDir, state);
 }
 
-export function listLocalTasksForStory(rootDir: string, storyNumber: string): LocalAgilityTask[] {
-    const state = loadLocalAgilityState(rootDir);
+export function listLocalTasksForStory(rootDir: string, storyNumber: string): LocalPlanningTask[] {
+    const state = loadLocalPlanningState(rootDir);
     return state.tasks.filter((task) => task.parent === storyNumber);
 }
 
-export function localTaskToRawTask(task: LocalAgilityTask): RawTask {
+export function localTaskToRawTask(task: LocalPlanningTask): RawTask {
     return {
         id: task.number,
         number: task.number,
@@ -399,8 +409,8 @@ export function loadLocalTasksForStory(rootDir: string, storyNumber: string): Ra
 }
 
 export function groupLocalBoard(rootDir: string) {
-    const state = loadLocalAgilityState(rootDir);
-    const tasksByStory = new Map<string, LocalAgilityTask[]>();
+    const state = loadLocalPlanningState(rootDir);
+    const tasksByStory = new Map<string, LocalPlanningTask[]>();
     for (const task of state.tasks) {
         const list = tasksByStory.get(task.parent) ?? [];
         list.push(task);
@@ -435,7 +445,7 @@ export function syncAgentTasksToLocalDB(rootDir: string, storyNumber: string): n
             if (raw.storyNumber !== storyNumber) continue;
             const statusTasks = Array.isArray(raw.tasks) ? (raw.tasks as Array<Record<string, unknown>>) : [];
             if (statusTasks.length === 0) continue;
-            const state = loadLocalAgilityState(rootDir);
+            const state = loadLocalPlanningState(rootDir);
             const storyTasks = state.tasks.filter((t) => t.parent === storyNumber);
             const byNumber = new Map(storyTasks.map((t) => [t.number, t]));
             const byId = new Map(storyTasks.map((t) => [t.id, t]));
@@ -478,7 +488,7 @@ export function syncAgentTasksToLocalDB(rootDir: string, storyNumber: string): n
                 existingNames.add(name.toLowerCase());
                 synced++;
             }
-            if (stateDirty) saveLocalAgilityState(rootDir, state);
+            if (stateDirty) saveLocalPlanningState(rootDir, state);
         } catch { /* skip unreadable status files */ }
     }
     return synced;
