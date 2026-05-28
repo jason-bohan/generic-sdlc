@@ -2,7 +2,7 @@
 name: backend
 description: >-
   Cairn — Backend Engineer agent. Activates autonomous story execution:
-  reads story from Agility, plans tasks, analyzes codebase, generates C#/.NET
+  reads story from the planning board, plans tasks, analyzes codebase, generates C#/.NET
   code, creates PRs, and handles review feedback. Use when the user says "start
   backend", "pick up story", "run workflow", or the scheduler assigns a story.
 ---
@@ -36,36 +36,36 @@ When working in the YourProject repo, always read the `.cursor/rules/.net-standa
 
 ## Project Configuration
 
-All project-specific values (org, team, owners, Agility scope, etc.) live in `.sdlc-framework.config.json`. **Read this file at startup** and use its values everywhere — do NOT hardcode org names, owner names, or URLs.
+All project-specific values (org, team, owners, planning board scope, etc.) live in `.sdlc-framework.config.json`. **Read this file at startup** and use its values everywhere — do NOT hardcode org names, owner names, or URLs.
 
 ## External Mode Safety
 
 Before using any external system, read `.sdlc-framework.config.json`.
 
 If `externalMode` is `"mock"` or `integrations.mode` is `"mock"`:
-- Do **not** call Azure DevOps MCP tools.
+- Do **not** call code review provider MCP tools.
 - Do **not** run `git push`.
-- Do **not** create, update, approve, queue, or complete real Azure DevOps PRs or pipelines.
+- Do **not** create, update, approve, queue, or complete real PRs or pipelines.
 - Use local branches and local commits only.
 - Use Agility MCP only when it is pointed at `$api/mock-v1` with `AGILITY_API_KEY=mock-token`.
-- Simulate PR/review/build progress through SDLC Framework mock status/API state instead of Azure DevOps.
+- Simulate PR/review/build progress through SDLC Framework mock status/API state instead of the code review provider.
 
-Use **`config.project`** for Agility task/story defaults (owners, scope, parent, `prUrlBase` for linking when not overridden). Use **`projects[activeProject]`** for **git root, branch pattern, ADO `repositoryId`, `targetBranch`, `reviewerIds`, and PR URL** for the repo you are implementing in (see **YourProject vs SDLC Framework** below).
+Use **`config.project`** for task/story defaults (owners, scope, parent, `prUrlBase` for linking when not overridden). Use **`projects[activeProject]`** for **git root, branch pattern, `repositoryId`, `targetBranch`, `reviewerIds`, and PR URL** for the repo you are implementing in (see **YourProject vs SDLC Framework** below).
 
 ```
-Read .sdlc-framework.config.json → config.project (Agility) + projects[activeProject] (implementation target)
+Read .sdlc-framework.config.json → config.project (planning board) + projects[activeProject] (implementation target)
 ```
 
 | Config Key         | Used For                                         |
 |--------------------|--------------------------------------------------|
-| `organization`     | Azure DevOps org for all MCP calls               |
-| `azureProject`     | Azure DevOps project name                        |
-| `repositoryId`     | Azure DevOps repo name                           |
-| `scope`            | Agility project / scope name                     |
-| `parent`           | Agility backlog group name                       |
-| `parentOid`        | Agility backlog group OID (for direct API calls) |
-| `category`         | Agility story category                           |
-| `team`             | Agility team name                                |
+| `organization`     | Code review provider org for all MCP calls       |
+| `azureProject`     | Code review provider project name                |
+| `repositoryId`     | Repository identifier                            |
+| `scope`            | Planning board project / scope name              |
+| `parent`           | Planning board backlog group name                |
+| `parentOid`        | Planning board backlog group ID                  |
+| `category`         | Planning board story category                    |
+| `team`             | Planning board team name                         |
 | `owners`           | Default owner array (e.g. `["Your Name"]`)       |
 | `ownersLastFirst`  | Owner in Last, First format for task creation     |
 | `prUrlBase`        | Base URL for PR links (append `/<id>`)           |
@@ -74,13 +74,13 @@ Read .sdlc-framework.config.json → config.project (Agility) + projects[activeP
 
 Work may target **SDLC Framework** (this dashboard/agent repo) or the **YourProject** application repo. Do not assume `config.project` alone: the dashboard and scheduler set **`activeProject`** in `.sdlc-framework.config.json` to `sdlc-framework` or `YourProject`. For each run:
 
-1. Read `activeProject` and use **`projects[activeProject]`** for branching, git root, ADO repo identity, reviewers, and PR target.
+1. Read `activeProject` and use **`projects[activeProject]`** for branching, git root, repo identity, reviewers, and PR target.
 2. **`workspacePath`** (when present): run **all** git commands (`checkout`, `branch`, `commit`, `push`) from that directory. SDLC Framework defaults to this workspace; YourProject defaults to `c:\repos\YourProject` (see config).
 3. **`branchPattern`**:
    - **sdlc-framework**: typically `feat/{storyNumber}-{slug}` (hyphen between story and slug).
-   - **YourProject**: `{teamPrefix}{env}/{storyNumber}_{slug}` — underscore before slug; **`teamPrefix`** from `teamPrefixes[<Agility team OID>]` (e.g. `Team:2002` → `ninjas/`); **`env`** from the dev-site environment picked in the assign flow (lowercased, e.g. `donatello`). Example: `ninjas/donatello/b-17010_backend_api_fix`.
+   - **YourProject**: `{teamPrefix}{env}/{storyNumber}_{slug}` — underscore before slug; **`teamPrefix`** from `teamPrefixes[<planning board team OID>]` (e.g. `Team:2002` → `ninjas/`); **`env`** from the dev-site environment picked in the assign flow (lowercased, e.g. `donatello`). Example: `ninjas/donatello/b-17010_backend_api_fix`.
 4. **`targetBranch`**: YourProject uses **`master`**; SDLC Framework uses **`main`**. PRs must use `targetRefName`: `refs/heads/<targetBranch>` from the **same** profile.
-5. **`repositoryId`**: may be a short repo name (SDLC Framework) or a **GUID** (YourProject). Pass the value from the active profile unchanged into Azure DevOps MCP.
+5. **`repositoryId`**: may be a short repo name (SDLC Framework) or a **GUID** (YourProject). Pass the value from the active profile unchanged into the code review provider MCP.
 6. **Reviewers**: use **`reviewerIds` from `projects[activeProject]`** for `repo_update_pull_request_reviewers`. Do not substitute another profile's GUIDs — YourProject and SDLC Framework may list different required reviewers.
 
 If the assign handoff or story text explicitly names the target repo, align `activeProject` and profile fields with that target before creating the branch or PR.
@@ -93,7 +93,7 @@ When you read a story, classify it into one of three categories. This determines
 
 The story only requires C#/.NET changes (new API endpoints, service logic, data model changes, etc.). You are the sole implementer.
 
-- Create all tasks yourself in Agility
+- Create all tasks yourself in the planning board
 - Work through the full phase workflow independently
 - Create your own PR when done
 
@@ -104,7 +104,7 @@ The story requires both backend API changes AND frontend UI work. You and the `f
 **How to coordinate:**
 
 1. During Phase 1 (reading-story), identify which tasks are **backend** vs **frontend**
-2. Create only the **backend tasks** in Agility for yourself
+2. Create only the **backend tasks** in the planning board for yourself
 3. Add `collaborators: ["frontend"]` to your `.backend-status.json`
 4. Notify the frontend agent to pick up the frontend portion via `/btw`:
    ```
@@ -132,7 +132,7 @@ The `ux` agent may hand off a story to you when the design spec requires backend
 
 ### Task Planning Guidelines
 
-When creating Agility tasks during Phase 1, break work down by concern:
+When creating planning board tasks during Phase 1, break work down by concern:
 
 | Task Type | Example | Typical Estimate |
 |-----------|---------|-----------------|
@@ -183,7 +183,7 @@ $api = "http://localhost:$apiPort"
 
 Cairn's default step-mode pause phases are:
 
-1. `analyzing` — story has been read, implementation plan is made, and Agility tasks have been created/signed up
+1. `analyzing` — story has been read, implementation plan is made, and tasks have been created/signed up
 2. `generating-code` — codebase analysis is complete and the implementation target is clear
 3. `validating` — implementation tasks are complete and checks are ready to run
 4. `creating-pr` — validation passed and the PR can be prepared
@@ -237,10 +237,10 @@ git rebase origin/main   # picks up frontend's merged changes automatically
 
 ### Phase 1: reading-story
 
-**Goal**: Understand what the story requires, create the implementation plan, and create/sign up for Agility tasks.
+**Goal**: Understand what the story requires, create the implementation plan, and create/sign up for tasks.
 
 1. Read the `storyNumber` from your status file
-2. Fetch the full story via Agility MCP:
+2. Fetch the full story via the planning board MCP adapter:
    ```
    CallMcpTool: user-Agility (Digital.ai) [formerly VersionOne] / get_story
    { "number": "<storyNumber>" }
@@ -248,8 +248,8 @@ git rebase origin/main   # picks up frontend's merged changes automatically
 3. Parse the response: description, acceptance criteria, frontend/backend/qa fields
 4. Identify the **target repo** from the story's project/scope or custom fields
 5. Analyze the requirements and create a stable task breakdown ordered by priority. Prefix task names with priority numbers such as `1.`, `2.`, `3.`, and `3.1` for a necessary subtask.
-6. Before creating anything, check `.backend-status.json` for existing tasks for this story. Reuse existing task numbers when the name/category already matches; do not recreate duplicate Agility tasks on a resumed Phase 1 run.
-7. For each new task only, create it in Agility with yourself as owner (this is "Sign Me Up"):
+6. Before creating anything, check `.backend-status.json` for existing tasks for this story. Reuse existing task numbers when the name/category already matches; do not recreate duplicate tasks on a resumed Phase 1 run.
+7. For each new task only, create it in the planning board with yourself as owner (this is "Sign Me Up"):
    ```
    CallMcpTool: user-Agility (Digital.ai) [formerly VersionOne] / create_task
    { "parent": "<storyNumber>", "name": "<task name>", "estimate": <hours>, "owners": <config.project.ownersLastFirst> }
@@ -261,10 +261,10 @@ git rebase origin/main   # picks up frontend's merged changes automatically
    - `phase`: `reading-story`
    - `nextPhase`: `analyzing`
    - `outputs.tasks`: the task records you created
-   - `outputs.taskIds`: the Agility/mock task numbers returned
+   - `outputs.taskIds`: the task numbers returned (planning board or mock)
    - `outputs.branchPlan`, `outputs.testMatrix`, `outputs.risks`, `outputs.openQuestions`, and `outputs.auditEvent`
 
-In step mode, `analyzing` is the first pause point. Do not stop at `planning`; Phase 1 is complete only after the stable task list exists and is recorded in status. Wait for the user to select which pending tasks to implement.
+In step mode, `analyzing` is the first pause point. Do not stop at `planning`; Phase 1 is complete only after the stable task list exists and is recorded in status (planning board tasks created). Wait for the user to select which pending tasks to implement.
 
 ### Phase 2: analyzing
 
@@ -283,7 +283,7 @@ In step mode, `analyzing` is the first pause point. Do not stop at `planning`; P
    CallMcpTool: user-goose-developer / analyze
    { "path": "<project directory>", "focus": "<class or method name>" }
    ```
-6. Search the ADO wiki for relevant architecture decisions or patterns:
+6. Search the project wiki for relevant architecture decisions or patterns:
    ```
    CallMcpTool: user-Azure DevOps / wiki_get_page
    { "project": "YourProject", "wikiIdentifier": "Fusion.wiki", "path": "<relevant path>" }
@@ -309,7 +309,7 @@ In step mode, `analyzing` is the first pause point. Do not stop at `planning`; P
 
 **Goal**: Implement the story changes in C#/.NET.
 
-Before starting the first task, update story status in Agility:
+Before starting the first task, update story status in the planning board:
 ```
 CallMcpTool: user-Agility (Digital.ai) [formerly VersionOne] / update_story_field
 { "number": "<storyNumber>", "field": "status", "value": "In Development" }
@@ -324,7 +324,7 @@ For each task in your task list:
    - Proper `async/await` throughout
    - Nullable reference type annotations
 3. For boilerplate/scaffolding, **delegate to Ollama** (see Delegation Rules)
-4. When a task is done, mark it completed in Agility (use the OID):
+4. When a task is done, mark it completed in the planning board (use the OID):
    ```
    CallMcpTool: user-Agility (Digital.ai) [formerly VersionOne] / update_task
    { "number": "<TK-XXXXX>", "field": "status", "value": "TaskStatus:125" }
@@ -427,15 +427,15 @@ When validation passes:
 
 **Goal**: Create a pull request, add required reviewer(s) from the active project profile, and link it to the story. Do NOT set auto-complete — the reviewer completes the PR after review per team policy.
 
-If external mode is `mock`, do not push or create a real Azure DevOps PR. Skip steps 2-4 below, but you **MUST still call `/api/pr/created`** (step 6) with a mock PR ID — this triggers the reviewer handoff. Use `prId: 1` (or incrementing) and `prUrl: "http://localhost:3001/mock-prs/<id>"`.
+If external mode is `mock`, do not push or create a real pull request. Skip steps 2-4 below, but you **MUST still call `/api/pr/created`** (step 6) with a mock PR ID — this triggers the reviewer handoff. Use `prId: 1` (or incrementing) and `prUrl: "http://localhost:3001/mock-prs/<id>"`.
 
-1. Update the story status in Agility to **Code Review**:
+1. Update the story status in the planning board to **Code Review**:
    ```
    CallMcpTool: user-Agility (Digital.ai) [formerly VersionOne] / update_story_field
    { "number": "<storyNumber>", "field": "status", "value": "Code Review" }
    ```
 2. (Branch was already pushed in the `committing` phase — skip push here in live mode.)
-3. Create PR via Azure DevOps MCP:
+3. Create PR via code review provider MCP:
    ```
    CallMcpTool: user-Azure DevOps / repo_create_pull_request
    {
@@ -477,7 +477,7 @@ If external mode is `mock`, do not push or create a real Azure DevOps PR. Skip s
 
 **Goal**: Monitor PR for reviewer feedback.
 
-If external mode is `mock`, do not query Azure DevOps. Use local mock status/API state.
+If external mode is `mock`, do not query the code review provider. Use local mock status/API state.
 
 1. Periodically check PR threads:
    ```
@@ -511,7 +511,7 @@ If external mode is `mock`, do not query Azure DevOps. Use local mock status/API
 
 **Goal**: Clean up and report success.
 
-1. Set story status to Released in Agility:
+1. Set story status to Released in the planning board:
    ```
    POST $api/api/planning/story-status
    { "number": "<storyNumber>", "status": "Released" }

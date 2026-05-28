@@ -37,7 +37,7 @@ An interactive API reference UI served at `http://localhost:3001/` when the stan
 - **`/`** — Scalar interactive docs (dark theme, try-it-out for every endpoint)
 - **`/api/openapi.json`** — raw OpenAPI 3.1 spec
 
-All 30+ API routes are documented with request/response schemas, organized by tag: Status, Config, Agility, Scheduler, Handoff, Tokens, Chat, Ollama.
+All 30+ API routes are documented with request/response schemas, organized by tag: Status, Config, Planning, Scheduler, Handoff, Tokens, Chat, Ollama.
 
 ---
 
@@ -105,4 +105,4 @@ npm run test:watch # Watch mode
 npm run cypress:run # Cypress integration tests
 ```
 
-Tests use `jsdom` environment and mock external integrations. Set `SDLC_EXTERNAL_MODE=mock` or use `sdlc-framework --test` to run with local mock Agility/ADO/Teams.
+Tests use `jsdom` environment and mock external integrations. Set `SDLC_EXTERNAL_MODE=mock` or use `sdlc-framework --test` to run with local mock planning/code-review/Teams integrations.

@@ -58,7 +58,7 @@ The main configuration file. Copy from `.sdlc-framework.config.example.json` to 
 | `scheduler.agents.<id>.autoStart` | `true`/`false` | Skip approval for this agent |
 | `scheduler.agents.<id>.stepMode` | `true`/`false` | Pause at phase boundaries |
 | `scheduler.agents.<id>.stepModePhases` | `string[]` | Override default pause phases |
-| `scheduler.agents.<id>.adoPat` | string | Per-agent Azure DevOps PAT |
+| `scheduler.agents.<id>.adoPat` | string | Per-agent code review provider PAT |
 | `scheduler.agents.<id>.model` | string | AI model for this agent (e.g. `gpt-5-mini`, `auto`) |
 | `scheduler.agents.<id>.displayName` | string | Optional dashboard label override (defaults: Lasair, Brehon, …). `<id>` is always `frontend`, `reviewer`, `devops`, `ux`, `backend`, or `qa`. |
 
@@ -183,11 +183,11 @@ Returns all discovered rules, skills, and key paths for the given project:
 Copy from `.env.example`. Required variables:
 
 ```env
-# Agility (VersionOne)
+# Planning Board (Agility/VersionOne)
 V1_BASE_URL=https://your-org.digitalai.com
 V1_ACCESS_TOKEN=your-agility-token
 
-# Azure DevOps
+# Code Review Provider (Azure DevOps)
 AZURE_DEVOPS_PAT=your-ado-pat
 
 # Optional
@@ -209,7 +209,7 @@ PM_PROVIDER=mock DEMO_PRESET=golden-agile-backlog npm run server
 
 `DEMO_PRESET` accepts either a bare preset name, resolved as `data/presets/<name>.json`, or a JSON path. The committed `golden-agile-backlog` preset seeds a VerbatimDev-style agile backlog with stories, bug work, teams, acceptance criteria, and frontend/backend/QA lanes.
 
-### Azure DevOps PAT Scopes
+### Code Review Provider PAT Scopes
 
 Generate at `https://<org>.visualstudio.com/_usersSettings/tokens`:
 - **Code** — Read & Write
@@ -221,8 +221,8 @@ Generate at `https://<org>.visualstudio.com/_usersSettings/tokens`:
 
 MCP servers are configured in `.cursor/mcp.json` (Cursor) and `.claude/mcp.json` (Claude Code) — both committed. After cloning:
 
-- **Agility MCP** — bundled at `tools/mcp-agility/`. Installed automatically by `npm install` via `postinstall`. Reads credentials from `.env`.
-- **Azure DevOps MCP** — installed on-demand via `npx @azure-devops/mcp`.
+- **Agility MCP** — bundled at `tools/mcp-agility/`. Installed automatically by `npm install` via `postinstall`. Reads credentials from `.env`. (Agility/VersionOne adapter only)
+- **Azure DevOps MCP** — installed on-demand via `npx @azure-devops/mcp`. (Azure DevOps adapter only)
 - **Goose Developer MCP** — requires Goose CLI on PATH.
 
 No manual MCP configuration needed on Windows when using the legacy PowerShell setup — run `.\bin\setup.ps1` and fill in `.env`. On macOS/Linux, run `npm run setup`; it creates the same project files and reports any optional tool configuration you still need to complete.

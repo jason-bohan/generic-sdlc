@@ -166,9 +166,9 @@ User asks you to do something in the Hub codebase
 └── Update the active agent `.frontend-status.json` (or the relevant `.${agentId}-status.json`) so the dashboard shows progress
 ```
 
-## Creating Agility Stories
+## Creating Stories
 
-When the user asks to create a new story, use this workflow to produce a well-formed Agility backlog item.
+When the user asks to create a new story, use this workflow to produce a well-formed backlog item.
 
 ### Required Defaults
 

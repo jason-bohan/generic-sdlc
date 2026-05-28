@@ -17,7 +17,7 @@ sdlc-framework:
   enabled: true
   type: stdio
   name: SDLC Framework
-  description: SDLC Framework SDLC orchestration — assign stories, monitor agents, manage workflows, search Agility backlog
+  description: SDLC Framework SDLC orchestration — assign stories, monitor agents, manage workflows, search backlog
   cmd: /path/to/node
   args:
     - /path/to/sdlc-framework/tools/mcp-sdlc-framework/index.js
@@ -85,7 +85,7 @@ get_workflow({ workflowItemId: 42 })
 
 ### `assign_story`
 
-Assign an Agility story to an agent to kick off the SDLC workflow.
+Assign a story to an agent to kick off the SDLC workflow.
 
 ```
 assign_story({
@@ -132,7 +132,7 @@ dismiss_item({ agentId: "reviewer", itemId: "CR-001", itemType: "request" })
 
 ### `search_stories`
 
-Search Agility stories available for assignment. Returns open, unreleased stories.
+Search stories available for assignment. Returns open, unreleased stories.
 
 ```
 search_stories({ team: "Istari", status: "Future" })
@@ -141,7 +141,7 @@ search_stories({ text: "export", maxResults: 10 })
 
 ### `get_story`
 
-Full Agility story detail: description, acceptance criteria, frontend/backend/QA fields, and a link to the story UI.
+Full story detail: description, acceptance criteria, frontend/backend/QA fields, and a link to the story UI.
 
 ```
 get_story({ number: "B-12345" })
@@ -158,7 +158,7 @@ set_execution_mode({ mode: "local" })   # local | balanced | speed
 
 ### `get_reviewer_prs`
 
-List ADO pull requests eligible for the reviewer agent to pick up.
+List pull requests eligible for the reviewer agent to pick up.
 
 ### `reset_agents`
 
