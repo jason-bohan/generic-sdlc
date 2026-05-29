@@ -10,6 +10,15 @@ const TOOL_RESULT_STORAGE_CAP = 3000;
 const PHASE_COMPLETE_SENTINEL = 'PHASE_COMPLETE::';
 
 /**
+ * Phases that must produce at least one written file before they may complete.
+ * Small local models (e.g. Qwen2.5-Coder-14B via MLX) reliably emit valid tool
+ * calls but tend to skip the write step and jump straight to complete_phase —
+ * often escalating to next_phase="error" when nudged. These phases get a guard.
+ */
+const MUTATION_REQUIRED_PHASES = new Set(['generating-code']);
+const MAX_PREMATURE_COMPLETE_BLOCKS = 2;
+
+/**
  * Some local providers emit tool calls as text instead of the structured tool_calls field:
  * - MeshLLM/llama.cpp: ```json {"name":..,"arguments":..} ``` markdown blocks
  * - MLX (Qwen2.5-Coder etc.): <tools>{"name":..,"arguments":..}</tools> XML blocks
@@ -62,6 +71,9 @@ export class AgentRunner extends EventEmitter {
     private turnCount = 0;
     private consecutiveNudges = 0;
     private _phaseCompleted = false;
+    private mutationCount = 0;
+    private prematureCompleteBlocks = 0;
+    private phaseName = '';
     private onCheckpoint?: (messages: Message[]) => void;
 
     constructor(
@@ -84,6 +96,11 @@ export class AgentRunner extends EventEmitter {
 
     get isRunning(): boolean { return this._running; }
 
+    /** True while the current phase requires a file change that hasn't happened yet. */
+    private get _mutationRequired(): boolean {
+        return MUTATION_REQUIRED_PHASES.has(this.phaseName) && this.mutationCount === 0;
+    }
+
     /**
      * Inject a /btw message. Picked up before the next LLM call
      * (i.e. after the current tool execution finishes).
@@ -104,6 +121,12 @@ export class AgentRunner extends EventEmitter {
         this._running = true;
         this._aborted = false;
         this.turnCount = 0;
+        // Extract the SDLC phase name from the prompt so phase-specific guards
+        // (mutation requirement) can apply. Handles both prompt formats:
+        //   spawn:    Run SDLC phase "generating-code"
+        //   continue: ...currently in phase 'generating-code'...
+        const phaseMatch = initialPrompt.match(/phase\s+['"]([^'"]+)['"]/i);
+        this.phaseName = phaseMatch ? phaseMatch[1] : '';
         const promptWithContext = await this._withRagContext(initialPrompt);
 
         // If resuming an existing session, messages are already loaded;
@@ -169,8 +192,15 @@ export class AgentRunner extends EventEmitter {
                     // Nudge 2: model stopped (empty or text) before calling complete_phase
                     if (!this._phaseCompleted && this.consecutiveNudges < 2 && this.turnCount < MAX_TURNS - 1) {
                         this.consecutiveNudges++;
-                        this._emit('message', { content: `[nudge] Stopped without complete_phase (nudge ${this.consecutiveNudges}/2)`, turn: this.turnCount });
-                        this.messages.push({ role: 'user', content: 'You have not called complete_phase yet. You MUST call complete_phase now to advance the workflow. Do not output text — call the tool directly.' });
+                        if (this._mutationRequired) {
+                            // Don't push the model toward complete_phase when it hasn't done
+                            // the work — that just makes it escalate to next_phase="error".
+                            this._emit('message', { content: `[nudge] No files changed yet in ${this.phaseName} (nudge ${this.consecutiveNudges}/2)`, turn: this.turnCount });
+                            this.messages.push({ role: 'user', content: 'You have not changed any files yet. This phase requires implementing the code: call write_file with the actual file contents now. Do NOT call complete_phase until at least one file has been written.' });
+                        } else {
+                            this._emit('message', { content: `[nudge] Stopped without complete_phase (nudge ${this.consecutiveNudges}/2)`, turn: this.turnCount });
+                            this.messages.push({ role: 'user', content: 'You have not called complete_phase yet. You MUST call complete_phase now to advance the workflow. Do not output text — call the tool directly.' });
+                        }
                         continue;
                     }
                     this.consecutiveNudges = 0;
@@ -183,6 +213,21 @@ export class AgentRunner extends EventEmitter {
                 let phaseCompleted = false;
                 for (const toolCall of msg.tool_calls) {
                     if (this._aborted) break;
+
+                    // Guard: refuse to complete a mutation-required phase before any file
+                    // has changed. Capped so a model that truly can't produce code still
+                    // exits (to error) rather than looping forever.
+                    if (toolCall.function.name === 'complete_phase' && this._mutationRequired
+                        && this.prematureCompleteBlocks < MAX_PREMATURE_COMPLETE_BLOCKS) {
+                        this.prematureCompleteBlocks++;
+                        this._emit('message', { content: `[guard] Blocked premature complete_phase in ${this.phaseName}: no files changed (${this.prematureCompleteBlocks}/${MAX_PREMATURE_COMPLETE_BLOCKS})`, turn: this.turnCount });
+                        this.messages.push({
+                            role: 'tool',
+                            tool_call_id: toolCall.id,
+                            content: `Refused: phase "${this.phaseName}" cannot complete because no files have been written. Call write_file with the actual implementation, then complete the phase. Do not set next_phase to "error" to skip the work.`,
+                        });
+                        continue;
+                    }
 
                     this._emit('tool_call', { name: toolCall.function.name, id: toolCall.id });
 
@@ -209,6 +254,12 @@ export class AgentRunner extends EventEmitter {
                         tool_call_id: toolCall.id,
                         content: output,
                     });
+
+                    // Track successful file writes so mutation-required phases can complete.
+                    // toolWriteFile returns "Written <n> bytes to ..." on success.
+                    if (toolCall.function.name === 'write_file' && output.startsWith('Written ')) {
+                        this.mutationCount++;
+                    }
 
                     // Phase completed — stop the loop so the next phase starts with
                     // a fresh conversation context (new session, no stale tool history).
