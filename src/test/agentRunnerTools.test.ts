@@ -145,3 +145,32 @@ describe('rewriteWorktreeAddOnCollision', () => {
         expect(rewriteWorktreeAddOnCollision('git worktree list', '/tmp')).toBeNull();
     });
 });
+
+describe('run_validation tool', () => {
+    const VTMP = resolve(__dirname, '.run-validation-tmp');
+    const cfg = resolve(VTMP, '.sdlc-framework.config.json');
+
+    beforeEach(() => { rmSync(VTMP, { recursive: true, force: true }); mkdirSync(VTMP, { recursive: true }); });
+    afterEach(() => rmSync(VTMP, { recursive: true, force: true }));
+
+    it('reports PASSED and routes to committing when checks pass', async () => {
+        writeFileSync(resolve(VTMP, 'package.json'), JSON.stringify({ name: 'x', scripts: { test: 'exit 0' } }));
+        const out = await executeToolCall('run_validation', {}, VTMP, VTMP, 'frontend', cfg);
+        expect(out).toContain('OVERALL: PASSED');
+        expect(out).toContain('next_phase="committing"');
+    }, 30_000);
+
+    it('reports FAILED and routes to generating-code when a check fails', async () => {
+        writeFileSync(resolve(VTMP, 'package.json'), JSON.stringify({ name: 'x', scripts: { test: 'exit 1' } }));
+        const out = await executeToolCall('run_validation', {}, VTMP, VTMP, 'frontend', cfg);
+        expect(out).toContain('OVERALL: FAILED');
+        expect(out).toContain('next_phase="generating-code"');
+    }, 30_000);
+
+    it('treats a project with no checks as passing', async () => {
+        writeFileSync(resolve(VTMP, 'package.json'), JSON.stringify({ name: 'x', scripts: {} }));
+        const out = await executeToolCall('run_validation', {}, VTMP, VTMP, 'frontend', cfg);
+        expect(out).toContain('OVERALL: PASSED');
+        expect(out).toContain('no checks configured');
+    });
+});

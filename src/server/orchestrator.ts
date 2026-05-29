@@ -268,14 +268,13 @@ function phaseSpecificInstructions(item: WorkflowItemRow, serverBaseUrl: string)
 
     if (item.active_phase === 'validating') {
         return [
-            'Validating phase — READ-ONLY. Act immediately:',
-            '1. Call read_file on the status file to get the codeChanges output from generating-code.',
-            '2. Run the build command (e.g. npm run build or tsc --noEmit) inside the worktree using bash.',
-            '3. Run tests if a test script exists (e.g. npm test). Record pass/fail counts.',
-            '4. Call complete_phase with your results.',
-            'CRITICAL: Do NOT call write_file or modify ANY files. You are a read-only observer.',
-            'CRITICAL: Do NOT fix code issues — record them as risks and complete_phase. Fixing is for generating-code.',
-            'DO NOT describe what you plan to do. Call read_file immediately.',
+            'Validating phase — READ-ONLY. Exactly two tool calls:',
+            '1. Call run_validation. The framework runs the type-check, build, and tests for you and returns a PASS/FAIL report — you do NOT run npm, tsc, or git yourself.',
+            '2. Call complete_phase, copying run_validation\'s results into validation_results, test_results, and static_analysis:',
+            '   - If the report says OVERALL: PASSED → next_phase="committing".',
+            '   - If it says OVERALL: FAILED → next_phase="generating-code" and put the failing checks into risks (the developer will fix them).',
+            'CRITICAL: Do NOT call write_file or modify ANY files, and do NOT try to fix failures here — that is the generating-code phase.',
+            'DO NOT describe what you plan to do. Call run_validation immediately.',
         ].join('\n');
     }
 

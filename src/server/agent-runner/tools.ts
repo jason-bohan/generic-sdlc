@@ -94,6 +94,22 @@ export const AGENT_TOOLS: ToolDefinition[] = [
     {
         type: 'function',
         function: {
+            name: 'run_validation',
+            description: 'Validating phase only: run the project\'s type-check, build, and tests for the current story and return a structured pass/fail report. The framework runs the commands for you — do NOT run npm/tsc/git yourself. After calling this, pass its results straight into complete_phase.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    path: {
+                        type: 'string',
+                        description: 'Worktree path to validate. Optional — auto-detected from the story worktree if omitted.',
+                    },
+                },
+            },
+        },
+    },
+    {
+        type: 'function',
+        function: {
             name: 'search_in_files',
             description: 'Search for a text pattern across files. Returns matching lines with file paths.',
             parameters: {
@@ -400,6 +416,81 @@ function toolRunCommand(
     })();
 }
 
+/** Pick the worktree to validate: explicit arg → newest `.claude/worktrees/*` dir → workspace root. */
+function resolveValidationCwd(args: Record<string, unknown>, workspaceDir: string, frameworkDir: string): string {
+    if (args.path) {
+        const check = safePath(String(args.path), workspaceDir, [workspaceDir, frameworkDir]);
+        if (check.ok && existsSync(check.resolved)) return check.resolved;
+    }
+    const wtRoot = resolve(workspaceDir, '.claude/worktrees');
+    if (existsSync(wtRoot)) {
+        const dirs = readdirSync(wtRoot)
+            .map((d) => resolve(wtRoot, d))
+            .filter((p) => { try { return statSync(p).isDirectory(); } catch { return false; } });
+        if (dirs.length > 0) {
+            return dirs.sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs)[0];
+        }
+    }
+    return workspaceDir;
+}
+
+function runOne(cmd: string, cwd: string): Promise<{ ok: boolean; code: number | string; out: string }> {
+    return new Promise((res) => {
+        execFile(cmd, [], { cwd, timeout: 180_000, maxBuffer: 4 * 1024 * 1024, shell: true, windowsHide: true }, (err, stdout, stderr) => {
+            const out = [stdout, stderr].filter(Boolean).join('\n').trim();
+            res({ ok: !err, code: err ? (err.code ?? 1) : 0, out });
+        });
+    });
+}
+
+/**
+ * Validating phase helper: run the project's checks (type-check, build, tests) so a
+ * small model doesn't have to orchestrate npm/tsc itself and parse the output. Returns
+ * a structured, copy-ready report plus the recommended next phase.
+ */
+async function toolRunValidation(args: Record<string, unknown>, workspaceDir: string, frameworkDir: string): Promise<string> {
+    const cwd = resolveValidationCwd(args, workspaceDir, frameworkDir);
+    let scripts: Record<string, string> = {};
+    let hasPackageJson = false;
+    try {
+        const pkg = JSON.parse(readFileSync(resolve(cwd, 'package.json'), 'utf-8')) as { scripts?: Record<string, string> };
+        scripts = pkg.scripts ?? {};
+        hasPackageJson = true;
+    } catch { /* no package.json — fall through */ }
+
+    if (!hasPackageJson) {
+        return `RUN_VALIDATION (worktree: ${cwd})\nNo package.json found — nothing to validate.\nOVERALL: PASSED (no checks configured)\nNext: call complete_phase with next_phase="committing" and note "no automated checks configured" in validation_results.`;
+    }
+
+    const checks: Array<{ key: string; label: string; cmd: string }> = [];
+    if (existsSync(resolve(cwd, 'tsconfig.json'))) {
+        checks.push({ key: 'static_analysis', label: 'tsc --noEmit', cmd: 'npx --no-install tsc --noEmit' });
+    } else if (scripts.build) {
+        checks.push({ key: 'static_analysis', label: 'npm run build', cmd: 'npm run build' });
+    }
+    if (scripts.test && !/no test specified/i.test(scripts.test)) {
+        checks.push({ key: 'test_results', label: 'npm test', cmd: 'npm test' });
+    }
+
+    if (checks.length === 0) {
+        return `RUN_VALIDATION (worktree: ${cwd})\nNo test/build/typecheck scripts detected.\nOVERALL: PASSED (no checks configured)\nNext: call complete_phase with next_phase="committing" and note "no automated checks configured" in validation_results.`;
+    }
+
+    const lines: string[] = [`RUN_VALIDATION (worktree: ${cwd})`];
+    let allPassed = true;
+    for (const check of checks) {
+        const r = await runOne(check.cmd, cwd);
+        if (!r.ok) allPassed = false;
+        lines.push(`- ${check.key} (${check.label}): ${r.ok ? 'PASSED' : `FAILED (exit ${r.code})`}`);
+        if (!r.ok && r.out) lines.push(`    ${r.out.slice(-400).replace(/\n/g, '\n    ')}`);
+    }
+    lines.push(`OVERALL: ${allPassed ? 'PASSED' : 'FAILED'}`);
+    lines.push(allPassed
+        ? 'Next: call complete_phase with next_phase="committing" and put the results above into validation_results / test_results / static_analysis.'
+        : 'Next: one or more checks FAILED. Call complete_phase with next_phase="generating-code", put the failures into risks, and the results above into validation_results / test_results / static_analysis. Do NOT fix the code here.');
+    return lines.join('\n');
+}
+
 async function toolCreateTask(
     args: Record<string, unknown>,
     frameworkDir: string,
@@ -683,6 +774,7 @@ export async function executeToolCall(
         case 'write_file':      return toolWriteFile(a, workspaceDir, frameworkDir);
         case 'list_directory':  return toolListDirectory(a, workspaceDir, frameworkDir);
         case 'run_command':     return toolRunCommand(a, workspaceDir, frameworkDir, configPath);
+        case 'run_validation':  return toolRunValidation(a, workspaceDir, frameworkDir);
         case 'http_request':    return toolHttpRequest(a);
         case 'create_task':     return toolCreateTask(a, frameworkDir, agentId);
         case 'complete_phase':  return toolCompletePhase(a, frameworkDir, agentId);
