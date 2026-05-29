@@ -55,3 +55,6 @@ aider_dataset.jsonl
 .meta-learning.jsonl
 .meta-routing.json
 .skill-library.json
+
+# Generated GitHub ↔ Linear issue mapping
+.github-linear-map.json
