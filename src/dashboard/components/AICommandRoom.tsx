@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, type CSSProperties } from 'react';
-import { useMeshLLMHealth, useMeshLLMModels, useOllamaHealth, useOllamaModels, selectMeshLLMNode } from '../hooks/useAIHealth';
+import { useMeshLLMHealth, useMeshLLMModels, useOllamaHealth, useOllamaModels, useMLXHealth, selectMeshLLMNode } from '../hooks/useAIHealth';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 
 const OPENCODE_CLOUD_MODELS = [
@@ -30,9 +30,12 @@ interface AICommandRoomProps {
     toggleOpenCode: () => void | Promise<void>;
 }
 
-type ProviderKey = 'meshllm' | 'ollama' | 'openrouter';
+type ProviderKey = 'meshllm' | 'ollama' | 'openrouter' | 'mlx';
 type ProviderEnabled = Record<ProviderKey, boolean>;
-const DEFAULT_PROVIDER_ENABLED: ProviderEnabled = { meshllm: true, ollama: true, openrouter: true };
+const DEFAULT_PROVIDER_ENABLED: ProviderEnabled = { meshllm: true, ollama: true, openrouter: true, mlx: true };
+// Docker-canonical MLX base; the server rewrites host.docker.internal → localhost
+// when running natively (see adaptHostForRuntime).
+const MLX_BASE_URL = 'http://host.docker.internal:8083/v1';
 const TOGGLE_ON_COLOR = 'var(--accent)';
 const TOGGLE_OFF_COLOR = 'rgba(248, 113, 113, 0.34)';
 
@@ -51,6 +54,7 @@ export function AICommandRoom({
     const meshLLMModels = useMeshLLMModels(open);
     const ollamaHealth = useOllamaHealth();
     const ollamaModels = useOllamaModels() ?? [];
+    const mlxHealth = useMLXHealth();
 
     const [lpApiKey, setLpApiKey] = useState('');
     const [lpModel, setLpModel] = useState('');
@@ -210,7 +214,10 @@ export function AICommandRoom({
     const meshRoutingEnabled = providerEnabled.meshllm;
     const ollamaRoutingEnabled = providerEnabled.ollama;
     const openRouterRoutingEnabled = providerEnabled.openrouter;
+    const mlxRoutingEnabled = providerEnabled.mlx;
     const selectedMeshModel = meshModelOptions.some((model) => model.id === lpModel) ? lpModel : '';
+    const mlxModelOptions = mlxHealth.models.map((id) => ({ id, label: id }));
+    const selectedMlxModel = mlxModelOptions.some((model) => model.id === lpModel) ? lpModel : '';
 
     const refreshLoopProvider = async (fallback?: Partial<{
         baseUrl: string;
@@ -255,7 +262,8 @@ export function AICommandRoom({
             await refreshLoopProvider({
                 providerEnabled: nextProviderEnabled,
             });
-            setMeshModelMessage(`${provider === 'meshllm' ? 'MeshLLM' : provider === 'ollama' ? 'Ollama' : 'OpenRouter'} routing ${nextProviderEnabled[provider] ? 'enabled' : 'off'}`);
+            const providerLabel = provider === 'meshllm' ? 'MeshLLM' : provider === 'ollama' ? 'Ollama' : provider === 'mlx' ? 'MLX' : 'OpenRouter';
+            setMeshModelMessage(`${providerLabel} routing ${nextProviderEnabled[provider] ? 'enabled' : 'off'}`);
             setTimeout(() => setMeshModelMessage(null), 2500);
         } catch (e) {
             setMeshModelMessage(e instanceof Error ? e.message : String(e));
@@ -289,6 +297,39 @@ export function AICommandRoom({
                 providerEnabled: { ...providerEnabled, meshllm: true },
             });
             setMeshModelMessage('Mesh model selected');
+            setTimeout(() => setMeshModelMessage(null), 2500);
+        } catch (e) {
+            setMeshModelMessage(e instanceof Error ? e.message : String(e));
+        } finally {
+            setMeshModelSaving(false);
+        }
+    };
+
+    const handleSelectMlxModel = async (modelId: string) => {
+        setLpModel(modelId);
+        if (!modelId) return;
+        setMeshModelSaving(true);
+        setMeshModelMessage(null);
+        try {
+            const response = await fetch('/api/loop-provider', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    baseUrl: MLX_BASE_URL,
+                    model: modelId,
+                    providerEnabled: { ...providerEnabled, mlx: true },
+                }),
+            });
+            if (!response.ok) throw new Error(`Save failed (${response.status})`);
+            await refreshLoopProvider({
+                baseUrl: MLX_BASE_URL,
+                model: modelId,
+                provider: 'mlx',
+                source: 'config',
+                configured: true,
+                providerEnabled: { ...providerEnabled, mlx: true },
+            });
+            setMeshModelMessage('MLX model selected');
             setTimeout(() => setMeshModelMessage(null), 2500);
         } catch (e) {
             setMeshModelMessage(e instanceof Error ? e.message : String(e));
@@ -521,6 +562,71 @@ export function AICommandRoom({
 
                     <div style={{
                         ...styles.statusCard,
+                        borderColor: mlxHealth.isHealthy ? 'var(--success)' : 'var(--error)',
+                        backgroundColor: mlxHealth.isHealthy ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                    }}>
+                        <div style={styles.statusHeader}>
+                            <span style={styles.statusIcon}>🍎</span>
+                            <span style={styles.statusTitle}>MLX</span>
+                        </div>
+                        <p style={styles.statusText}>
+                            {mlxHealth.isLoading ? 'Checking...' :
+                             mlxHealth.isHealthy ? 'Running (Apple Silicon)' : 'Not running'}
+                        </p>
+                        <div style={styles.inlineSwitchRow}>
+                            <span style={styles.inlineSwitchLabel}>Use for agents</span>
+                            <button
+                                type="button"
+                                onClick={() => void handleToggleProvider('mlx')}
+                                style={{
+                                    ...styles.miniToggle,
+                                    backgroundColor: mlxRoutingEnabled ? TOGGLE_ON_COLOR : TOGGLE_OFF_COLOR,
+                                    opacity: meshRoutingSaving ? 0.6 : 1,
+                                }}
+                                aria-pressed={mlxRoutingEnabled}
+                                aria-label="Use MLX for agents"
+                                disabled={meshRoutingSaving}
+                                data-testid="mlx-routing-toggle"
+                            >
+                                <span
+                                    style={{
+                                        ...styles.miniToggleThumb,
+                                        transform: mlxRoutingEnabled ? 'translateX(16px)' : 'translateX(2px)',
+                                    }}
+                                />
+                            </button>
+                        </div>
+                        <div style={styles.meshModelPill}>
+                            <div style={styles.meshModelPillTop}>
+                                <span style={meshModelDotStyle(mlxHealth.isHealthy)} />
+                                <span style={styles.meshModelLabel}>MLX model</span>
+                                <span style={styles.meshModelCount}>
+                                    {mlxHealth.isLoading ? 'polling' : `${mlxModelOptions.length} online`}
+                                </span>
+                            </div>
+                            <select
+                                value={selectedMlxModel}
+                                onChange={(e) => void handleSelectMlxModel(e.target.value)}
+                                disabled={meshModelSaving || mlxModelOptions.length === 0}
+                                style={{
+                                    ...styles.meshModelSelect,
+                                    opacity: mlxRoutingEnabled ? 1 : 0.7,
+                                }}
+                                aria-label="MLX model"
+                                data-testid="mlx-model-select"
+                            >
+                                <option value="" style={styles.selectOption}>
+                                    {mlxModelOptions.length > 0 ? 'Choose model' : 'No MLX models online'}
+                                </option>
+                                {mlxModelOptions.map((model) => (
+                                    <option key={model.id} value={model.id} style={styles.selectOption}>{model.label}</option>
+                                ))}
+                            </select>
+                        </div>
+                    </div>
+
+                    <div style={{
+                        ...styles.statusCard,
                         borderColor: lpConfigured ? 'var(--success)' : 'var(--accent)',
                         backgroundColor: lpConfigured ? 'rgba(34, 197, 94, 0.1)' : 'rgba(99, 102, 241, 0.1)',
                     }}>
@@ -685,6 +791,13 @@ export function AICommandRoom({
                                                 <option key={m.name} value={m.name} style={styles.selectOption}>
                                                     {m.name}
                                                 </option>
+                                            ))}
+                                        </optgroup>
+                                    )}
+                                    {mlxHealth.models.length > 0 && (
+                                        <optgroup label="Local — MLX">
+                                            {mlxHealth.models.map(id => (
+                                                <option key={id} value={id} style={styles.selectOption}>{id}</option>
                                             ))}
                                         </optgroup>
                                     )}

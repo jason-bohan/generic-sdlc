@@ -13,6 +13,7 @@ const mockUseMeshLLMHealth = vi.mocked(aiHealthHooks.useMeshLLMHealth);
 const mockUseMeshLLMModels = vi.mocked(aiHealthHooks.useMeshLLMModels);
 const mockUseOllamaHealth = vi.mocked(aiHealthHooks.useOllamaHealth);
 const mockUseOllamaModels = vi.mocked(aiHealthHooks.useOllamaModels);
+const mockUseMLXHealth = vi.mocked(aiHealthHooks.useMLXHealth);
 const mockSelectMeshLLMNode = vi.mocked(aiHealthHooks.selectMeshLLMNode);
 
 describe('AICommandRoom', () => {
@@ -74,6 +75,11 @@ describe('AICommandRoom', () => {
             isLoading: false
         });
         mockUseOllamaModels.mockReturnValue([]);
+        mockUseMLXHealth.mockReturnValue({
+            isHealthy: true,
+            models: ['mlx-community/Qwen2.5-Coder-14B-Instruct-4bit'],
+            isLoading: false,
+        });
 
         mockSelectMeshLLMNode.mockResolvedValue(true);
     });
@@ -166,7 +172,7 @@ describe('AICommandRoom', () => {
                 body: JSON.stringify({
                     baseUrl: 'http://localhost:9337/v1',
                     model: 'unsloth/Qwen3-8B-GGUF@main:Q4_K_M',
-                    providerEnabled: { meshllm: true, ollama: true, openrouter: true },
+                    providerEnabled: { meshllm: true, ollama: true, openrouter: true, mlx: true },
                 }),
             }));
         });
@@ -228,7 +234,7 @@ describe('AICommandRoom', () => {
             expect(fetchMock).toHaveBeenCalledWith('/api/loop-provider', expect.objectContaining({
                 method: 'PUT',
                 body: JSON.stringify({
-                    providerEnabled: { meshllm: false, ollama: true, openrouter: true },
+                    providerEnabled: { meshllm: false, ollama: true, openrouter: true, mlx: true },
                 }),
             }));
         });
@@ -264,7 +270,7 @@ describe('AICommandRoom', () => {
             expect(fetchMock).toHaveBeenCalledWith('/api/loop-provider', expect.objectContaining({
                 method: 'PUT',
                 body: JSON.stringify({
-                    providerEnabled: { meshllm: true, ollama: false, openrouter: true },
+                    providerEnabled: { meshllm: true, ollama: false, openrouter: true, mlx: true },
                 }),
             }));
         });
@@ -274,7 +280,7 @@ describe('AICommandRoom', () => {
             expect(fetchMock).toHaveBeenCalledWith('/api/loop-provider', expect.objectContaining({
                 method: 'PUT',
                 body: JSON.stringify({
-                    providerEnabled: { meshllm: true, ollama: false, openrouter: false },
+                    providerEnabled: { meshllm: true, ollama: false, openrouter: false, mlx: true },
                 }),
             }));
         });

@@ -242,24 +242,21 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
         cors(res, 'GET, PUT, OPTIONS');
         if (req.method === 'OPTIONS') { res.statusCode = 204; res.end(); return; }
         if (req.method === 'GET') {
-            const { readLoopProviderConfig: readLp } = await import('../agent-runner/provider');
+            const { readLoopProviderConfig: readLp, detectLoopProvider, readLoopProviderToggles } = await import('../agent-runner/provider');
             const cfg = existsSync(configFile) ? parseJsonUtf8File(configFile) : {};
             const lp = (cfg as any)?.scheduler?.loopProvider ?? {};
             const rawKey: string | undefined = lp.apiKey;
             const envKey = process.env.LOOP_PROVIDER_API_KEY || process.env.OPENROUTER_API_KEY;
             const resolved = readLp(configFile);
             const effectiveKey = resolved.apiKey;
-            const provider = resolved.baseUrl.includes('openrouter.ai')
-                ? 'openrouter'
-                : resolved.baseUrl.includes('localhost:9337')
-                    ? 'meshllm'
-                    : 'custom';
+            const provider = detectLoopProvider(resolved.baseUrl);
             json(res, {
                 baseUrl: resolved.baseUrl ?? null,
                 model: resolved.model ?? null,
                 apiKey: effectiveKey ? `${effectiveKey.slice(0, 8)}...${effectiveKey.slice(-4)}` : null,
                 configured: !!effectiveKey,
                 provider,
+                providerEnabled: readLoopProviderToggles(configFile),
                 source: rawKey ? 'config' : envKey ? 'env' : null,
             });
             return;
@@ -275,6 +272,14 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                 if (typeof parsed.apiKey === 'string') lp.apiKey = parsed.apiKey.trim() || undefined;
                 if (typeof parsed.model === 'string') lp.model = parsed.model.trim() || undefined;
                 if (typeof parsed.baseUrl === 'string') lp.baseUrl = parsed.baseUrl.trim() || undefined;
+                if (parsed.providerEnabled && typeof parsed.providerEnabled === 'object') {
+                    const allowed = ['meshllm', 'ollama', 'openrouter', 'mlx'] as const;
+                    const next = { ...(lp.providerEnabled ?? {}) } as Record<string, boolean>;
+                    for (const key of allowed) {
+                        if (typeof parsed.providerEnabled[key] === 'boolean') next[key] = parsed.providerEnabled[key];
+                    }
+                    lp.providerEnabled = next;
+                }
                 if (lp.apiKey === undefined) delete lp.apiKey;
                 if (lp.model === undefined) delete lp.model;
                 if (lp.baseUrl === undefined) delete lp.baseUrl;
