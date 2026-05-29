@@ -143,5 +143,19 @@ server.once('close', () => {
     closeDb();
 });
 
-process.on('SIGTERM', () => { server.close(); });
-process.on('SIGINT',  () => { server.close(); });
+// Graceful shutdown that can't wedge. `server.close()` alone waits forever for
+// keep-alive / SSE connections (dashboard polls, status streams) to drain, which
+// leaves a zombie process bound to no port on `tsx --watch` restarts and on any
+// SIGTERM (Docker stop / redeploy). Force-drop connections and hard-exit on a timer.
+let shuttingDown = false;
+function shutdown(signal: string): void {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    log.warn(`Received ${signal} — shutting down…`);
+    server.closeAllConnections?.();
+    server.close(() => process.exit(0));
+    // Last-resort: if a handle still keeps the loop alive, exit anyway.
+    setTimeout(() => process.exit(0), 3000).unref();
+}
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));

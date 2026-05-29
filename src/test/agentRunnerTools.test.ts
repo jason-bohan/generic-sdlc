@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { resolve } from 'path';
-import { executeToolCall } from '../server/agent-runner/tools';
+import { executeToolCall, rewriteWorktreeAddOnCollision } from '../server/agent-runner/tools';
 
 const TMP = resolve(__dirname, '.agent-runner-tools-tmp');
 const STATUS_FILE = resolve(TMP, '.frontend-status.json');
@@ -91,5 +91,57 @@ describe('agent runner complete_phase tool', () => {
         expect(result).toContain('HTTP 200');
         const status = JSON.parse(readFileSync(STATUS_FILE, 'utf8'));
         expect(status.currentPhase).toBe('creating-pr');
+    });
+
+    it('retries a transient connection failure instead of failing the phase', async () => {
+        writeFileSync(STATUS_FILE, JSON.stringify({
+            workflowItemId: 123, storyNumber: 'B-123', currentPhase: 'validating', tasks: [],
+        }, null, 2));
+
+        let calls = 0;
+        vi.stubGlobal('fetch', vi.fn(async () => {
+            calls++;
+            if (calls === 1) throw new TypeError('fetch failed'); // server momentarily down
+            return new Response(JSON.stringify({ ok: true }), { status: 200 });
+        }));
+
+        const result = await executeToolCall(
+            'complete_phase',
+            { next_phase: 'committing', summary: 'validated', validation_results: 'tests passed' },
+            TMP, TMP, 'frontend', resolve(TMP, '.sdlc-framework.config.json'),
+        );
+
+        expect(calls).toBe(2);
+        expect(result).toContain('PHASE_COMPLETE::committing');
+    });
+
+    it('asks the model to retry (not escalate to error) when the server stays unreachable', async () => {
+        writeFileSync(STATUS_FILE, JSON.stringify({
+            workflowItemId: 123, storyNumber: 'B-123', currentPhase: 'validating', tasks: [],
+        }, null, 2));
+
+        vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('fetch failed'); }));
+
+        const result = await executeToolCall(
+            'complete_phase',
+            { next_phase: 'committing', summary: 'validated' },
+            TMP, TMP, 'frontend', resolve(TMP, '.sdlc-framework.config.json'),
+        );
+
+        expect(result).toContain('call complete_phase again');
+        expect(result).not.toContain('PHASE_COMPLETE');
+    }, 10_000); // exhausts all retries (~6s of real backoff)
+});
+
+describe('rewriteWorktreeAddOnCollision', () => {
+    it('rewrites a colliding worktree path and branch to a fresh -N suffix', () => {
+        const cmd = 'git worktree add -b feature/LOCAL-B-0014 .claude/worktrees/frontend-LOCAL-B-0014 main';
+        const out = rewriteWorktreeAddOnCollision(cmd, '/tmp/does-not-exist-xyz');
+        expect(out).toBe('git worktree add -b feature/LOCAL-B-0014-2 .claude/worktrees/frontend-LOCAL-B-0014-2 main');
+    });
+
+    it('returns null for non-worktree-add commands', () => {
+        expect(rewriteWorktreeAddOnCollision('npm test', '/tmp')).toBeNull();
+        expect(rewriteWorktreeAddOnCollision('git worktree list', '/tmp')).toBeNull();
     });
 });
