@@ -105,7 +105,23 @@ export class OpenAICompatibleProvider {
     }
 }
 
+/**
+ * `host.docker.internal` only resolves inside a Docker container (it points at the
+ * host). When the server runs natively (no `/.dockerenv`), rewrite it to `localhost`
+ * so a single Docker-canonical config works in both environments — in a container we
+ * leave it untouched so the server can still reach host services like the MLX server.
+ */
+export function adaptHostForRuntime(baseUrl: string): string {
+    if (existsSync('/.dockerenv')) return baseUrl;
+    return baseUrl.replace(/host\.docker\.internal/gi, 'localhost');
+}
+
 export function readLoopProviderConfig(configPath: string, modelOverride?: string): ProviderConfig {
+    const config = resolveLoopProviderConfigRaw(configPath, modelOverride);
+    return { ...config, baseUrl: adaptHostForRuntime(config.baseUrl) };
+}
+
+function resolveLoopProviderConfigRaw(configPath: string, modelOverride?: string): ProviderConfig {
     const explicitBase = process.env.LOOP_PROVIDER_BASE_URL;
     const explicitKey = process.env.LOOP_PROVIDER_API_KEY;
     const openrouterKey = process.env.OPENROUTER_API_KEY;

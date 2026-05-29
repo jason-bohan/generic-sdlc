@@ -59,11 +59,15 @@ describe('AI Health Hooks', () => {
         expect(screen.getByText('2 peers available')).toBeInTheDocument();
     });
 
-    it('should display Local AI health status', () => {
+    it('should display MLX and Ollama as separate local rows', () => {
+        mockUseMLXHealth.mockReturnValue({ isHealthy: true, models: ['Qwen2.5-Coder-14B'], isLoading: false });
         render(<AIHealth />);
-        expect(screen.getByText('Local AI')).toBeInTheDocument();
-        expect(screen.getByText('Running locally')).toBeInTheDocument();
+        expect(screen.getByText('MLX')).toBeInTheDocument();
+        expect(screen.getByText('Ollama')).toBeInTheDocument();
+        expect(screen.getByText('Qwen2.5-Coder-14B')).toBeInTheDocument();
         expect(screen.getByText('sdlc-tuned:latest')).toBeInTheDocument();
+        // Both locals up → two "Running locally" rows (no longer lumped into one).
+        expect(screen.getAllByText('Running locally')).toHaveLength(2);
     });
 
     it('should display loading state for MeshLLM', () => {
@@ -85,11 +89,13 @@ describe('AI Health Hooks', () => {
         expect(screen.getByText('Checking...')).toBeInTheDocument();
     });
 
-    it('should display unhealthy state for Local AI when both Ollama and MLX are down', () => {
+    it('should display unhealthy state for both MLX and Ollama when they are down', () => {
+        mockUseMeshLLMHealth.mockReturnValue({ ...mockMeshLLMHealth, isHealthy: true, isLoading: false });
         mockUseOllamaHealth.mockReturnValue({ ...mockOllamaHealth, isHealthy: false, isLoading: false });
         mockUseMLXHealth.mockReturnValue({ ...mockMLXHealth, isHealthy: false, isLoading: false });
         render(<AIHealth />);
-        expect(screen.getByText('Not available')).toBeInTheDocument();
+        // MLX row + Ollama row both report unavailable (mesh is healthy here).
+        expect(screen.getAllByText('Not available')).toHaveLength(2);
     });
 
     // selectMeshLLMNode tests use the real implementation (not the mock) so
