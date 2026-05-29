@@ -314,6 +314,30 @@ function toolListDirectory(args: Record<string, unknown>, workspaceDir: string, 
     }
 }
 
+type ExecResult = { err: (Error & { code?: number | string }) | null; out: string };
+
+/**
+ * The orchestrator suggests a deterministic worktree path (`.claude/worktrees/<name>`),
+ * so re-running a story makes `git worktree add` fail with "already exists" — and small
+ * local models tend to treat that as a fatal error and abort the whole phase. When we
+ * detect that specific failure, rewrite the command to a fresh `<name>-N` path (and a
+ * matching `-b <branch>-N`) so worktree setup never hard-fails on a leftover worktree.
+ * Returns null when the command isn't a recognizable worktree-add we can recover.
+ */
+export function rewriteWorktreeAddOnCollision(command: string, cwd: string): string | null {
+    if (!/\bworktree\s+add\b/.test(command)) return null;
+    const match = command.match(/\.claude\/worktrees\/[A-Za-z0-9._\-/]+/);
+    if (!match) return null;
+    const origPath = match[0];
+    let n = 2;
+    while (n < 100 && existsSync(resolve(cwd, `${origPath}-${n}`))) n++;
+    const suffix = `-${n}`;
+    let rewritten = command.split(origPath).join(`${origPath}${suffix}`);
+    // Keep the branch name unique too, or the fresh worktree collides on the branch.
+    rewritten = rewritten.replace(/(-b\s+|-B\s+)(\S+)/, (_full, flag, branch) => `${flag}${branch}${suffix}`);
+    return rewritten === command ? null : rewritten;
+}
+
 function toolRunCommand(
     args: Record<string, unknown>,
     workspaceDir: string,
@@ -339,25 +363,41 @@ function toolRunCommand(
         env.SDLC_FRAMEWORK_MOCK_MODE = '1';
     }
 
-    return new Promise((resolvePromise) => {
-        execFile(command, argsList, {
-            cwd,
-            timeout,
-            maxBuffer: 2 * 1024 * 1024,
-            shell: true,
-            windowsHide: true,
-            env,
-        }, (err, stdout, stderr) => {
-            const out = [stdout, stderr].filter(Boolean).join('\n').trim();
-            if (err && !out) {
-                resolvePromise(`Error (exit ${err.code ?? '?'}): ${err.message}`);
-            } else if (err) {
-                resolvePromise(`Exit ${err.code ?? '?'}:\n${out}`);
-            } else {
-                resolvePromise(out || '(no output)');
-            }
+    const run = (cmd: string): Promise<ExecResult> =>
+        new Promise((resolvePromise) => {
+            execFile(cmd, argsList, {
+                cwd,
+                timeout,
+                maxBuffer: 2 * 1024 * 1024,
+                shell: true,
+                windowsHide: true,
+                env,
+            }, (err, stdout, stderr) => {
+                const out = [stdout, stderr].filter(Boolean).join('\n').trim();
+                resolvePromise({ err: (err as (Error & { code?: number | string }) | null) ?? null, out });
+            });
         });
-    });
+
+    const format = ({ err, out }: ExecResult): string =>
+        err && !out ? `Error (exit ${err.code ?? '?'}): ${err.message}`
+            : err ? `Exit ${err.code ?? '?'}:\n${out}`
+                : (out || '(no output)');
+
+    return (async () => {
+        const first = await run(command);
+        // Guard: a leftover worktree from a prior run shouldn't kill the phase.
+        if (first.err && /worktree\s+add/.test(command) && /already (exists|used|checked out|registered)/i.test(first.out)) {
+            const retry = rewriteWorktreeAddOnCollision(command, cwd);
+            if (retry) {
+                const second = await run(retry);
+                if (!second.err) {
+                    return `[worktree-guard] "${command.trim()}" hit an existing worktree; created a fresh one instead.\nRan: ${retry.trim()}\n${second.out || '(no output)'}`;
+                }
+                return format(second);
+            }
+        }
+        return format(first);
+    })();
 }
 
 async function toolCreateTask(
@@ -479,29 +519,41 @@ async function toolCompletePhase(
     const serverBaseUrl = process.env.SDLC_SERVER_URL || 'http://localhost:3001';
     const payload = { workflowItemId, agentId, phase: currentPhase, nextPhase, outputs, message: summary };
 
-    try {
-        const res = await fetch(`${serverBaseUrl}/api/workflows/complete-phase`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-            signal: AbortSignal.timeout(15_000),
-        });
-        const text = await res.text();
-        if (res.ok) {
-            try {
-                const status = parseJsonUtf8File(statusFile) as Record<string, unknown>;
-                status.currentPhase = nextPhase;
-                writeFileSync(statusFile, JSON.stringify(status, null, 2));
-                emitStatusChange(agentId, buildStatusBroadcast(status, agentId, true, frameworkDir));
-            } catch { /* workflow completion succeeded; do not mask the server response */ }
-            // Sentinel prefix tells AgentRunner to stop the loop immediately so
-            // the next phase starts with a fresh conversation context.
-            return `PHASE_COMPLETE::${nextPhase}\nHTTP ${res.status}\n${text.slice(0, 500)}`;
+    // Retry only on transient connection failures (server restarting, brief blip).
+    // A real HTTP response — even an error status — is returned immediately and never
+    // retried. Without this, a momentary "fetch failed" makes models escalate the
+    // phase to next_phase="error", permanently failing work that actually succeeded.
+    const MAX_ATTEMPTS = 4;
+    let lastErr = '';
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+        try {
+            const res = await fetch(`${serverBaseUrl}/api/workflows/complete-phase`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+                signal: AbortSignal.timeout(15_000),
+            });
+            const text = await res.text();
+            if (res.ok) {
+                try {
+                    const status = parseJsonUtf8File(statusFile) as Record<string, unknown>;
+                    status.currentPhase = nextPhase;
+                    writeFileSync(statusFile, JSON.stringify(status, null, 2));
+                    emitStatusChange(agentId, buildStatusBroadcast(status, agentId, true, frameworkDir));
+                } catch { /* workflow completion succeeded; do not mask the server response */ }
+                // Sentinel prefix tells AgentRunner to stop the loop immediately so
+                // the next phase starts with a fresh conversation context.
+                return `PHASE_COMPLETE::${nextPhase}\nHTTP ${res.status}\n${text.slice(0, 500)}`;
+            }
+            return `HTTP ${res.status}\n${text.slice(0, 1000)}`;
+        } catch (e) {
+            lastErr = e instanceof Error ? e.message : String(e);
+            if (attempt < MAX_ATTEMPTS) await new Promise((r) => setTimeout(r, attempt * 1000));
         }
-        return `HTTP ${res.status}\n${text.slice(0, 1000)}`;
-    } catch (e) {
-        return `Error: ${e instanceof Error ? e.message : String(e)}`;
     }
+    // All attempts hit a connection error — the phase was NOT recorded. Tell the model
+    // to retry rather than giving up (do NOT escalate to error over a transient blip).
+    return `Could not reach the server after ${MAX_ATTEMPTS} attempts (${lastErr}). The server may be restarting; the phase was NOT recorded. Wait and call complete_phase again with the same outputs — do not set next_phase to "error".`;
 }
 
 async function toolHttpRequest(args: Record<string, unknown>): Promise<string> {
