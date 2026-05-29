@@ -13,6 +13,10 @@ import {
 } from '../db';
 import type { Message } from './types';
 import { parseJsonUtf8File } from '../json-file';
+import { AGENT_STEP_MODE_PHASES } from '../../shared/agentPhases';
+
+/** Generic phase progression for agents without a role-specific list. */
+const GENERIC_PHASE_ORDER = ['analyzing', 'generating-code', 'committing', 'validating', 'creating-pr'];
 
 export const registryEvents = new EventEmitter();
 registryEvents.setMaxListeners(50);
@@ -62,18 +66,40 @@ export function getActiveRunners(): string[] {
 }
 
 function buildSystemPrompt(agentId: string, _frameworkDir: string): string {
+    const phaseOrder = (AGENT_STEP_MODE_PHASES[agentId] ?? GENERIC_PHASE_ORDER).join(' → ');
     return [
         `You are the ${agentId} agent in the SDLC Framework automation platform.`,
-        'Your skill guide is available via the read_file tool at the path listed in the initial prompt — read it before starting work.',
+        'You drive one story through every SDLC phase by calling tools. You do the work by calling tools — never in prose.',
         '',
-        '## Runtime instructions',
-        '- Your workspace is the directory passed in the initial prompt.',
-        '- CRITICAL: Always act by calling a tool. Never write a plan or explanation without first calling a tool to gather information or take an action. If you find yourself writing "I will..." or "Step 1:", stop and call a tool instead.',
-        '- Use the provided tools (read_file, write_file, list_directory, run_command, search_in_files, update_status, create_task, complete_phase) to do your work.',
-        '- If a file is not found at a relative path, try the absolute path shown in the prompt.',
-        '- Call update_status after completing each phase so the dashboard stays current.',
-        '- CRITICAL: You MUST call complete_phase at the end of every phase. Do NOT output text describing completion — call the tool. The runner will stop automatically after complete_phase succeeds.',
-        '- When you receive a [/btw] message from the user, address it at the next logical break point.',
+        '## How to call a tool',
+        '- Respond with EXACTLY ONE tool call per message, as a single JSON object and nothing else:',
+        '    {"name": "read_file", "arguments": {"path": "skills/frontend/SKILL.md"}}',
+        '- No prose around it, no second tool in the same message. Then wait for the tool result before the next call.',
+        '- CRITICAL: never write a plan instead of acting. If you catch yourself writing "I will..." or "Step 1:", emit the tool call instead.',
+        '- If a tool result shows the action already succeeded, move on — never repeat an identical successful call.',
+        '- If a file is not found at a relative path, retry with the absolute path shown in the prompt.',
+        '',
+        '## Tools',
+        '- read_file{path}, write_file{path,content}, list_directory{path}',
+        '- search_in_files{query,path} — locate code before you edit it',
+        '- run_command{command} — run builds, tests, git',
+        '- create_task{name,estimate} — register work items',
+        '- update_status{phase} — refresh the dashboard; call after each phase',
+        '- complete_phase{next_phase,summary,...} — REQUIRED to end every phase',
+        '',
+        '## Phases (advance in this order)',
+        `    ${phaseOrder}`,
+        '- Finish the current phase fully, then call complete_phase with next_phase set to the next phase above.',
+        '- Always pass next_phase + summary. Also pass the evidence the phase produced:',
+        '    designing → design_spec; generating-code → code_changes, branch_plan;',
+        '    validating → validation_results, test_results, static_analysis;',
+        '    reviewing-pr → review_verdict; monitoring-build → build.',
+        '- Report only results you actually produced — never fabricate test, review, or build evidence.',
+        '- Call complete_phase exactly once per phase. The runner stops automatically when it succeeds and resumes at the next phase.',
+        '',
+        '## Start & interrupts',
+        '- Begin by reading your skill guide (path is in the first user message) with read_file, then work the phases.',
+        '- When you receive a [/btw] message, address it at the next logical break point.',
     ].join('\n');
 }
 

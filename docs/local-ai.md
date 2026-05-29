@@ -298,6 +298,50 @@ Set `MLX_HOST` to override the default endpoint (default `http://localhost:8082`
 export MLX_HOST=http://localhost:8082
 ```
 
+### Serving over the LAN (SDLC on another machine)
+
+Run inference on the strong Mac (e.g. a Mac Studio) and the SDLC framework on a
+separate, lighter machine. The agent loop talks to any OpenAI-compatible
+endpoint, so no mesh is needed for a single inference host — point it straight at
+the Mac.
+
+On the **Mac (inference host)** bind the MLX server to the LAN. The launcher adds
+`--host` when `MLX_BIND_HOST` is set:
+
+```sh
+MLX_BIND_HOST=0.0.0.0 ~/mlx-env/bin/mlx_lm.server \
+  --model mlx-community/Qwen2.5-Coder-14B-Instruct-4bit --port 8083
+```
+
+Run **one** large model at a time — on 32 GB unified memory a 14B-4bit (~8 GB)
+leaves comfortable headroom, while a 32B-4bit (~18–19 GB + KV cache) is marginal
+and much slower per turn.
+
+On the **SDLC machine** point the loop provider at the Mac's LAN address, either
+via env var or `.sdlc-framework.config.json`:
+
+```sh
+export LOOP_PROVIDER_BASE_URL=http://<mac-ip>:8083/v1
+```
+
+```json
+{ "scheduler": { "loopProvider": {
+  "baseUrl": "http://<mac-ip>:8083/v1",
+  "model": "mlx-community/Qwen2.5-Coder-14B-Instruct-4bit",
+  "maxTokens": 4096
+} } }
+```
+
+Raise `maxTokens` from the 1500 default so code and multi-field `complete_phase`
+calls aren't truncated mid call (a truncated tool call stalls the phase).
+
+> **Security:** expose the MLX port on the LAN or a VPN only — never on the
+> public internet without authentication. `mlx_lm.server` has no auth of its own.
+
+Use MeshLLM instead only when you want to pool **multiple** inference machines;
+for one strong Mac, the direct MLX endpoint above is simpler and faster (and
+keeps MLX's Metal speed advantage, which the GGUF/llama.cpp MeshLLM path gives up).
+
 ### Server integration
 
 The SDLC Framework probes MLX during startup and exposes health and model-list endpoints:
