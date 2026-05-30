@@ -44,6 +44,7 @@ export interface LedgerRow {
     id: number;
     story_number: string;
     story_name: string | null;
+    project: string | null;
     agent: string;
     source: string;
     phase: string;
@@ -156,6 +157,7 @@ CREATE TABLE IF NOT EXISTS token_ledger (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     story_number  TEXT    NOT NULL,
     story_name    TEXT,
+    project       TEXT,
     agent         TEXT    NOT NULL,
     source        TEXT    NOT NULL,
     phase         TEXT    NOT NULL,
@@ -164,6 +166,7 @@ CREATE TABLE IF NOT EXISTS token_ledger (
     recorded_at   TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_ledger_story ON token_ledger(story_number);
+CREATE INDEX IF NOT EXISTS idx_ledger_project ON token_ledger(project);
 
 CREATE TABLE IF NOT EXISTS ollama_state (
     key   TEXT PRIMARY KEY,
@@ -287,6 +290,7 @@ export function initDb(rootDir: string): Database.Database {
     _db.exec(SCHEMA);
     _migrateWorkflowCompoundUnique(_db);
     _migrateChatSessionId(_db);
+    _migrateLedgerProject(_db);
     return _db;
 }
 
@@ -335,6 +339,17 @@ function _migrateChatSessionId(db: Database.Database): void {
     }
 }
 
+// Add the `project` (target-repo) dimension to the token ledger so AI-cost
+// telemetry can be attributed and filtered per repo. Existing rows keep NULL
+// (treated as "unattributed") rather than being back-filled to a guessed repo.
+function _migrateLedgerProject(db: Database.Database): void {
+    const cols = db.prepare("PRAGMA table_info('token_ledger')").all() as { name: string }[];
+    if (!cols.some(c => c.name === 'project')) {
+        db.exec("ALTER TABLE token_ledger ADD COLUMN project TEXT");
+        db.exec("CREATE INDEX IF NOT EXISTS idx_ledger_project ON token_ledger(project)");
+    }
+}
+
 export function getDb(): Database.Database {
     if (!_db) throw new Error('[db] Call initDb(rootDir) before using the database');
     return _db;
@@ -348,13 +363,14 @@ export function closeDb(): void {
 // ─── Token ledger ─────────────────────────────────────────────────────────────
 
 const INSERT_LEDGER = `
-    INSERT INTO token_ledger (story_number, story_name, agent, source, phase, input_tokens, output_tokens)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO token_ledger (story_number, story_name, project, agent, source, phase, input_tokens, output_tokens)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 `;
 
 export function dbRecordTokens(params: {
     storyNumber: string;
     storyName?: string | null;
+    project?: string | null;
     agent: string;
     source: TokenSource;
     phase: TokenPhase;
@@ -364,6 +380,7 @@ export function dbRecordTokens(params: {
     getDb().prepare(INSERT_LEDGER).run(
         params.storyNumber,
         params.storyName ?? null,
+        params.project ?? null,
         params.agent,
         params.source,
         params.phase,

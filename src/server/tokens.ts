@@ -12,6 +12,8 @@ export interface TokenUpdate {
     input: number;
     output: number;
     phase?: TokenPhase;
+    /** Target repo the work belongs to. Recorded on the ledger for per-repo attribution. */
+    project?: string | null;
 }
 
 export interface TokenMetrics {
@@ -107,6 +109,7 @@ export function updateTokens(
         recordStoryTokens(rootDir, {
             storyNumber,
             storyName: (raw.storyName as string | null) ?? null,
+            project: update.project ?? (raw.project as string | null) ?? null,
             agent: update.agentId,
             source: update.source,
             phase: update.phase ?? 'development',

@@ -2,11 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { aggregateAiCost, cloudCost } from '../server/routes/analytics';
 import type { TokenLedger } from '../server/ledger';
 
-function ledger(entries: Array<{ agent: string; source: string; input: number; output: number }>): TokenLedger {
+function ledger(entries: Array<{ agent: string; source: string; input: number; output: number; project?: string }>): TokenLedger {
     return {
         'S-1': {
             storyName: 'Story 1',
-            entries: entries.map(e => ({ ts: new Date().toISOString(), agent: e.agent, source: e.source as any, phase: 'development' as const, input: e.input, output: e.output })),
+            entries: entries.map(e => ({ ts: new Date().toISOString(), agent: e.agent, project: e.project ?? null, source: e.source as any, phase: 'development' as const, input: e.input, output: e.output })),
             totals: { input: 0, output: 0 },
         },
     };
@@ -56,5 +56,30 @@ describe('aggregateAiCost', () => {
     it('cloudCost matches the documented rates', () => {
         expect(cloudCost(1_000_000, 0)).toBeCloseTo(3, 6);
         expect(cloudCost(0, 1_000_000)).toBeCloseTo(15, 6);
+    });
+
+    it('scopes spend to a single project when filtered, and breaks down per repo otherwise', () => {
+        const l = ledger([
+            { agent: 'backend', source: 'cloud', input: 1_000_000, output: 0, project: 'flowboard' }, // $3
+            { agent: 'frontend', source: 'cloud', input: 2_000_000, output: 0, project: 'other-repo' }, // $6
+        ]);
+
+        // Unfiltered: total spend across repos, with a per-repo breakdown.
+        const all = aggregateAiCost(l, { budgetUsd: 100 });
+        expect(all.spend).toBeCloseTo(9, 5);
+        expect(all.project).toBeNull();
+        expect(all.byProject.map(p => p.project)).toEqual(['other-repo', 'flowboard']); // sorted by cost desc
+
+        // Filtered to flowboard: only flowboard's spend.
+        const fb = aggregateAiCost(l, { budgetUsd: 100, project: 'flowboard' });
+        expect(fb.spend).toBeCloseTo(3, 5);
+        expect(fb.project).toBe('flowboard');
+    });
+
+    it('rolls untagged (legacy) entries under "unattributed"', () => {
+        const summary = aggregateAiCost(ledger([
+            { agent: 'backend', source: 'cloud', input: 1_000_000, output: 0 }, // no project
+        ]), { budgetUsd: 100 });
+        expect(summary.byProject[0].project).toBe('unattributed');
     });
 });
