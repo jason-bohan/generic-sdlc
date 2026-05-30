@@ -2,7 +2,7 @@
 import { mkdirSync, rmSync } from 'fs';
 import { resolve } from 'path';
 import { closeDb, dbGetWorkflowItemByStory, dbGetWorkflowItemsByStory, initDb } from '../server/db';
-import { classifyStory, completePhase, getWorkflowAudit, startWorkflow, superviseWorkflow } from '../server/orchestrator';
+import { classifyStory, completePhase, getWorkflowAudit, resolveStoryAgent, startWorkflow, superviseWorkflow, triageStoryAgent } from '../server/orchestrator';
 
 const TMP = resolve(__dirname, '.orchestrator-tmp');
 
@@ -166,6 +166,69 @@ describe('orchestrator-lite', () => {
         });
         expect(decision.classification).toBe('unknown');
         expect(decision.primaryAgent).toBe('frontend');
+    });
+
+    it('infers backend from story text when no fields are tagged (e.g. a route/endpoint)', () => {
+        const decision = classifyStory({
+            number: 'LOCAL-B-0015',
+            name: 'Add a GET /health endpoint returning JSON status',
+            description: 'Add a GET /health route to the server returning HTTP 200, plus a unit test.',
+        });
+        expect(decision.classification).toBe('backend');
+        expect(decision.primaryAgent).toBe('backend');
+    });
+
+    it('infers frontend from story text (component/UI)', () => {
+        const decision = classifyStory({
+            number: 'F-1',
+            name: 'Add a settings page component',
+            description: 'Render a new settings UI with a save button.',
+        });
+        expect(decision.classification).toBe('frontend');
+        expect(decision.primaryAgent).toBe('frontend');
+    });
+
+    it('stays unknown (frontend default) when text mentions both disciplines ambiguously', () => {
+        const decision = classifyStory({
+            number: 'X-1',
+            name: 'Wire the settings page to the preferences API',
+            description: 'Connect the UI component to the backend endpoint.',
+        });
+        // Mentions both UI and endpoint → not decidable by keywords → escalate via 'unknown'
+        expect(decision.classification).toBe('unknown');
+    });
+
+    it('triageStoryAgent maps a model answer to a valid agent', async () => {
+        const agent = await triageStoryAgent({ number: 'x', name: 'thing', description: 'desc' }, { chat: async () => 'backend' });
+        expect(agent).toBe('backend');
+    });
+
+    it('triageStoryAgent extracts the agent from a verbose answer', async () => {
+        const agent = await triageStoryAgent({ number: 'x' }, { chat: async () => 'This should go to the frontend team.' });
+        expect(agent).toBe('frontend');
+    });
+
+    it('triageStoryAgent returns null on an unrecognized answer', async () => {
+        const agent = await triageStoryAgent({ number: 'x' }, { chat: async () => 'banana' });
+        expect(agent).toBeNull();
+    });
+
+    it('resolveStoryAgent uses the heuristic without calling the model for a clear backend story', async () => {
+        let called = false;
+        const agent = await resolveStoryAgent(
+            { number: 'x', name: 'Add a GET /health endpoint', description: 'a server route' },
+            { chat: async () => { called = true; return 'frontend'; } },
+        );
+        expect(agent).toBe('backend');
+        expect(called).toBe(false);
+    });
+
+    it('resolveStoryAgent escalates to LLM triage when the story is ambiguous', async () => {
+        const agent = await resolveStoryAgent(
+            { number: 'x', name: 'Connect the UI component to the backend endpoint', description: '' },
+            { chat: async () => 'qa' },
+        );
+        expect(agent).toBe('qa');
     });
 
     it('startWorkflow with assignedAgentId on full-stack story removes agent from collaborators', () => {

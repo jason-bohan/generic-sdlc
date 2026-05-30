@@ -439,6 +439,44 @@ export function classifyStory(story: StoryForOrchestration): AssignmentDecision 
         };
     }
 
+    // No discipline fields were pre-tagged. Infer the specialist from the story
+    // text the same way design/devops already do — so a plain story like
+    // "Add a GET /health route" routes to backend, not the frontend default.
+    // Truly ambiguous stories stay `unknown` so the caller can escalate to an
+    // LLM triage step (orchestrator/reviewer run cloud-first, local-second).
+    const text = `${story.name ?? ''} ${story.description ?? ''}`;
+    const mentionsBackend = /\b(route|endpoint|api|server|handler|controller|middleware|migration|schema|database|sql|query|auth|token|webhook|cron|job|service)\b/i.test(text);
+    const mentionsFrontend = /\b(component|page|ui|css|style|button|form|modal|dialog|render|view|layout|responsive|accessibility|a11y|screen)\b/i.test(text);
+    const mentionsQaText = /\b(test|tests|cypress|e2e|coverage|regression|qa)\b/i.test(text);
+
+    if (mentionsBackend && !mentionsFrontend) {
+        return {
+            classification: 'backend',
+            primaryAgent: 'backend',
+            collaboratorAgents: hasQa || mentionsQaText ? ['qa'] : [],
+            startPhase: getSdlcWorkflow('backend').start,
+            affectedRepo: story.affectedRepo ?? null,
+        };
+    }
+    if (mentionsFrontend && !mentionsBackend) {
+        return {
+            classification: 'frontend',
+            primaryAgent: 'frontend',
+            collaboratorAgents: hasQa || mentionsQaText ? ['qa'] : [],
+            startPhase: getSdlcWorkflow('frontend').start,
+            affectedRepo: story.affectedRepo ?? null,
+        };
+    }
+    if (mentionsQaText && !mentionsBackend && !mentionsFrontend) {
+        return {
+            classification: 'qa-heavy',
+            primaryAgent: 'qa',
+            collaboratorAgents: [],
+            startPhase: getSdlcWorkflow('qa').start,
+            affectedRepo: story.affectedRepo ?? null,
+        };
+    }
+
     return {
         classification: hasFrontend ? 'frontend' : 'unknown',
         primaryAgent: 'frontend',
@@ -446,6 +484,57 @@ export function classifyStory(story: StoryForOrchestration): AssignmentDecision 
         startPhase: getSdlcWorkflow('frontend').start,
         affectedRepo: story.affectedRepo ?? null,
     };
+}
+
+// Agents that can be the primary owner of implementation work (reviewer/orchestrator excluded).
+const TRIAGE_AGENTS: SdlcAgentId[] = ['backend', 'frontend', 'qa', 'ux', 'devops'];
+
+export interface TriageOptions {
+    /** Injectable completion fn (defaults to the cloud-first→local brain model). Lets tests run offline. */
+    chat?: (prompt: string) => Promise<string>;
+    /** Config path used to resolve the brain model when `chat` is not provided. */
+    configPath?: string;
+}
+
+function parseTriageAgent(raw: string): SdlcAgentId | null {
+    const lc = (raw || '').toLowerCase();
+    for (const agent of TRIAGE_AGENTS) {
+        if (new RegExp(`\\b${agent}\\b`).test(lc)) return agent;
+    }
+    return null;
+}
+
+/**
+ * Ask the brain model (cloud-first, local-second) which specialist owns a story.
+ * Returns null on any failure so callers fall back deterministically.
+ */
+export async function triageStoryAgent(story: StoryForOrchestration, opts?: TriageOptions): Promise<SdlcAgentId | null> {
+    const chat = opts?.chat ?? (async (p: string) => {
+        const { smartChat } = await import('./brainModel');
+        return smartChat(p, opts?.configPath ?? '.sdlc-framework.config.json');
+    });
+    const prompt =
+        'You are an engineering tech lead routing a user story to exactly ONE specialist agent.\n' +
+        `Options: ${TRIAGE_AGENTS.join(', ')}.\n` +
+        'Reply with ONLY the single agent name, nothing else.\n\n' +
+        `Story: ${story.name ?? ''}\n${story.description ?? ''}`;
+    let raw = '';
+    try { raw = await chat(prompt); } catch { return null; }
+    return parseTriageAgent(raw);
+}
+
+/**
+ * The orchestrator's authoritative "who does this work" decision:
+ * deterministic heuristic first ({@link classifyStory}), LLM triage when the
+ * heuristic is ambiguous (`classification: 'unknown'`), and frontend as the
+ * final fallback. This is what the assign flow should use when a caller did not
+ * specify a valid specialist.
+ */
+export async function resolveStoryAgent(story: StoryForOrchestration, opts?: TriageOptions): Promise<SdlcAgentId> {
+    const decision = classifyStory(story);
+    if (decision.classification !== 'unknown') return decision.primaryAgent;
+    const triaged = await triageStoryAgent(story, opts);
+    return triaged ?? decision.primaryAgent;
 }
 
 export function startWorkflow(input: StartWorkflowInput): OrchestratorResult<{ item: WorkflowItemRow; decision: AssignmentDecision }> {
