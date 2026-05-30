@@ -241,10 +241,21 @@ export function buildClaudeCodeSpawnSpec(
     model: string | undefined,
     outputDir: string,
 ): DriverSpawnSpec | { error: string } {
-    const driverScript = resolve(workspaceDir, 'bin', 'run-agent-claude.ps1');
+    // macOS / Linux: run the bash launcher directly — no intermediate .cmd needed.
     if (process.platform !== 'win32') {
-        return { error: 'Claude Code driver requires Windows (bin/run-agent-claude.ps1).' };
+        const shScript = resolve(workspaceDir, 'bin', 'run-agent-claude.sh');
+        if (!existsSync(shScript)) {
+            return { error: 'bin/run-agent-claude.sh not found.' };
+        }
+        const effectiveModel = model && model !== 'auto' ? model : 'auto';
+        return {
+            cmd: '/bin/bash',
+            args: [shScript, agentId, promptFilePath, workspaceDir, effectiveModel],
+            ignoreStdio: true,
+        };
     }
+
+    const driverScript = resolve(workspaceDir, 'bin', 'run-agent-claude.ps1');
     if (!existsSync(driverScript)) {
         return { error: 'bin/run-agent-claude.ps1 not found. Run bin/setup.ps1 to generate it.' };
     }
