@@ -36,6 +36,7 @@ Adapter examples shipped today include Digital.ai Agility/VersionOne for plannin
 | `ux` | Prism | UX / Design | Active |
 | `reviewer` | Brehon | Code Reviewer | Active |
 | `devops` | Cairde | DevOps | Active |
+| `aiqa` | — | AI Quality Assurance | Active |
 
 **IDs are role-based and stable** — they appear in config keys, status files (`.frontend-status.json`), API payloads, and skill directories (`skills/frontend/SKILL.md`).
 
@@ -49,6 +50,73 @@ Adapter examples shipped today include Digital.ai Agility/VersionOne for plannin
 - **`ux`** — Produces design specs (`.ux-design-spec.md`) with Figma references, WCAG AA audits, and component breakdowns. Hands off to the frontend agent for implementation.
 - **`qa`** — Runs Cypress tests, triages failures, generates new test specs. Test results visible on the dashboard with per-spec pass/fail breakdowns.
 - **`backend`** — Picks up backend work items, analyzes service structure, generates code, runs the configured build/test commands, and creates review-ready changes.
+- **`aiqa`** — AI quality assurance overlay that scores agent outputs, detects hallucinations, performs red-team attacks, runs data drift and confidence monitoring, audits financial-control compliance (regulated data, money paths, provider policy), checks semantic similarity and LLM-as-judge eval, computes asymmetric risk metrics, detects bias (80% rule + intersectional), and generates SHAP/XAI explanations.
+
+---
+
+## AIQA Evaluation Suite
+
+The **AIQA** (AI Quality Assurance) subsystem is a built-in evaluation engine that continuously monitors agent outputs, detects regressions, enforces financial-services compliance controls, and generates actionable findings. It lives at `src/server/aiqa/` and exposes 16 REST endpoints plus a dashboard panel.
+
+### Capabilities
+
+| Module | What It Does |
+|--------|-------------|
+| **Eval Runner** (`evaluator.ts`) | Executes agent outputs against built-in datasets with pass/fail criteria and scoring |
+| **Hallucination Detector** (`hallucination-detector.ts`) | Pattern-matches agent logs, tasks, and outputs for hallucination-like signals (overclaim, contradiction, non-reproducible assertions) |
+| **Red Team** (`red-teamer.ts`) | Runs 12 adversarial scenarios (prompt injection, data extraction, role-playing, refusal bypass). Also generates OOD perturbation variants and stratified eval samples |
+| **Semantic Similarity** (`semantic-similarity.ts`) | TF-IDF cosine, n-gram overlap, and word-order scorers for expected-vs-actual output comparison |
+| **LLM-as-Judge** (`judge.ts`) | Calls Ollama/MLX REST API to score agent outputs on correctness, completeness, clarity, and conciseness; keyword-based fallback when LLM is unavailable |
+| **Data Drift** (`data-drift.ts`) | Two-sample Kolmogorov-Smirnov test with exact p-value, PSI with 10 bins, schema compliance validation |
+| **Confidence Monitoring** (`confidence-monitor.ts`) | Score distribution statistics (mean, percentiles, skew, kurtosis), shift detection (>15%), silent-failure detection (>30% low-confidence or ≥5 consecutive low samples) |
+| **Asymmetric Risk Metrics** (`risk-metrics.ts`) | Domain-specific risk weighting (credit-scoring: FP 3×, fraud-detection: FN 5×, trading, general); optimal threshold scan 0.1–0.9 |
+| **Bias / Fair Lending** (`bias-detector.ts`) | Adverse Impact Ratio (80% rule), intersectional AIR across protected groups, mutation testing on synthetic profiles |
+| **Financial Guardrails** (`financial-guardrails.ts`) | Regex detection of speculative advice, unlicensed advice, and regulated-activity patterns; computation separation validation; adversarial prompt generation |
+| **XAI / SHAP** (`xai-engine.ts` + `scripts/xai-explainer.py`) | Python SHAP KernelExplainer for per-profile feature importance, waterfall explanations, and compliance-ready reason codes |
+
+### Quick Reference
+
+```powershell
+# Scorecard (summary of all agents + findings)
+GET  /api/aiqa/scorecard
+POST /api/aiqa/sweep                    # File findings as task pills
+
+# Core eval
+GET  /api/aiqa/eval                     # Run all eval datasets
+GET  /api/aiqa/eval/datasets
+GET  /api/aiqa/hallucinations
+GET  /api/aiqa/redteam
+POST /api/aiqa/redteam/run
+
+# Semantic + LLM-as-Judge
+POST /api/aiqa/eval/semantic            # expected vs actual similarity
+POST /api/aiqa/eval/judge               # LLM-scored quality criteria
+
+# Drift + Confidence
+POST /api/aiqa/drift                    # KS test + PSI
+POST /api/aiqa/drift/schema             # Schema compliance
+POST /api/aiqa/confidence               # Distribution shift
+POST /api/aiqa/confidence/silent-failure
+
+# OOD + Stratified
+POST /api/aiqa/ood                      # Out-of-distribution variants
+POST /api/aiqa/stratified               # Stratified sampling
+
+# Financial
+GET  /api/aiqa/risk-metrics             # Domain configs
+POST /api/aiqa/risk-metrics/evaluate
+POST /api/aiqa/bias                     # Adverse Impact Ratio
+POST /api/aiqa/bias/intersectional      # Intersectional AIR
+POST /api/aiqa/guardrails               # Check output for prohibited patterns
+GET  /api/aiqa/guardrails/prompts       # Adversarial test prompts
+POST /api/aiqa/guardrails/schema        # JSON schema validation
+
+# XAI
+POST /api/aiqa/xai                      # SHAP explanation for profiles
+GET  /api/aiqa/xai/status               # SHAP dependency availability
+```
+
+See [API Reference](docs/api.md#aiqa-evaluation) for request/response schemas.
 
 ---
 
@@ -325,6 +393,10 @@ npm run docker:up:meshllm      # Start the optional local MeshLLM Compose servic
 npm run pr:watch               # Watch configured review requests for changes
 npm run plan                   # Generate implementation plans
 npm run cypress:YourProject    # Run Cypress against YourProject project
+npx tsx src/server/aiqa/scripts/run-eval.ts   # CLI eval runner
+npx tsx src/server/aiqa/scripts/run-judge.ts  # CLI LLM-as-judge evaluation
+npx tsx src/server/aiqa/scripts/run-drift.ts  # CLI data drift scan
+pip install -r scripts/requirements-xai.txt   # Python deps for SHAP explainer
 ```
 
 ---
@@ -358,6 +430,7 @@ See [MCP: SDLC Framework SDLC Orchestration](docs/mcp-sdlc-framework.md) for the
 | [MCP: SDLC Framework Orchestration](docs/mcp-sdlc-framework.md) | Goose/Claude Code MCP setup, all tools, usage examples |
 | [Developer Tools](docs/developer-tools.md) | Scalar API docs, Bruno, Harlequin, TUI, scripts |
 | [Configuration](docs/configuration.md) | `.sdlc-framework.config.json`, `.env`, MCP servers, workspace paths |
+| [AIQA Evaluation](docs/aiqa.md) | Eval methodology, drift thresholds, bias audit procedures, XAI setup |
 | [Project Structure](docs/structure.md) | Directory layout and key files |
 
 ---

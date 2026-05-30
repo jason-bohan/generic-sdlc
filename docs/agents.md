@@ -10,6 +10,7 @@
 | `ux`                      | Prism               | UX / Design   | Active      | Figma integration, WCAG AA audits, design handoffs. |
 | `backend`                 | Cairn               | Backend Dev   | Active      | ASP.NET Core APIs, C# backend logic, domain services. |
 | `qa`                      | Vigil               | QA Engineer   | Active      | Cypress test runner, failure triage, test authoring. |
+| `aiqa`                    | —                   | AI Quality    | Active      | Scans agent telemetry for quality issues; evaluates outputs, detects hallucinations, drift, bias, financial non-compliance, and risk; runs red-team and SHAP/XAI analysis. |
 
 Agent **IDs** (`frontend`, `reviewer`, …) are stable keys in config, status files, and APIs. **Display names** (Lasair, Brehon, …) are defaults and can be overridden in the dashboard or `scheduler.agents.<id>.displayName` in `.sdlc-framework.config.json`.
 
