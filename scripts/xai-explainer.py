@@ -67,15 +67,12 @@ def compute_shap_values(feature_matrix: list[list[float]],
                         decision_fn,
                         n_samples: int = 100):
     import numpy as np
-    from sklearn.preprocessing import StandardScaler
     import shap
 
     X = np.array(feature_matrix, dtype=np.float64)
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X)
-    n = min(n_samples, len(X_scaled))
-    sample = X_scaled[:n]
-    background = X_scaled[:min(50, len(X_scaled))]
+    n = min(n_samples, len(X))
+    sample = X[:n]
+    background = X[:min(50, len(X))]
 
     def model_fn(x: np.ndarray) -> np.ndarray:
         out = np.zeros(x.shape[0])
@@ -88,7 +85,7 @@ def compute_shap_values(feature_matrix: list[list[float]],
     shap_values = explainer.shap_values(sample, nsamples=100)
     expected_value = float(explainer.expected_value)
 
-    return sample, shap_values, expected_value, scaler
+    return sample, shap_values, expected_value
 
 
 def build_waterfall(feature_names: list[str],
@@ -163,7 +160,7 @@ def main():
         import numpy as np
         import shap  # noqa: F811
 
-        X_scaled, shap_vals, base_value, _ = compute_shap_values(
+        X_scaled, shap_vals, base_value = compute_shap_values(
             feature_matrix, feature_names, decision_fn, n_samples)
 
         explanations = []
