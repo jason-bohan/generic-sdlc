@@ -4,6 +4,7 @@ import { DashboardProvider, useDashboard } from './DashboardContext';
 import { FloorRoute } from './routes/FloorRoute';
 import { DeskRoute } from './routes/DeskRoute';
 import { BacklogRoute } from './routes/BacklogRoute';
+import { AnalyticsRoute } from './routes/AnalyticsRoute';
 import ChatPanel from './ChatPanel';
 import StoryPicker from './StoryPicker';
 import TestRunner from './TestRunner';
@@ -68,6 +69,15 @@ function RootLayoutShell() {
                 data-testid="app-local-backlog-btn"
             >
                 &#x2261;
+            </button>
+            <button
+                style={{ ...s.settingsCog, right: 132 }}
+                onClick={() => void navigate({ to: '/analytics' })}
+                title="AI Cost &amp; Usage"
+                aria-label="AI Cost and Usage"
+                data-testid="app-analytics-btn"
+            >
+                &#x1F4CA;
             </button>
             <a
                 style={{ ...s.settingsCog, right: 92, textDecoration: 'none' }}
@@ -164,7 +174,13 @@ const backlogRoute = createRoute({
     component: BacklogRoute,
 });
 
-const routeTree = rootRoute.addChildren([indexRoute, deskRoute, backlogRoute]);
+const analyticsRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/analytics',
+    component: AnalyticsRoute,
+});
+
+const routeTree = rootRoute.addChildren([indexRoute, deskRoute, backlogRoute, analyticsRoute]);
 
 export const router = createRouter({
     routeTree,
