@@ -8,6 +8,7 @@ export const AGENT_SKILL_SUBDIR_BY_ID: Record<string, string> = {
     ux: 'ux',
     reviewer: 'reviewer',
     devops: 'devops',
+    aiqa: 'aiqa',
 };
 
 export function skillSubdirForAgentId(agentId: string): string {

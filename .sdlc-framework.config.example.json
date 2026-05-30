@@ -73,6 +73,13 @@
         "role": "devops",
         "watchesPipeline": true,
         "adoPat": ""
+      },
+      "aiqa": {
+        "enabled": true,
+        "autoStart": false,
+        "stepMode": false,
+        "role": "aiqa",
+        "driver": "claude-code"
       }
     }
   },

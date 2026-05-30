@@ -32,7 +32,7 @@ import {
     type StatusChangeEvent,
 } from '../server/status-events';
 
-const AGENT_IDS = ['frontend', 'backend', 'qa', 'ux', 'reviewer', 'devops'];
+const AGENT_IDS = ['frontend', 'backend', 'qa', 'ux', 'reviewer', 'devops', 'aiqa'];
 
 // Ensure each test starts and ends with a clean watcher state and clear mock history.
 beforeEach(() => {
@@ -170,19 +170,19 @@ describe('emitChatMessage / onChatMessage', () => {
 // ── File watcher lifecycle ────────────────────────────────────────────────────
 
 describe('startStatusFileWatcher', () => {
-    it('registers watchFile for all 6 agent status files', () => {
+    it('registers watchFile for every agent status file', () => {
         startStatusFileWatcher('/tmp/sdlc-framework');
         const watched = vi.mocked(watchFile).mock.calls.map(([file]) => file as string);
         for (const id of AGENT_IDS) {
             expect(watched.some((f) => f.includes(`.${id}-status.json`))).toBe(true);
         }
-        expect(vi.mocked(watchFile)).toHaveBeenCalledTimes(6);
+        expect(vi.mocked(watchFile)).toHaveBeenCalledTimes(AGENT_IDS.length);
     });
 
     it('is idempotent — calling twice with the same dir does not re-register', () => {
         startStatusFileWatcher('/tmp/sdlc-framework');
         startStatusFileWatcher('/tmp/sdlc-framework');
-        expect(vi.mocked(watchFile)).toHaveBeenCalledTimes(6);
+        expect(vi.mocked(watchFile)).toHaveBeenCalledTimes(AGENT_IDS.length);
     });
 
     it('switching to a new dir calls unwatchFile for the old dir first', () => {
@@ -190,17 +190,17 @@ describe('startStatusFileWatcher', () => {
         vi.mocked(watchFile).mockClear();
         vi.mocked(unwatchFile).mockClear();
         startStatusFileWatcher('/tmp/dir-b');
-        expect(vi.mocked(unwatchFile)).toHaveBeenCalledTimes(6);
-        expect(vi.mocked(watchFile)).toHaveBeenCalledTimes(6);
+        expect(vi.mocked(unwatchFile)).toHaveBeenCalledTimes(AGENT_IDS.length);
+        expect(vi.mocked(watchFile)).toHaveBeenCalledTimes(AGENT_IDS.length);
     });
 });
 
 describe('stopStatusFileWatcher', () => {
-    it('calls unwatchFile for all 6 agents', () => {
+    it('calls unwatchFile for every agent', () => {
         startStatusFileWatcher('/tmp/sdlc-framework');
         vi.mocked(unwatchFile).mockClear();
         stopStatusFileWatcher();
-        expect(vi.mocked(unwatchFile)).toHaveBeenCalledTimes(6);
+        expect(vi.mocked(unwatchFile)).toHaveBeenCalledTimes(AGENT_IDS.length);
     });
 
     it('is a no-op when no watcher is active', () => {
@@ -213,7 +213,7 @@ describe('stopStatusFileWatcher', () => {
         stopStatusFileWatcher();
         vi.mocked(watchFile).mockClear();
         startStatusFileWatcher('/tmp/sdlc-framework');
-        expect(vi.mocked(watchFile)).toHaveBeenCalledTimes(6);
+        expect(vi.mocked(watchFile)).toHaveBeenCalledTimes(AGENT_IDS.length);
     });
 });
 

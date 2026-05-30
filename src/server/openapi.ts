@@ -34,7 +34,7 @@ export const openApiSpec = {
             get: {
                 tags: ['Status'],
                 summary: 'Get agent status',
-                parameters: [{ name: 'agentId', in: 'query', schema: { type: 'string', default: 'frontend' }, description: 'Agent ID (frontend, backend, qa, ux, reviewer, devops)' }],
+                parameters: [{ name: 'agentId', in: 'query', schema: { type: 'string', default: 'frontend' }, description: 'Agent ID (frontend, backend, qa, ux, reviewer, devops, aiqa)' }],
                 responses: { '200': { description: 'Agent status object', content: { 'application/json': { schema: { type: 'object' } } } } },
             },
         },
