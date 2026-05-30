@@ -159,3 +159,28 @@ The **AIQA Quality Panel** is accessible from any agent detail view. It shows:
 - Top-open findings with severity, owner, and evidence
 
 The **Run Eval Sweep** button files new AIQA findings as task pills in `.aiqa-status.json`.
+
+## Telemetry integrity & known gaps
+
+AIQA's scorecard is only as trustworthy as the signals feeding it. The most important
+trait to remember when reading it: **a metric reading zero is not the same as healthy.**
+
+### Token ledger ≠ all token spend
+
+- The scorecard's per-agent `tokenTotal`, the summary total, and the high-burn findings
+  all read the **DB token ledger** via `dbGetLedgerRows()` (`routes/aiqa.ts`).
+- A ledger row is only written when an agent has a `storyNumber` set
+  (`tokens.ts` guards `recordStoryTokens` behind `if (storyNumber && …)`).
+- **Consequence:** tokens burned in self-directed / story-less work — including AIQA's own
+  loop — are written to `.{agent}-status.json` (`tokens` field) but **never reach the
+  ledger**. The ledger can therefore read as `0` while real spend is happening, and the
+  high-burn findings (`>25k` / `>100k`) never fire.
+
+This is a **silent-failure blind spot**: the suite ships `monitorSilentFailure`
+(`confidence-monitor.ts`) for confidence distributions, but nothing yet applies that idea
+to token telemetry. Until it does, treat a flat/zero ledger on active agents as a
+*broken-tracking* finding, not as "low usage." See `skills/aiqa/SKILL.md` → "Verify your
+own telemetry is alive."
+
+**Fix direction (owner: `backend`):** record story-less usage to the ledger too, or have
+the scorecard fall back to the per-agent status-file `tokens` when no ledger rows exist.
