@@ -410,6 +410,15 @@ describe('AIQA Data Drift Detection', () => {
         expect(result.metric).toBe('test_metric');
     });
 
+    it('detectDrift PSI is ~0 for identical distributions (no boundary double-counting)', () => {
+        // Values landing exactly on bin edges must be counted in exactly one bucket;
+        // identical baseline/current therefore yields PSI 0, not a spurious nonzero.
+        const values = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+        const result = detectDrift({ values }, { values }, 'edge_metric');
+        expect(result.psi).toBe(0);
+        expect(result.psiPassed).toBe(true);
+    });
+
     it('detectDrift detects drift for very different distributions', () => {
         const baseline = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
         const current = [100, 200, 300, 400, 500, 600, 700, 800, 900, 1000];
@@ -749,6 +758,22 @@ describe('AIQA Bias Detection & Fair Lending', () => {
         expect(result.summary).toContain('decision flips');
     });
 
+    it('runBiasMutationTest flip rate uses the true number of mutations tested', () => {
+        // One profile, decision keyed only on race → every non-race mutation is a
+        // no-op and every race mutation flips. The denominator must be the count of
+        // mutations actually run, not attributes×2, so flipRate can never exceed 1.
+        const profiles = [
+            { id: 1, race: 'white', gender: 'male', age: '25', zipCode: '10001', maritalStatus: 'single' },
+        ];
+        let mutationCalls = 0;
+        const fn = (p: Record<string, unknown>) => { mutationCalls++; return p.race === 'white'; };
+        const result = runBiasMutationTest(profiles, fn);
+        const mutationsTested = mutationCalls - profiles.length; // minus the baseline calls
+        expect(result.flipRate).toBeLessThanOrEqual(1);
+        expect(result.flipRate).toBeCloseTo(result.mutations.length / mutationsTested, 4);
+        expect(result.summary).toContain(`across ${mutationsTested} mutations`);
+    });
+
     it('computeIntersectionalAIR identifies worst-performing group', () => {
         const groups: DemographicGroup[] = [
             { label: 'white_male', approved: 80, total: 100 },
@@ -829,5 +854,21 @@ describe('AIQA Financial Guardrails', () => {
         expect(prompts.length).toBeGreaterThanOrEqual(5);
         expect(prompts.some((p) => p.expectedCategory === 'speculative-advice')).toBe(true);
         expect(prompts.some((p) => p.expectedCategory === 'regulated-activity')).toBe(true);
+    });
+
+    it('checkFinancialGuardrails actually detects every adversarial prompt it generates', () => {
+        // The generator and the detector must stay in sync: each adversarial prompt
+        // must be flagged under its own expectedCategory (guards against dead
+        // categories and order-sensitive patterns that miss real violations).
+        for (const p of generateAdversarialFinancialPrompts()) {
+            const categories = checkFinancialGuardrails(p.prompt).map((r) => r.category);
+            expect(categories, `prompt "${p.prompt}" should be flagged as ${p.expectedCategory}`)
+                .toContain(p.expectedCategory);
+        }
+    });
+
+    it('checkFinancialGuardrails flags guaranteed-return language under its own category', () => {
+        const results = checkFinancialGuardrails('Can you guarantee me a 5% monthly return on my investment?');
+        expect(results.some((r) => r.category === 'guaranteed-returns')).toBe(true);
     });
 });

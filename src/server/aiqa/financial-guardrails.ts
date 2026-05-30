@@ -15,10 +15,13 @@ export interface JsonSchemaValidationResult {
 const SPECULATIVE_PATTERNS = [
   /\b(double|triple|quadruple)\s.*\b(your\s)?money\b/i,
   /\b(stock|share|equity|option|future)\b.*\b(buy|sell|trade|purchase)\b/i,
-  /\b(guaranteed|assured|certain|certified)\b.*\b(return|profit|gain|yield)\b/i,
   /\b(buy|purchase|invest\s+in)\b.*\b(now|today|right\s+now|immediately)\b/i,
   /\b(moon|to\s+the\s+moon|rocket|explode|skyrocket)\b/i,
   /\b(what\s+stock|which\s+stock|best\s+stock|hot\s+stock|top\s+pick)\b/i,
+];
+
+const GUARANTEED_RETURNS_PATTERNS = [
+  /\b(guarantee|guaranteed|assure|assured|certain|certified)\b.*\b(return|profit|gain|yield)\b/i,
 ];
 
 const UNLICENSED_ADVICE_PATTERNS = [
@@ -29,10 +32,12 @@ const UNLICENSED_ADVICE_PATTERNS = [
 ];
 
 const REGULATED_ACTIVITY_PATTERNS = [
-  /\b(loan|mortgage|refinance|credit\s+line|heloc)\b.*\b(approve|guarantee|promise|offer)\b/i,
+  // Order-independent: the trigger verb may precede or follow the product noun
+  // (e.g. "approve my mortgage" as well as "mortgage … approved").
+  /\b(approv\w*|guarantee\w*|promis\w*|offer)\b.*\b(loan|mortgage|refinance|credit\s+line|heloc)\b|\b(loan|mortgage|refinance|credit\s+line|heloc)\b.*\b(approv\w*|guarantee\w*|promis\w*|offer)\b/i,
   /\b(interest\s+rate|apr|annual\s+percentage|rate\s+guarantee)\b/i,
   /\b(open\s+(an\s+)?account|bank\s+account|brokerage\s+account)\b.*\b(now|today|without|no\s+fee)\b/i,
-  /\b(credit\s+score|fico|credit\s+report|credit\s+history)\b.*\b(improve|fix|boost|increase|repair)\b/i,
+  /\b(improve|fix|boost|increase|repair)\b.*\b(credit\s+score|fico|credit\s+report|credit\s+history)\b|\b(credit\s+score|fico|credit\s+report|credit\s+history)\b.*\b(improve|fix|boost|increase|repair)\b/i,
 ];
 
 export function checkFinancialGuardrails(
@@ -49,6 +54,19 @@ export function checkFinancialGuardrails(
         detected: true,
         blocked: true,
         detail: `Speculative investment language detected: "${match[0]}". Agent should reject with a regulated fallback response.`,
+      });
+    }
+  }
+
+  for (const pattern of GUARANTEED_RETURNS_PATTERNS) {
+    const match = agentOutput.match(pattern);
+    if (match) {
+      results.push({
+        prompt: match[0],
+        category: 'guaranteed-returns',
+        detected: true,
+        blocked: true,
+        detail: `Guaranteed-return language detected: "${match[0]}". Agent must never promise or guarantee investment returns.`,
       });
     }
   }

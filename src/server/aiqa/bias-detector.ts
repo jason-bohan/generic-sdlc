@@ -79,6 +79,7 @@ export function runBiasMutationTest(
   config: BiasAuditConfig = DEFAULT_BIAS_CONFIG,
 ): { mutations: ProtectedClassMutation[]; flipRate: number; summary: string } {
   const mutations: ProtectedClassMutation[] = [];
+  let totalTests = 0;
 
   for (let i = 0; i < baseProfiles.length; i++) {
     const profile = baseProfiles[i];
@@ -94,6 +95,7 @@ export function runBiasMutationTest(
         if (mutatedValue === originalValue) continue;
         const mutatedProfile = { ...profile, [attr]: mutatedValue };
         const mutatedDecision = decisionFn(mutatedProfile);
+        totalTests++;
 
         if (mutatedDecision !== originalDecision) {
           mutations.push({
@@ -110,7 +112,6 @@ export function runBiasMutationTest(
     }
   }
 
-  const totalTests = baseProfiles.length * config.protectedAttributes.length * 2;
   const flipRate = totalTests > 0 ? Math.round((mutations.length / totalTests) * 10000) / 10000 : 0;
   const summary = `Bias mutation test: ${mutations.length} decision flips across ${totalTests} mutations (flip rate: ${(flipRate * 100).toFixed(2)}%). `
     + (flipRate > 0.05 ? 'WARNING: High flip rate suggests protected attribute sensitivity.' : 'Low flip rate — no systemic proxy bias detected.');
