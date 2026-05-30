@@ -3,10 +3,14 @@ import { Gauge } from './Gauge';
 
 interface AiCostSummary {
     currency: string;
+    project: string | null;
+    team: string | null;
     spend: number;
     budget: number;
     utilization: number;
     byAgent: Array<{ agent: string; cost: number }>;
+    byProject: Array<{ project: string; cost: number }>;
+    byTeam: Array<{ team: string; cost: number }>;
 }
 
 function fmtUsd(n: number): string {
@@ -27,8 +31,14 @@ export function AiCostGaugePanel({ accentColor }: { accentColor: string }) {
 
     useEffect(() => {
         let alive = true;
-        const load = () => fetch('/api/analytics/ai-cost')
-            .then(r => r.ok ? r.json() : Promise.reject())
+        // Scope the gauge to the active project so it reflects that repo's spend.
+        const load = () => fetch('/api/active-project')
+            .then(r => r.ok ? r.json() : null)
+            .then((p: { active?: string } | null) => {
+                const q = p?.active ? `?project=${encodeURIComponent(p.active)}` : '';
+                return fetch(`/api/analytics/ai-cost${q}`);
+            })
+            .then(r => r && r.ok ? r.json() : Promise.reject())
             .then((d: AiCostSummary) => { if (alive) { setData(d); setError(false); } })
             .catch(() => { if (alive) setError(true); });
         load();
@@ -57,7 +67,9 @@ export function AiCostGaugePanel({ accentColor }: { accentColor: string }) {
                 <span style={{ fontSize: 13, fontWeight: 700, color: accentColor, textTransform: 'uppercase', letterSpacing: 0.4 }}>
                     AI Spend vs Budget
                 </span>
-                <span style={{ fontSize: 12, color: '#64748b' }}>Cloud token cost, all stories</span>
+                <span style={{ fontSize: 12, color: '#64748b' }}>
+                    {data?.project ? `${data.project} · cloud token cost` : 'Cloud token cost, all stories'}
+                </span>
             </div>
 
             {error && <span style={{ fontSize: 13, color: '#94a3b8' }}>cost data unavailable</span>}

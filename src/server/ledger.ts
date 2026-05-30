@@ -6,6 +6,8 @@ export type TokenPhase = 'creation' | 'development' | 'review';
 export interface LedgerEntry {
     ts: string;
     agent: string;
+    project: string | null;
+    team: string | null;
     source: TokenSource;
     phase: TokenPhase;
     input: number;
@@ -23,6 +25,8 @@ export type TokenLedger = Record<string, StoryTokenRecord>;
 export interface RecordParams {
     storyNumber: string;
     storyName?: string | null;
+    project?: string | null;
+    team?: string | null;
     agent: string;
     source: TokenSource;
     phase: TokenPhase;
@@ -41,6 +45,8 @@ function rowsToLedger(rows: ReturnType<typeof dbGetLedgerRows>): TokenLedger {
         rec.entries.push({
             ts: row.recorded_at,
             agent: row.agent,
+            project: row.project ?? null,
+            team: row.team ?? null,
             source: row.source as TokenSource,
             phase: row.phase as TokenPhase,
             input: row.input_tokens,
