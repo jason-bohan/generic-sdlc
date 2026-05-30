@@ -3,17 +3,29 @@ import { extname, join, relative, resolve } from 'path';
 import { dbGetLedgerRows, dbListAgentSessions } from '../db';
 import { parseJsonUtf8File } from '../json-file';
 import { getActiveProject, getActiveProjectName } from '../project-config';
-import { json } from '../router';
+import { readBody, json } from '../router';
 import { getDefaultStatus, normalizeStatus } from '../status-normalize';
 import { readTelemetry } from '../telemetry-reader';
+import { evaluateExample, evaluateBatch, summarizeResults } from '../aiqa/evaluator';
+import { buildHallucinationReport } from '../aiqa/hallucination-detector';
+import { getAllExamples, BUILTIN_DATASETS, listDatasetIds } from '../aiqa/eval-dataset';
+import { runRedTeam, listRedTeamScenarios, generateOodVariants, generateStratifiedSamples } from '../aiqa/red-teamer';
+import { evaluateSemanticSimilarity, evaluateSemanticBatch } from '../aiqa/semantic-similarity';
+import { evaluateWithJudge } from '../aiqa/judge';
+import { detectDrift, detectDriftBatch, checkSchemaCompliance, generateDriftReport } from '../aiqa/data-drift';
+import { monitorConfidenceShift, monitorSilentFailure, extractConfidenceScores } from '../aiqa/confidence-monitor';
+import { computeAsymmetricScore, getRiskConfig, listDomainConfigs } from '../aiqa/risk-metrics';
+import { computeAdverseImpactRatio, computeIntersectionalAIR, runBiasMutationTest } from '../aiqa/bias-detector';
+import { checkFinancialGuardrails, validateComputationSeparation, validateReturnedJson, generateAdversarialFinancialPrompts } from '../aiqa/financial-guardrails';
 import type { UseFn } from './types';
+import type { EvalInput } from '../aiqa/eval-dataset';
 
 const AGENT_IDS = ['frontend', 'backend', 'qa', 'ux', 'reviewer', 'devops', 'aiqa'] as const;
 const IMPLEMENTATION_AGENTS = AGENT_IDS.filter((id) => id !== 'aiqa');
 
 type Severity = 'high' | 'medium' | 'low';
 
-type FindingSource = 'status' | 'sessions' | 'logs' | 'tokens' | 'eval' | 'financial-control' | 'regulated-data' | 'provider-policy';
+type FindingSource = 'status' | 'sessions' | 'logs' | 'tokens' | 'eval' | 'hallucination' | 'red-team' | 'financial-control' | 'regulated-data' | 'provider-policy';
 
 interface AiQaFinding {
     id: string;
@@ -90,6 +102,189 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
         const written = writeAiQaTaskPills(rootDir, scorecard.findings);
         json(res, { ok: true, written, scorecard });
     });
+
+    use('/api/aiqa/eval', async (req, res) => {
+        if (req.method !== 'GET') { res.statusCode = 405; res.end('Method not allowed'); return; }
+        const statuses = readAllAgentStatuses(rootDir);
+        const input = statusesToEvalInput(statuses, rootDir);
+        const results = evaluateBatch(getAllExamples());
+        const summary = summarizeResults(results);
+        json(res, {
+            generatedAt: new Date().toISOString(),
+            summary,
+            results: results.map((r) => ({
+                exampleId: r.exampleId,
+                overallScore: r.overallScore,
+                verdict: r.verdict,
+                passed: r.passed,
+                criteria: r.criteria,
+            })),
+        });
+    });
+
+    use('/api/aiqa/eval/datasets', async (req, res) => {
+        if (req.method !== 'GET') { res.statusCode = 405; res.end('Method not allowed'); return; }
+        json(res, {
+            datasetIds: listDatasetIds(),
+            datasets: BUILTIN_DATASETS.map((d) => ({
+                id: d.id,
+                name: d.name,
+                description: d.description,
+                examples: d.examples.length,
+            })),
+        });
+    });
+
+    use('/api/aiqa/hallucinations', async (req, res) => {
+        if (req.method !== 'GET') { res.statusCode = 405; res.end('Method not allowed'); return; }
+        const statuses = readAllAgentStatuses(rootDir);
+        const input = statusesToEvalInput(statuses, rootDir);
+        const report = buildHallucinationReport(input);
+        json(res, { generatedAt: new Date().toISOString(), report });
+    });
+
+    use('/api/aiqa/redteam', async (req, res) => {
+        if (req.method !== 'GET') { res.statusCode = 405; res.end('Method not allowed'); return; }
+        json(res, {
+            scenarios: listRedTeamScenarios().map((s) => ({
+                id: s.id, category: s.category, name: s.name, description: s.description, risk: s.risk,
+            })),
+        });
+    });
+
+    use('/api/aiqa/redteam/run', async (req, res) => {
+        if (req.method !== 'POST') { res.statusCode = 405; res.end('Method not allowed'); return; }
+        json(res, { scenarios: runRedTeam() });
+    });
+
+    use('/api/aiqa/eval/semantic', async (req, res) => {
+        if (req.method !== 'POST') { res.statusCode = 405; res.end('Method not allowed'); return; }
+        const raw = await readBody(req);
+        const body = JSON.parse(raw || '{}') as { expected: string; actual: string; threshold?: number };
+        const result = evaluateSemanticSimilarity(body.expected ?? '', body.actual ?? '', body.threshold);
+        json(res, result);
+    });
+
+    use('/api/aiqa/eval/judge', async (req, res) => {
+        if (req.method !== 'POST') { res.statusCode = 405; res.end('Method not allowed'); return; }
+        const raw = await readBody(req);
+        const body = JSON.parse(raw || '{}') as { agentOutput: string; expectedBehavior: string; criteria?: Array<{ name: string; description: string; weight: number }> };
+        const result = await evaluateWithJudge(body.agentOutput ?? '', body.expectedBehavior ?? '', body.criteria);
+        json(res, result);
+    });
+
+    use('/api/aiqa/drift', async (req, res) => {
+        if (req.method !== 'POST') { res.statusCode = 405; res.end('Method not allowed'); return; }
+        const raw = await readBody(req);
+        const body = JSON.parse(raw || '{}') as { baseline: Array<{ values: number[] }>; current: Array<{ values: number[] }>; metricLabels?: string[]; ksAlpha?: number };
+        const results = detectDriftBatch(body.baseline ?? [], body.current ?? [], body.metricLabels, body.ksAlpha);
+        json(res, { results });
+    });
+
+    use('/api/aiqa/drift/schema', async (req, res) => {
+        if (req.method !== 'POST') { res.statusCode = 405; res.end('Method not allowed'); return; }
+        const raw = await readBody(req);
+        const body = JSON.parse(raw || '{}') as { records: Record<string, unknown>[]; schema: Array<{ name: string; type: string; required: boolean }> };
+        const schemaFields = (body.schema ?? []).map((s) => ({
+            name: s.name,
+            type: s.type as 'string' | 'number' | 'boolean' | 'array' | 'object' | 'nullable',
+            required: s.required,
+        }));
+        const results = checkSchemaCompliance(body.records ?? [], schemaFields);
+        json(res, { results });
+    });
+
+    use('/api/aiqa/confidence', async (req, res) => {
+        if (req.method !== 'POST') { res.statusCode = 405; res.end('Method not allowed'); return; }
+        const raw = await readBody(req);
+        const body = JSON.parse(raw || '{}') as { baseline: Array<Record<string, unknown>>; current: Array<Record<string, unknown>>; field?: string };
+        const result = monitorConfidenceShift(body.baseline ?? [], body.current ?? [], 'agent_confidence', (body.field as 'confidence' | 'score') ?? 'confidence');
+        json(res, result);
+    });
+
+    use('/api/aiqa/confidence/silent-failure', async (req, res) => {
+        if (req.method !== 'POST') { res.statusCode = 405; res.end('Method not allowed'); return; }
+        const raw = await readBody(req);
+        const body = JSON.parse(raw || '{}') as { entries: Array<Record<string, unknown>>; field?: string };
+        const result = monitorSilentFailure(body.entries ?? [], 'agent_confidence', (body.field as 'confidence' | 'score') ?? 'confidence');
+        json(res, result);
+    });
+
+    use('/api/aiqa/ood', async (req, res) => {
+        if (req.method !== 'POST') { res.statusCode = 405; res.end('Method not allowed'); return; }
+        const raw = await readBody(req);
+        const body = JSON.parse(raw || '{}') as { agentId?: string; count?: number };
+        const statuses = readAllAgentStatuses(rootDir);
+        const input = statusesToEvalInput(statuses, rootDir);
+        const variants = generateOodVariants(input, body.count ?? 5);
+        json(res, { variants, count: variants.length, generatedAt: new Date().toISOString() });
+    });
+
+    use('/api/aiqa/stratified', async (req, res) => {
+        if (req.method !== 'POST') { res.statusCode = 405; res.end('Method not allowed'); return; }
+        const raw = await readBody(req);
+        const body = JSON.parse(raw || '{}') as { samplePerStratum?: number };
+        const statuses = readAllAgentStatuses(rootDir);
+        const inputs = IMPLEMENTATION_AGENTS.map((id) => statusesToEvalInput(new Map([[id, statuses.get(id) ?? {}]]), rootDir));
+        const { samples, coverage, missingStrata } = generateStratifiedSamples(inputs, ['currentPhase', 'isRunning'], body.samplePerStratum ?? 2);
+        json(res, { samples, coverage, missingStrata, totalStrata: Object.keys(coverage).length, generatedAt: new Date().toISOString() });
+    });
+
+    use('/api/aiqa/risk-metrics', async (req, res) => {
+        if (req.method !== 'GET') { res.statusCode = 405; res.end('Method not allowed'); return; }
+        json(res, { domains: listDomainConfigs() });
+    });
+
+    use('/api/aiqa/risk-metrics/evaluate', async (req, res) => {
+        if (req.method !== 'POST') { res.statusCode = 405; res.end('Method not allowed'); return; }
+        const raw = await readBody(req);
+        const body = JSON.parse(raw || '{}') as { truePositives: number; falsePositives: number; trueNegatives: number; falseNegatives: number; domain: string };
+        const config = getRiskConfig((body.domain as 'credit-scoring' | 'fraud-detection' | 'trading' | 'general') ?? 'general');
+        const result = computeAsymmetricScore({
+            truePositives: body.truePositives ?? 0,
+            falsePositives: body.falsePositives ?? 0,
+            trueNegatives: body.trueNegatives ?? 0,
+            falseNegatives: body.falseNegatives ?? 0,
+        }, config);
+        json(res, { result, config });
+    });
+
+    use('/api/aiqa/bias', async (req, res) => {
+        if (req.method !== 'POST') { res.statusCode = 405; res.end('Method not allowed'); return; }
+        const raw = await readBody(req);
+        const body = JSON.parse(raw || '{}') as { groups: Array<{ label: string; approved: number; total: number }> };
+        const result = computeAdverseImpactRatio(body.groups ?? []);
+        json(res, result);
+    });
+
+    use('/api/aiqa/bias/intersectional', async (req, res) => {
+        if (req.method !== 'POST') { res.statusCode = 405; res.end('Method not allowed'); return; }
+        const raw = await readBody(req);
+        const body = JSON.parse(raw || '{}') as { groups: Array<{ label: string; approved: number; total: number }> };
+        const result = computeIntersectionalAIR(body.groups ?? []);
+        json(res, result);
+    });
+
+    use('/api/aiqa/guardrails', async (req, res) => {
+        if (req.method !== 'POST') { res.statusCode = 405; res.end('Method not allowed'); return; }
+        const raw = await readBody(req);
+        const body = JSON.parse(raw || '{}') as { output: string };
+        const results = checkFinancialGuardrails(body.output ?? '');
+        json(res, { results, triggered: results.length > 0 });
+    });
+
+    use('/api/aiqa/guardrails/prompts', async (req, res) => {
+        if (req.method !== 'GET') { res.statusCode = 405; res.end('Method not allowed'); return; }
+        json(res, { prompts: generateAdversarialFinancialPrompts() });
+    });
+
+    use('/api/aiqa/guardrails/schema', async (req, res) => {
+        if (req.method !== 'POST') { res.statusCode = 405; res.end('Method not allowed'); return; }
+        const raw = await readBody(req);
+        const body = JSON.parse(raw || '{}') as { output: string; schema: Record<string, string> };
+        const result = validateReturnedJson(body.output ?? '', body.schema ?? {});
+        json(res, result);
+    });
 }
 
 async function buildAiQaScorecard(rootDir: string, configFile: string) {
@@ -138,6 +333,23 @@ async function buildAiQaScorecard(rootDir: string, configFile: string) {
     }
 
     const deduped = dedupeFindings(findings);
+
+    const allStatuses = new Map(Array.from(statuses.entries()));
+    const evalInput = statusesToEvalInput(allStatuses, rootDir);
+
+    const hallucinationReport = buildHallucinationReport(evalInput);
+    for (const signal of hallucinationReport.signals) {
+        deduped.push(makeFinding(
+            signal.severity,
+            signal.agentId,
+            `Hallucination risk: ${signal.description}`,
+            signal.evidence,
+            signal.agentId,
+            'hallucination',
+            generatedAt,
+        ));
+    }
+
     const scorecards: AgentQualityCard[] = AGENT_IDS.map((agentId) => {
         const status = statuses.get(agentId)!;
         const tasks = Array.isArray(status.tasks) ? status.tasks as StatusTask[] : [];
@@ -294,6 +506,24 @@ function buildEvalChecks(findings: AiQaFinding[]) {
             name: 'Workflow handoff health',
             status: findings.some((f) => f.title.includes('stopped') || f.title.includes('stale')) ? 'warn' : 'pass',
             evidence: findings.some((f) => f.title.includes('stopped') || f.title.includes('stale')) ? 'A stopped or stale workflow was detected.' : 'No stale handoff/session signal detected.',
+        },
+        {
+            id: 'hallucination-risk',
+            name: 'Hallucination risk detection',
+            status: findings.some((f) => f.source === 'hallucination' && f.severity === 'high') ? 'fail' : findings.some((f) => f.source === 'hallucination') ? 'warn' : 'pass',
+            evidence: findings.some((f) => f.source === 'hallucination') ? `Agent outputs flagged for hallucination-like signals.` : 'No hallucination signals detected.',
+        },
+        {
+            id: 'token-efficiency',
+            name: 'Token efficiency score',
+            status: findings.some((f) => f.title.includes('token burn')) ? 'warn' : 'pass',
+            evidence: findings.some((f) => f.title.includes('token burn')) ? 'One or more agents have elevated token consumption.' : 'Token usage is within acceptable ranges.',
+        },
+        {
+            id: 'eval-coverage',
+            name: 'AIQA eval suite health',
+            status: 'pass',
+            evidence: `${BUILTIN_DATASETS.length} eval datasets registered (${getAllExamples().length} examples).`,
         },
     ];
 }
@@ -527,6 +757,72 @@ function recentAgentLogText(rootDir: string, agentId: string): string {
         .slice(-2)
         .map((name) => safeReadTail(resolve(logDir, name), 40_000))
         .join('\n');
+}
+
+function readAllAgentStatuses(rootDir: string): Map<string, Record<string, any>> {
+    const statuses = new Map<string, Record<string, any>>();
+    for (const agentId of AGENT_IDS) {
+        statuses.set(agentId, readAgentStatus(rootDir, agentId));
+    }
+    return statuses;
+}
+
+function statusesToEvalInput(statuses: Map<string, Record<string, any>>, logRootDir?: string): EvalInput {
+    const allTasks: EvalInput['tasks'] = [];
+    const allRequests: EvalInput['requests'] = [];
+    const allPrs: EvalInput['prs'] = [];
+    const allEvents: EvalInput['events'] = [];
+    const allTokens: EvalInput['tokens'] = { cloud: { input: 0, output: 0 }, meshllm: { input: 0, output: 0 }, ollama: { input: 0, output: 0 }, mlx: { input: 0, output: 0 } };
+    const allLogs: string[] = [];
+    let primaryAgentId = 'unknown';
+
+    for (const [agentId, status] of statuses) {
+        if (!primaryAgentId || primaryAgentId === 'unknown') primaryAgentId = agentId;
+        if (Array.isArray(status.tasks)) allTasks.push(...status.tasks.map((t: any) => ({
+            name: t.name, status: t.status, hours: t.hours, category: t.category, priority: t.priority,
+        })));
+        if (Array.isArray(status.requests)) allRequests.push(...status.requests.map((r: any) => ({
+            id: r.id, status: r.status, summary: r.summary, type: r.type, severity: r.severity,
+        })));
+        if (Array.isArray(status.prs)) allPrs.push(...status.prs.map((p: any) => ({
+            id: p.id, title: p.title, status: p.status,
+        })));
+        if (Array.isArray(status.events)) allEvents.push(...status.events.map((e: any) => ({
+            type: e.type, message: e.message, timestamp: e.timestamp,
+        })));
+        if (status.tokens) {
+            for (const provider of ['cloud', 'meshllm', 'ollama', 'mlx'] as const) {
+                const t = status.tokens[provider];
+                if (t) {
+                    allTokens[provider].input += t.input ?? 0;
+                    allTokens[provider].output += t.output ?? 0;
+                }
+            }
+        }
+        if (logRootDir) {
+            const agentLogs = readRecentAgentLogs(logRootDir, agentId, 2, 40_000);
+            allLogs.push(...agentLogs);
+        }
+    }
+
+    const currentPhase = statuses.get(primaryAgentId)?.currentPhase ?? 'idle';
+    const isRunning = statuses.get(primaryAgentId)?.isRunning ?? false;
+
+    return { agentId: primaryAgentId, currentPhase, isRunning, tasks: allTasks, requests: allRequests, prs: allPrs, events: allEvents, tokens: allTokens, logSnippets: allLogs };
+}
+
+function readRecentAgentLogs(rootDir: string, agentId: string, count: number, maxChars: number): string[] {
+    const logDir = resolve(rootDir, '.agent-output');
+    if (!existsSync(logDir)) return [];
+    try {
+        return readdirSync(logDir)
+            .filter((name) => name.startsWith(`${agentId}-`) && name.endsWith('.log'))
+            .sort()
+            .slice(-count)
+            .map((name) => safeReadTail(resolve(logDir, name), maxChars));
+    } catch {
+        return [];
+    }
 }
 
 function writeAiQaTaskPills(rootDir: string, findings: AiQaFinding[]): number {

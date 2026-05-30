@@ -133,6 +133,138 @@ export function postAiQaSweep() {
     return fetch('/api/aiqa/sweep', { method: 'POST' });
 }
 
+export function fetchAiQaEval() {
+    return fetch('/api/aiqa/eval');
+}
+
+export function fetchAiQaDatasets() {
+    return fetch('/api/aiqa/eval/datasets');
+}
+
+export function fetchAiQaHallucinations() {
+    return fetch('/api/aiqa/hallucinations');
+}
+
+export function fetchAiQaRedTeam() {
+    return fetch('/api/aiqa/redteam');
+}
+
+export function postAiQaRedTeamRun() {
+    return fetch('/api/aiqa/redteam/run', { method: 'POST' });
+}
+
+export function postAiQaSemanticEval(body: { expected: string; actual: string; threshold?: number }) {
+    return fetch('/api/aiqa/eval/semantic', {
+        method: 'POST',
+        headers: JSON_HEADERS,
+        body: JSON.stringify(body),
+    });
+}
+
+export function postAiQaJudgeEval(body: { agentOutput: string; expectedBehavior: string; criteria?: Array<{ name: string; description: string; weight: number }> }) {
+    return fetch('/api/aiqa/eval/judge', {
+        method: 'POST',
+        headers: JSON_HEADERS,
+        body: JSON.stringify(body),
+    });
+}
+
+export function postAiQaDrift(body: { baseline: Array<{ values: number[] }>; current: Array<{ values: number[] }>; metricLabels?: string[] }) {
+    return fetch('/api/aiqa/drift', {
+        method: 'POST',
+        headers: JSON_HEADERS,
+        body: JSON.stringify(body),
+    });
+}
+
+export function postAiQaSchemaCheck(body: { records: Record<string, unknown>[]; schema: Array<{ name: string; type: string; required: boolean }> }) {
+    return fetch('/api/aiqa/drift/schema', {
+        method: 'POST',
+        headers: JSON_HEADERS,
+        body: JSON.stringify(body),
+    });
+}
+
+export function postAiQaConfidenceShift(body: { baseline: Array<Record<string, unknown>>; current: Array<Record<string, unknown>>; field?: string }) {
+    return fetch('/api/aiqa/confidence', {
+        method: 'POST',
+        headers: JSON_HEADERS,
+        body: JSON.stringify(body),
+    });
+}
+
+export function postAiQaSilentFailure(body: { entries: Array<Record<string, unknown>>; field?: string }) {
+    return fetch('/api/aiqa/confidence/silent-failure', {
+        method: 'POST',
+        headers: JSON_HEADERS,
+        body: JSON.stringify(body),
+    });
+}
+
+export function postAiQaOod(body: { count?: number }) {
+    return fetch('/api/aiqa/ood', {
+        method: 'POST',
+        headers: JSON_HEADERS,
+        body: JSON.stringify(body),
+    });
+}
+
+export function postAiQaStratified(body: { samplePerStratum?: number }) {
+    return fetch('/api/aiqa/stratified', {
+        method: 'POST',
+        headers: JSON_HEADERS,
+        body: JSON.stringify(body),
+    });
+}
+
+export function fetchAiQaRiskMetrics() {
+    return fetch('/api/aiqa/risk-metrics');
+}
+
+export function postAiQaRiskEvaluate(body: { truePositives: number; falsePositives: number; trueNegatives: number; falseNegatives: number; domain: string }) {
+    return fetch('/api/aiqa/risk-metrics/evaluate', {
+        method: 'POST',
+        headers: JSON_HEADERS,
+        body: JSON.stringify(body),
+    });
+}
+
+export function postAiQaBiasTest(body: { groups: Array<{ label: string; approved: number; total: number }> }) {
+    return fetch('/api/aiqa/bias', {
+        method: 'POST',
+        headers: JSON_HEADERS,
+        body: JSON.stringify(body),
+    });
+}
+
+export function postAiQaIntersectionalBias(body: { groups: Array<{ label: string; approved: number; total: number }> }) {
+    return fetch('/api/aiqa/bias/intersectional', {
+        method: 'POST',
+        headers: JSON_HEADERS,
+        body: JSON.stringify(body),
+    });
+}
+
+export function postAiQaGuardrails(body: { output: string }) {
+    return fetch('/api/aiqa/guardrails', {
+        method: 'POST',
+        headers: JSON_HEADERS,
+        body: JSON.stringify(body),
+    });
+}
+
+export function fetchAiQaGuardrailPrompts() {
+    return fetch('/api/aiqa/guardrails/prompts');
+}
+
+export function postAiQaSchemaValidation(body: { output: string; schema: Record<string, string> }) {
+    return fetch('/api/aiqa/guardrails/schema', {
+        method: 'POST',
+        headers: JSON_HEADERS,
+        body: JSON.stringify(body),
+    });
+}
+
 export function postSchedulerApprove(agentId: string) {
     return fetch(`${window.location.origin}/api/scheduler/approve`, {
         method: 'POST',
