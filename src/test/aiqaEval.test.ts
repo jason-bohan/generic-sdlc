@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
     BUILTIN_DATASETS,
     getAllExamples,
@@ -583,8 +583,16 @@ describe('AIQA OOD Perturbation', () => {
             requests: [], prs: [], events: [], tokens: { cloud: { input: 0, output: 0 }, meshllm: { input: 0, output: 0 }, ollama: { input: 0, output: 0 }, mlx: { input: 0, output: 0 } },
             logSnippets: [],
         };
-        const perturbed = perturbInput(base, { jitterRatio: 0.5 });
-        expect(perturbed.tasks[0].hours).not.toBe(10);
+        // Pin Math.random so the jitter is deterministically non-zero. With the real
+        // RNG, a value landing in [0.499, 0.501) makes the rounded jitter collapse back
+        // to the original (~1-in-500), which used to flake this assertion in CI.
+        const randSpy = vi.spyOn(Math, 'random').mockReturnValue(0.9);
+        try {
+            const perturbed = perturbInput(base, { jitterRatio: 0.5 });
+            expect(perturbed.tasks[0].hours).not.toBe(10);
+        } finally {
+            randSpy.mockRestore();
+        }
     });
 
     it('perturbInput handles missing fields', () => {
