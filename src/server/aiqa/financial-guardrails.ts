@@ -20,8 +20,15 @@ const SPECULATIVE_PATTERNS = [
   /\b(what\s+stock|which\s+stock|best\s+stock|hot\s+stock|top\s+pick)\b/i,
 ];
 
+// `[^.!?]*` keeps the trigger and the financial noun in the *same sentence* so a
+// guarantee in one clause isn't paired with an unrelated "return" elsewhere.
+// Singular "return" is ambiguous ("return shipping", "tax return", "in return"),
+// so it only counts when qualified as an investment return; "returns"/"profit"/
+// "gain"/"yield" are financial enough on their own.
 const GUARANTEED_RETURNS_PATTERNS = [
-  /\b(guarantee|guaranteed|assure|assured|certain|certified)\b.*\b(return|profit|gain|yield)\b/i,
+  /\b(guarantee|guaranteed|assure|assured|certain|certified)\b[^.!?]*\b(profits?|gains?|yields?|returns)\b/i,
+  /\b(guarantee|guaranteed|assure|assured|certain|certified)\b[^.!?]*\b(\d+\s*%|monthly|annual|yearly|fixed)\b[^.!?]*\breturn\b/i,
+  /\b(guarantee|guaranteed|assure|assured|certain|certified)\b[^.!?]*\breturn\s+(on|of)\b/i,
 ];
 
 const UNLICENSED_ADVICE_PATTERNS = [
@@ -31,13 +38,20 @@ const UNLICENSED_ADVICE_PATTERNS = [
   /\b(roi|return\s+on\s+investment|projected\s+returns|expected\s+returns)\b/i,
 ];
 
+const PRODUCT = String.raw`loan|mortgage|refinance|credit\s+line|heloc`;
+const CREDIT = String.raw`credit\s+score|fico|credit\s+report|credit\s+history`;
 const REGULATED_ACTIVITY_PATTERNS = [
-  // Order-independent: the trigger verb may precede or follow the product noun
-  // (e.g. "approve my mortgage" as well as "mortgage … approved").
-  /\b(approv\w*|guarantee\w*|promis\w*|offer)\b.*\b(loan|mortgage|refinance|credit\s+line|heloc)\b|\b(loan|mortgage|refinance|credit\s+line|heloc)\b.*\b(approv\w*|guarantee\w*|promis\w*|offer)\b/i,
+  // Approving/guaranteeing/promising a regulated lending product, in either order
+  // but within one sentence (`[^.!?]*`), so the verb actually applies to the product.
+  new RegExp(String.raw`\b(approv\w*|guarantee\w*|promis\w*)\b[^.!?]*\b(${PRODUCT})\b`, 'i'),
+  new RegExp(String.raw`\b(${PRODUCT})\b[^.!?]*\b(approv\w*|guarantee\w*|promis\w*)\b`, 'i'),
+  // "offer" is too generic on its own ("offer details on your mortgage" is benign),
+  // so it only counts when it directly proposes the product ("offer you a mortgage").
+  new RegExp(String.raw`\boffer(ing|ed|s)?\s+(you\s+)?(a\s+|an\s+|the\s+)?(${PRODUCT})\b`, 'i'),
   /\b(interest\s+rate|apr|annual\s+percentage|rate\s+guarantee)\b/i,
-  /\b(open\s+(an\s+)?account|bank\s+account|brokerage\s+account)\b.*\b(now|today|without|no\s+fee)\b/i,
-  /\b(improve|fix|boost|increase|repair)\b.*\b(credit\s+score|fico|credit\s+report|credit\s+history)\b|\b(credit\s+score|fico|credit\s+report|credit\s+history)\b.*\b(improve|fix|boost|increase|repair)\b/i,
+  /\b(open\s+(an\s+)?account|bank\s+account|brokerage\s+account)\b[^.!?]*\b(now|today|without|no\s+fee)\b/i,
+  new RegExp(String.raw`\b(improve|fix|boost|increase|repair)\b[^.!?]*\b(${CREDIT})\b`, 'i'),
+  new RegExp(String.raw`\b(${CREDIT})\b[^.!?]*\b(improve|fix|boost|increase|repair)\b`, 'i'),
 ];
 
 export function checkFinancialGuardrails(

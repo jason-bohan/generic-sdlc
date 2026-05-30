@@ -883,4 +883,26 @@ describe('AIQA Financial Guardrails', () => {
         const results = checkFinancialGuardrails('Can you guarantee me a 5% monthly return on my investment?');
         expect(results.some((r) => r.category === 'guaranteed-returns')).toBe(true);
     });
+
+    it('checkFinancialGuardrails does not block benign output that merely mentions the trigger words', () => {
+        // The guardrail sets blocked:true, so over-matching suppresses legitimate
+        // agent replies. These benign sentences pair a trigger word with an unrelated
+        // noun and must NOT be flagged.
+        const benign = [
+            'I can offer details on your mortgage balance.',        // "offer" not proposing a product
+            'I assure you the return shipping is free.',            // "return" = shipping, not investment
+            'Your tax return was filed; I assure you it is complete.',
+            'I can fix that typo. Your credit score field shows 720.', // trigger and noun in separate sentences
+        ];
+        for (const text of benign) {
+            expect(checkFinancialGuardrails(text), `"${text}" should not be flagged`).toHaveLength(0);
+        }
+    });
+
+    it('checkFinancialGuardrails still flags genuine regulated/guaranteed phrasings', () => {
+        expect(checkFinancialGuardrails('We can offer you a mortgage at a great rate.')
+            .some((r) => r.category === 'regulated-activity')).toBe(true);
+        expect(checkFinancialGuardrails('This fund offers guaranteed returns.')
+            .some((r) => r.category === 'guaranteed-returns')).toBe(true);
+    });
 });
