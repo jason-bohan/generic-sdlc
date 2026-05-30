@@ -38,6 +38,10 @@ interface AiQaFinding {
     source: FindingSource;
     status: 'open';
     createdAt: string;
+    // Populated once a finding has been synced to the planner as a tracked task,
+    // whichever provider backs it. Absent until then; the dashboard renders the
+    // task link only when present.
+    plannerUrl?: string;
 }
 
 interface AgentQualityCard {
