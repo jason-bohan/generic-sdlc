@@ -106,8 +106,9 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
 
     use('/api/aiqa/eval', async (req, res) => {
         if (req.method !== 'GET') { res.statusCode = 405; res.end('Method not allowed'); return; }
-        const statuses = readAllAgentStatuses(rootDir);
-        const input = statusesToEvalInput(statuses, rootDir);
+        // Regression eval: the judge scores the golden labeled dataset (each example
+        // carries its own `expected` ground truth). Live agent statuses have no labels,
+        // so they aren't part of this run — see /api/aiqa/scorecard for live telemetry.
         const results = evaluateBatch(getAllExamples());
         const summary = summarizeResults(results);
         json(res, {
