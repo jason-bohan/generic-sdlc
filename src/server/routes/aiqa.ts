@@ -17,6 +17,7 @@ import { monitorConfidenceShift, monitorSilentFailure, extractConfidenceScores }
 import { computeAsymmetricScore, getRiskConfig, listDomainConfigs } from '../aiqa/risk-metrics';
 import { computeAdverseImpactRatio, computeIntersectionalAIR, runBiasMutationTest } from '../aiqa/bias-detector';
 import { checkFinancialGuardrails, validateComputationSeparation, validateReturnedJson, generateAdversarialFinancialPrompts } from '../aiqa/financial-guardrails';
+import { runXaiExplainer, generateSyntheticProfiles, checkShapAvailability } from '../aiqa/xai-engine';
 import type { UseFn } from './types';
 import type { EvalInput } from '../aiqa/eval-dataset';
 
@@ -284,6 +285,23 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
         const body = JSON.parse(raw || '{}') as { output: string; schema: Record<string, string> };
         const result = validateReturnedJson(body.output ?? '', body.schema ?? {});
         json(res, result);
+    });
+
+    use('/api/aiqa/xai', async (req, res) => {
+        if (req.method !== 'POST') { res.statusCode = 405; res.end('Method not allowed'); return; }
+        const raw = await readBody(req);
+        const body = JSON.parse(raw || '{}') as { profiles: Array<Record<string, unknown>>; featureNames?: string[]; decisionFn: string; nSamples?: number };
+        const result = await runXaiExplainer(body.profiles ?? [], {
+            featureNames: body.featureNames,
+            decisionFn: body.decisionFn ?? 'true',
+            nSamples: body.nSamples,
+        });
+        json(res, result);
+    });
+
+    use('/api/aiqa/xai/status', async (req, res) => {
+        if (req.method !== 'GET') { res.statusCode = 405; res.end('Method not allowed'); return; }
+        json(res, checkShapAvailability());
     });
 }
 

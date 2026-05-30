@@ -265,6 +265,18 @@ export function postAiQaSchemaValidation(body: { output: string; schema: Record<
     });
 }
 
+export function postAiQaXai(body: { profiles: Array<Record<string, unknown>>; featureNames?: string[]; decisionFn: string; nSamples?: number }) {
+    return fetch('/api/aiqa/xai', {
+        method: 'POST',
+        headers: JSON_HEADERS,
+        body: JSON.stringify(body),
+    });
+}
+
+export function fetchAiQaXaiStatus() {
+    return fetch('/api/aiqa/xai/status');
+}
+
 export function postSchedulerApprove(agentId: string) {
     return fetch(`${window.location.origin}/api/scheduler/approve`, {
         method: 'POST',
