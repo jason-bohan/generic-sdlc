@@ -22,6 +22,7 @@ import { startMeshllm } from './meshllmLauncher';
 import { probeMlx, startMlxIfConfigured } from './mlxProvider';
 import { meshllmLog, mlxLog } from './logger';
 import { startHookRunner, stopHookRunner } from './hook-runner';
+import { maybeTriggerVerification } from './verify-trigger';
 import { startAutoFinetune } from './autoFinetune';
 import { getActiveProject } from './project-config';
 import { isMockExternalMode } from './external-mode';
@@ -131,7 +132,15 @@ server.listen(PORT, () => {
                 else mlxLog.info(`auto-launch skipped: ${result.reason ?? 'MLX_MODEL not configured'}`);
             }
         }).catch(() => {});
-        startHookRunner({ rootDir: ROOT_DIR });
+        startHookRunner({
+            rootDir: ROOT_DIR,
+            // Opt-in (scheduler.verifyOnComplete): run the goose verify-change recipe
+            // when an implementation agent reaches a done phase. Never throws.
+            onEvent: (ev) => {
+                try { maybeTriggerVerification(ROOT_DIR, CONFIG_FILE, ev); }
+                catch (e) { log.warn(`[verify-trigger] ${e instanceof Error ? e.message : String(e)}`); }
+            },
+        });
         startAutoFinetune(ROOT_DIR);
     }
 });
