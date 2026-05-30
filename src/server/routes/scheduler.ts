@@ -7,7 +7,7 @@ import { defaultTokenState } from '../tokens';
 import { getActiveProject, getActiveProjectName, getProjectProfile } from '../project-config';
 import { spawnAgent } from '../spawn-agent';
 import { isGlobalStepMode } from '../stepMode';
-import { startWorkflow, startPhaseRun } from '../orchestrator';
+import { startWorkflow, startPhaseRun, resolveStoryAgent } from '../orchestrator';
 import { notify, resolveProjectTracker } from '../providers';
 import { skillSubdirForAgentId } from '../../shared/agentSkillDirs';
 import { resolveAgentDisplayName } from '../agent-display-names';
@@ -398,8 +398,16 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
         if (req.method !== 'POST') { res.statusCode = 405; res.end('Method not allowed'); return; }
         const body = await readBody(req);
         try {
-            const { agentId, storyNumber, storyName, storyDescription, frontend, backend, qa, teamId, environment } = JSON.parse(body);
-            if (!agentId || !storyNumber) { json(res, { error: 'agentId and storyNumber required' }, 400); return; }
+            const { agentId: requestedAgentId, storyNumber, storyName, storyDescription, frontend, backend, qa, teamId, environment } = JSON.parse(body);
+            if (!requestedAgentId || !storyNumber) { json(res, { error: 'agentId and storyNumber required' }, 400); return; }
+            // The orchestrator owns routing: honour a valid specialist if the caller
+            // named one, otherwise classify the story (heuristic → LLM triage) so an
+            // invalid/generic agentId (e.g. "developer") routes to the right specialist
+            // instead of silently defaulting to frontend.
+            const agentId = asSdlcAgentId(String(requestedAgentId).trim()) ?? await resolveStoryAgent(
+                { number: storyNumber, name: storyName ?? null, description: storyDescription ?? null, frontend: frontend ?? null, backend: backend ?? null, qa: qa ?? null },
+                { configPath: configFile },
+            );
             const config = getSchedulerConfig(rootDir);
             const agentConfig = config.scheduler?.agents?.[agentId];
             const { phase, startedAt } = resolveAgentAssignmentPhase(getSchedulerWorkflowMode(config), agentConfig?.autoStart ?? false);
