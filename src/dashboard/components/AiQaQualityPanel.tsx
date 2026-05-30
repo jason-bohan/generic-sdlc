@@ -1,9 +1,57 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { fetchAiQaScorecard, postAiQaSweep } from '../api';
+import { fetchAiQaScorecard, postAiQaSweep, fetchAiQaEval, fetchAiQaHallucinations, fetchAiQaDatasets } from '../api';
 import { useDemoMode } from '../DemoModeProvider';
 
 type Severity = 'high' | 'medium' | 'low';
 type EvalStatus = 'pass' | 'warn' | 'fail';
+
+interface EvalSuiteResult {
+    exampleId: string;
+    overallScore: number;
+    verdict: EvalStatus;
+    passed: boolean;
+    criteria: Array<{ id: string; name: string; verdict: EvalStatus; score: number; detail: string }>;
+}
+
+interface EvalSuiteSummary {
+    total: number;
+    passed: number;
+    failed: number;
+    passRate: number;
+    averageScore: number;
+}
+
+interface EvalSuiteResponse {
+    generatedAt: string;
+    summary: EvalSuiteSummary;
+    results: EvalSuiteResult[];
+}
+
+interface HallucinationSignal {
+    id: string;
+    agentId: string;
+    type: string;
+    severity: Severity;
+    description: string;
+    evidence: string;
+}
+
+interface HallucinationReport {
+    agentId: string;
+    totalSignals: number;
+    highSeverity: number;
+    mediumSeverity: number;
+    lowSeverity: number;
+    signals: HallucinationSignal[];
+    hasHallucinationRisk: boolean;
+}
+
+interface DatasetInfo {
+    id: string;
+    name: string;
+    description: string;
+    examples: number;
+}
 
 interface AiQaFinding {
     id: string;
@@ -102,13 +150,23 @@ export function AiQaQualityPanel({ accentColor }: { accentColor: string }) {
     const [error, setError] = useState<string | null>(null);
     const [sweeping, setSweeping] = useState(false);
     const [sweepResult, setSweepResult] = useState<string | null>(null);
+    const [evalSuite, setEvalSuite] = useState<EvalSuiteResponse | null>(null);
+    const [datasets, setDatasets] = useState<DatasetInfo[] | null>(null);
+    const [hallucinationReport, setHallucinationReport] = useState<HallucinationReport | null>(null);
 
     const load = () => {
         setLoading(true);
-        fetchAiQaScorecard()
-            .then((r) => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
-            .then((next: AiQaScorecard) => {
-                setData(next);
+        Promise.all([
+            fetchAiQaScorecard().then((r) => r.ok ? r.json() : Promise.reject(new Error('scorecard'))),
+            fetchAiQaEval().then((r) => r.ok ? r.json() : Promise.reject(new Error('eval'))).catch(() => null),
+            fetchAiQaDatasets().then((r) => r.ok ? r.json() : Promise.reject(new Error('datasets'))).catch(() => null),
+            fetchAiQaHallucinations().then((r) => r.ok ? r.json() : Promise.reject(new Error('hallucinations'))).catch(() => null),
+        ])
+            .then(([sc, evalRes, ds, hall]) => {
+                setData(sc);
+                setEvalSuite(evalRes);
+                setDatasets(ds?.datasets ?? null);
+                setHallucinationReport(hall?.report ?? null);
                 setError(null);
             })
             .catch((e) => setError(e instanceof Error ? e.message : String(e)))
@@ -234,6 +292,65 @@ export function AiQaQualityPanel({ accentColor }: { accentColor: string }) {
                         ))}
                     </div>
 
+                    {evalSuite && (
+                        <div style={styles.evalSuiteSection} data-testid="aiqa-eval-suite">
+                            <div style={styles.sectionTitle}>Eval Suite ({evalSuite.summary.passRate}% pass rate)</div>
+                            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 8 }}>
+                                <span style={styles.evalStat}>Passed: <strong style={{ color: '#10b981' }}>{evalSuite.summary.passed}</strong></span>
+                                <span style={styles.evalStat}>Failed: <strong style={{ color: '#ef4444' }}>{evalSuite.summary.failed}</strong></span>
+                                <span style={styles.evalStat}>Avg Score: <strong>{evalSuite.summary.averageScore}</strong></span>
+                                <span style={styles.evalStat}>Total: <strong>{evalSuite.summary.total}</strong></span>
+                            </div>
+                            {evalSuite.results.filter((r) => !r.passed).length > 0 && (
+                                <div style={styles.evalResultsList}>
+                                    {evalSuite.results.filter((r) => !r.passed).slice(0, 4).map((r) => (
+                                        <div key={r.exampleId} style={{ ...styles.evalItem, fontSize: 11 }}>
+                                            <span style={{ ...styles.evalStatus, background: '#ef4444' }} />
+                                            <div>
+                                                <div style={styles.evalName}>{r.exampleId} ({r.overallScore})</div>
+                                                <div style={styles.evalEvidence}>{r.verdict}</div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {datasets && datasets.length > 0 && (
+                        <div data-testid="aiqa-datasets">
+                            <div style={styles.sectionTitle}>Eval Datasets ({datasets.length} registered)</div>
+                            <div style={{ ...styles.evalRow, gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
+                                {datasets.map((ds) => (
+                                    <div key={ds.id} style={styles.datasetCard}>
+                                        <div style={styles.evalName}>{ds.name}</div>
+                                        <div style={styles.evalEvidence}>{ds.examples} examples</div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {hallucinationReport && hallucinationReport.hasHallucinationRisk && (
+                        <div data-testid="aiqa-hallucination-signals">
+                            <div style={{ ...styles.sectionTitle, color: '#ef4444' }}>
+                                Hallucination Risk Detected ({hallucinationReport.totalSignals} signal(s))
+                            </div>
+                            <div style={styles.controlGrid}>
+                                {hallucinationReport.signals.slice(0, 4).map((s) => (
+                                    <div key={s.id} style={{ ...styles.controlCard, borderColor: `${severityColor(s.severity)}55` }}>
+                                        <div style={styles.controlHeader}>
+                                            <span style={{ ...styles.evalStatus, background: severityColor(s.severity), marginTop: 2 }} />
+                                            <strong style={styles.controlName}>{s.type.replace('-', ' ')}</strong>
+                                            <span style={{ ...styles.controlStatus, color: severityColor(s.severity) }}>{s.severity}</span>
+                                        </div>
+                                        <div style={styles.evalEvidence}>{s.description}</div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
                     {data.financial && (
                         <div style={{ ...styles.financialPanel, ...(isFinancial ? { borderLeft: `3px solid #CC0000`, paddingLeft: 12 } : {}) }} data-testid="aiqa-financial-controls">
                             <div style={{ ...styles.sectionTitle, ...(isFinancial ? { color: '#CC0000' } : {}) }}>Financial Controls</div>
@@ -352,6 +469,10 @@ const styles: Record<string, React.CSSProperties> = {
     controlStatus: { fontSize: 10, fontFamily: 'var(--font-mono)', textTransform: 'uppercase', fontWeight: 850 },
     riskSignalList: { display: 'flex', flexDirection: 'column', gap: 8 },
     riskSignal: { display: 'grid', gridTemplateColumns: '74px minmax(0, 1fr)', gap: 10, border: '1px solid var(--border)', borderRadius: 6, padding: 10, background: 'var(--bg-secondary)' },
+    evalSuiteSection: { display: 'flex', flexDirection: 'column', gap: 6, padding: 8, border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg-secondary)' },
+    evalStat: { fontSize: 11, color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' },
+    evalResultsList: { display: 'flex', flexDirection: 'column', gap: 6 },
+    datasetCard: { border: '1px solid var(--border)', borderRadius: 6, padding: 10, background: 'var(--bg-card)', display: 'flex', flexDirection: 'column', gap: 4 },
 };
 
 AiQaQualityPanel.displayName = 'AiQaQualityPanel';
