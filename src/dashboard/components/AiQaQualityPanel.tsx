@@ -61,6 +61,9 @@ interface AiQaFinding {
     evidence: string;
     suggestedOwner: string;
     source: string;
+    createdAt?: string;
+    /** Present only after the finding has been synced to the planner (provider-agnostic) as a tracked task. */
+    plannerUrl?: string;
 }
 
 interface AgentQualityCard {
@@ -153,6 +156,7 @@ export function AiQaQualityPanel({ accentColor }: { accentColor: string }) {
     const [evalSuite, setEvalSuite] = useState<EvalSuiteResponse | null>(null);
     const [datasets, setDatasets] = useState<DatasetInfo[] | null>(null);
     const [hallucinationReport, setHallucinationReport] = useState<HallucinationReport | null>(null);
+    const [selectedFinding, setSelectedFinding] = useState<AiQaFinding | null>(null);
 
     const load = () => {
         setLoading(true);
@@ -393,14 +397,25 @@ export function AiQaQualityPanel({ accentColor }: { accentColor: string }) {
                         {topFindings.length === 0 ? (
                             <p style={styles.muted}>No open AIQA findings detected.</p>
                         ) : topFindings.map((finding) => (
-                            <div key={finding.id} style={styles.findingRow}>
+                            <div
+                                key={finding.id}
+                                role="button"
+                                tabIndex={0}
+                                aria-label={`Open finding: ${finding.title}`}
+                                onClick={() => setSelectedFinding(finding)}
+                                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedFinding(finding); } }}
+                                style={{ ...styles.findingRow, ...styles.findingRowClickable }}
+                            >
                                 <span style={{ ...styles.severity, color: severityColor(finding.severity), borderColor: `${severityColor(finding.severity)}66` }}>
                                     {finding.severity}
                                 </span>
                                 <div style={{ minWidth: 0 }}>
                                     <div style={styles.findingTitle}>{finding.title} <span style={styles.findingAgent}>{finding.agentId}</span></div>
                                     <div style={styles.findingEvidence}>{finding.evidence}</div>
-                                    <div style={styles.findingRoute}>Owner: {finding.suggestedOwner} | Source: {finding.source}</div>
+                                    <div style={styles.findingRoute}>
+                                        Owner: {finding.suggestedOwner} | Source: {finding.source}
+                                        {finding.plannerUrl ? ' | Planner ↗' : ''}
+                                    </div>
                                 </div>
                             </div>
                         ))}
@@ -409,7 +424,74 @@ export function AiQaQualityPanel({ accentColor }: { accentColor: string }) {
                     {sweepResult && <p style={{ ...styles.muted, color: accentColor }}>{sweepResult}</p>}
                 </>
             )}
+
+            {selectedFinding && (
+                <FindingModal
+                    finding={selectedFinding}
+                    accent={effectiveAccent}
+                    onClose={() => setSelectedFinding(null)}
+                />
+            )}
         </section>
+    );
+}
+
+function FindingModal({ finding, accent, onClose }: { finding: AiQaFinding; accent: string; onClose: () => void }) {
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [onClose]);
+
+    const sevColor = severityColor(finding.severity);
+    return (
+        <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Finding: ${finding.title}`}
+            data-testid="aiqa-finding-modal"
+            style={styles.modalOverlay}
+            onClick={onClose}
+        >
+            <div style={{ ...styles.modalCard, borderTop: `3px solid ${sevColor}` }} onClick={(e) => e.stopPropagation()}>
+                <div style={styles.modalHeader}>
+                    <span style={{ ...styles.severity, color: sevColor, borderColor: `${sevColor}66` }}>{finding.severity}</span>
+                    <h4 style={styles.modalTitle}>{finding.title}</h4>
+                    <button type="button" aria-label="Close" onClick={onClose} style={styles.modalClose}>✕</button>
+                </div>
+
+                <dl style={styles.modalMeta}>
+                    <div style={styles.modalMetaRow}><dt style={styles.modalDt}>Agent</dt><dd style={styles.modalDd}>{finding.agentId}</dd></div>
+                    <div style={styles.modalMetaRow}><dt style={styles.modalDt}>Source</dt><dd style={styles.modalDd}>{finding.source}</dd></div>
+                    <div style={styles.modalMetaRow}><dt style={styles.modalDt}>Owner</dt><dd style={styles.modalDd}>{finding.suggestedOwner}</dd></div>
+                    {finding.createdAt && (
+                        <div style={styles.modalMetaRow}><dt style={styles.modalDt}>Detected</dt><dd style={styles.modalDd}>{new Date(finding.createdAt).toLocaleString()}</dd></div>
+                    )}
+                </dl>
+
+                <div style={styles.modalSectionTitle}>Evidence</div>
+                <p style={styles.modalEvidence}>{finding.evidence}</p>
+
+                <div style={styles.modalActions}>
+                    {finding.plannerUrl ? (
+                        <a
+                            href={finding.plannerUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            data-testid="aiqa-finding-planner-link"
+                            style={{ ...styles.modalPlannerLink, borderColor: accent, color: accent, background: `${accent}1a` }}
+                        >
+                            Open planner task ↗
+                        </a>
+                    ) : (
+                        <span style={styles.modalNoPlanner} title="This finding has not been synced to the planner yet.">
+                            Not yet synced to planner
+                        </span>
+                    )}
+                    <button type="button" onClick={onClose} style={styles.modalDismiss}>Close</button>
+                </div>
+            </div>
+        </div>
     );
 }
 
@@ -455,6 +537,7 @@ const styles: Record<string, React.CSSProperties> = {
     findingList: { display: 'flex', flexDirection: 'column', gap: 8 },
     sectionTitle: { fontSize: 11, color: 'var(--text-secondary)', textTransform: 'uppercase', fontFamily: 'var(--font-mono)', fontWeight: 800, letterSpacing: 0 },
     findingRow: { display: 'grid', gridTemplateColumns: '74px minmax(0, 1fr)', gap: 10, border: '1px solid var(--border)', borderRadius: 6, padding: 10, background: 'var(--bg-secondary)' },
+    findingRowClickable: { cursor: 'pointer', textAlign: 'left' as const, width: '100%', font: 'inherit' },
     severity: { alignSelf: 'start', textTransform: 'uppercase', border: '1px solid', borderRadius: 4, padding: '3px 6px', fontSize: 10, fontWeight: 850, fontFamily: 'var(--font-mono)', textAlign: 'center' },
     findingTitle: { fontSize: 13, color: 'var(--text-primary)', fontWeight: 750, overflowWrap: 'anywhere' },
     findingAgent: { color: 'var(--text-tertiary)', fontSize: 11, fontFamily: 'var(--font-mono)' },
@@ -473,6 +556,21 @@ const styles: Record<string, React.CSSProperties> = {
     evalStat: { fontSize: 11, color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' },
     evalResultsList: { display: 'flex', flexDirection: 'column', gap: 6 },
     datasetCard: { border: '1px solid var(--border)', borderRadius: 6, padding: 10, background: 'var(--bg-card)', display: 'flex', flexDirection: 'column', gap: 4 },
+    modalOverlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, zIndex: 1000 },
+    modalCard: { width: 'min(560px, 100%)', maxHeight: '85vh', overflowY: 'auto', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, padding: 18, display: 'flex', flexDirection: 'column', gap: 12, boxShadow: '0 12px 40px rgba(0,0,0,0.35)' },
+    modalHeader: { display: 'grid', gridTemplateColumns: 'auto minmax(0, 1fr) auto', gap: 10, alignItems: 'start' },
+    modalTitle: { margin: 0, fontSize: 15, fontWeight: 800, color: 'var(--text-primary)', overflowWrap: 'anywhere' },
+    modalClose: { border: 'none', background: 'transparent', color: 'var(--text-tertiary)', fontSize: 16, cursor: 'pointer', lineHeight: 1, padding: 2 },
+    modalMeta: { display: 'flex', flexWrap: 'wrap', gap: '6px 18px', margin: 0 },
+    modalMetaRow: { display: 'flex', gap: 6, alignItems: 'baseline' },
+    modalDt: { fontSize: 10, color: 'var(--text-tertiary)', textTransform: 'uppercase', fontFamily: 'var(--font-mono)', letterSpacing: 0 },
+    modalDd: { margin: 0, fontSize: 12, color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' },
+    modalSectionTitle: { fontSize: 10, color: 'var(--text-tertiary)', textTransform: 'uppercase', fontFamily: 'var(--font-mono)', letterSpacing: 0 },
+    modalEvidence: { margin: 0, fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.45, overflowWrap: 'anywhere' },
+    modalActions: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginTop: 4, flexWrap: 'wrap' },
+    modalPlannerLink: { fontSize: 12, fontWeight: 800, fontFamily: 'var(--font-mono)', border: '1px solid', borderRadius: 6, padding: '8px 12px', textDecoration: 'none' },
+    modalNoPlanner: { fontSize: 11, color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' },
+    modalDismiss: { border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', borderRadius: 6, padding: '8px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer' },
 };
 
 AiQaQualityPanel.displayName = 'AiQaQualityPanel';
