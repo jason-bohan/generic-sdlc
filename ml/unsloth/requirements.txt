@@ -13,5 +13,5 @@ peft==0.19.1
 transformers==5.9.0
 sentencepiece==0.2.1
 protobuf==7.35.0
-huggingface_hub==1.16.4
+huggingface_hub==1.17.0
 safetensors==0.7.0
