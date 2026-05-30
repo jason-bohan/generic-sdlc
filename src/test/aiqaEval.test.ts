@@ -61,6 +61,11 @@ import {
     validateReturnedJson,
     generateAdversarialFinancialPrompts,
 } from '../server/aiqa/financial-guardrails';
+import {
+    runXaiExplainer,
+    generateSyntheticProfiles,
+    checkShapAvailability,
+} from '../server/aiqa/xai-engine';
 
 describe('AIQA Eval Datasets', () => {
     it('defines built-in datasets', () => {
@@ -610,6 +615,44 @@ describe('AIQA Module Exports', () => {
         expect(mod.validateComputationSeparation).toBeDefined();
         expect(mod.validateReturnedJson).toBeDefined();
         expect(mod.generateAdversarialFinancialPrompts).toBeDefined();
+        expect(mod.runXaiExplainer).toBeDefined();
+        expect(mod.generateSyntheticProfiles).toBeDefined();
+        expect(mod.checkShapAvailability).toBeDefined();
+    });
+});
+
+describe('AIQA XAI Engine', () => {
+    it('generateSyntheticProfiles creates correct number of profiles', () => {
+        const profiles = generateSyntheticProfiles({ income: 50000, dti: 0.3, age: 35 }, 5);
+        expect(profiles).toHaveLength(5);
+        expect(profiles[0].income).toBe(50000);
+        expect(profiles[2].id).toBe(2);
+    });
+
+    it('generateSyntheticProfiles varies a single feature across range', () => {
+        const profiles = generateSyntheticProfiles({ income: 50000, dti: 0.3 }, 3, 'dti', [0.1, 0.5]);
+        expect(profiles[0].dti).toBeCloseTo(0.1);
+        expect(profiles[2].dti).toBeCloseTo(0.5);
+    });
+
+    it('checkShapAvailability returns status without crashing', () => {
+        const result = checkShapAvailability();
+        expect(result.available).toBeDefined();
+        expect(typeof result.available).toBe('boolean');
+        expect(typeof result.detail).toBe('string');
+    });
+
+    it('runXaiExplainer returns a result without crashing (no SHAP)', async () => {
+        const profiles = generateSyntheticProfiles({ income: 50000, dti: 0.3, age: 35 }, 2);
+        const result = await runXaiExplainer(profiles, { decisionFn: 'income > 30000' }, { timeoutMs: 5000 });
+        expect(result.status).toBeDefined();
+        expect(['ok', 'missing_dependency', 'error']).toContain(result.status);
+    });
+
+    it('runXaiExplainer handles missing script gracefully', async () => {
+        const profiles = generateSyntheticProfiles({ income: 50000 }, 1);
+        const result = await runXaiExplainer(profiles, { decisionFn: 'true' }, { scriptPath: '/nonexistent/script.py' });
+        expect(result.status).toBe('error');
     });
 });
 

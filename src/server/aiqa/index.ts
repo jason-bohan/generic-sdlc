@@ -130,3 +130,16 @@ export type {
   FinancialGuardrailResult,
   JsonSchemaValidationResult,
 } from './financial-guardrails';
+
+export {
+  runXaiExplainer,
+  generateSyntheticProfiles,
+  checkShapAvailability,
+} from './xai-engine';
+export type {
+  XaiProfile,
+  XaiConfig,
+  XaiExplanation,
+  XaiResult,
+  ReasonCode,
+} from './xai-engine';
