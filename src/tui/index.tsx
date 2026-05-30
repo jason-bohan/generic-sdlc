@@ -32,6 +32,7 @@ program.hook('preAction', (cmd) => {
 program
     .command('interactive', { isDefault: true })
     .description('Interactive agent menu (default)')
+    .helpGroup('Agent actions:')
     .argument('[agent]', 'agent to start with')
     .action((agent?: string) => {
         const dir = program.opts().dir;
@@ -41,6 +42,7 @@ program
 program
     .command('dashboard')
     .description('Live agent dashboard with auto-refresh')
+    .helpGroup('Monitoring:')
     .action(() => {
         const dir = program.opts().dir;
         render(<App dir={dir} />);
@@ -49,6 +51,7 @@ program
 program
     .command('assign <agent>')
     .description('Assign a story to an agent')
+    .helpGroup('Agent actions:')
     .argument('[story]', 'story number (shows picker if omitted)')
     .action((agent: string, story?: string) => {
         const dir = program.opts().dir;
@@ -58,6 +61,7 @@ program
 program
     .command('chat <agent>')
     .description('Interactive /btw chat session with an agent')
+    .helpGroup('Agent actions:')
     .action((agent: string) => {
         const dir = program.opts().dir;
         render(<ChatView agent={agent} dir={dir} />);
@@ -66,6 +70,7 @@ program
 program
     .command('chatllm [agent]')
     .description('Direct AI chat with the configured model for an agent')
+    .helpGroup('Agent actions:')
     .action((agent?: string) => {
         render(<DirectChatView agent={agent ?? 'frontend'} />);
     });
@@ -73,6 +78,7 @@ program
 program
     .command('approve <agent>')
     .description('Approve a pending workflow start')
+    .helpGroup('Agent actions:')
     .action((agent: string) => {
         const dir = program.opts().dir;
         render(<ApproveView agent={agent} dir={dir} />);
@@ -81,6 +87,7 @@ program
 program
     .command('status [agent]')
     .description('One-shot status dump (no live refresh)')
+    .helpGroup('Monitoring:')
     .action((agent?: string) => {
         const dir = program.opts().dir;
         render(<StatusView agent={agent} dir={dir} />);
@@ -89,6 +96,7 @@ program
 program
     .command('agents')
     .description('List all agents and their current state')
+    .helpGroup('Monitoring:')
     .action(() => {
         const dir = program.opts().dir;
         render(<AgentsView dir={dir} />);
@@ -97,6 +105,7 @@ program
 program
     .command('tasks [agent]')
     .description('View and manage tasks for an agent')
+    .helpGroup('Monitoring:')
     .action((agent?: string) => {
         const dir = program.opts().dir;
         render(<TasksView agent={agent ?? 'frontend'} dir={dir} />);
@@ -105,6 +114,7 @@ program
 program
     .command('create-story')
     .description('Create a new Agility story')
+    .helpGroup('Stories:')
     .action(() => {
         const dir = program.opts().dir;
         render(<CreateStoryView dir={dir} />);
