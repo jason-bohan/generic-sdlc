@@ -29,7 +29,7 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
         const body = await readBody(req);
         try {
             const parsed = JSON.parse(body);
-            const result = updateTokens(rootDir, { ...parsed, project: resolveProject(parsed.project) });
+            const result = updateTokens(rootDir, { ...parsed, project: resolveProject(parsed.project), team: parsed.team ?? null });
             if (!result.ok) { json(res, { error: result.error }, 400); return; }
             json(res, { ok: true, tokens: result.tokens });
         } catch (e: unknown) { json(res, { error: e instanceof Error ? e.message : String(e) }, 500); }
@@ -42,8 +42,8 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
         if (req.method !== 'POST') { json(res, { error: 'Method not allowed' }, 405); return; }
         const body = await readBody(req);
         try {
-            const { agentId, input, output, project } = JSON.parse(body);
-            const result = updateTokens(rootDir, { agentId: agentId || 'frontend', source: 'cloud', input: input || 0, output: output || 0, project: resolveProject(project) });
+            const { agentId, input, output, project, team } = JSON.parse(body);
+            const result = updateTokens(rootDir, { agentId: agentId || 'frontend', source: 'cloud', input: input || 0, output: output || 0, project: resolveProject(project), team: team ?? null });
             if (!result.ok) { json(res, { error: result.error }, 400); return; }
             json(res, { ok: true, tokens: result.tokens });
         } catch (e: unknown) { json(res, { error: e instanceof Error ? e.message : String(e) }, 500); }
