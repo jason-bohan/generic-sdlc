@@ -1,6 +1,7 @@
 import { json } from '../router';
 import { getLedger } from '../ledger';
 import type { TokenLedger } from '../ledger';
+import { fetchAllProviderUsage } from '../providerUsage';
 import type { UseFn } from './types';
 
 // Cloud pricing ($/1M tokens). Mirrors AgentCostBreakdown.tsx — only `cloud`
@@ -112,6 +113,18 @@ export function mount(use: UseFn, rootDir: string, _configFile: string): void {
             const team = url.searchParams.get('team');       // omit → all teams
             const summary = aggregateAiCost(getLedger(rootDir), { budgetUsd: resolveBudget(), project, team });
             json(res, summary);
+        } catch (e: unknown) {
+            json(res, { error: e instanceof Error ? e.message : String(e) }, 500);
+        }
+    });
+
+    // ── /api/analytics/providers ─────────────────────────────────────────────
+    // Authoritative, cross-machine spend pulled from vendor billing APIs
+    // (OpenRouter, Anthropic, OpenAI). Complements the ledger plane above, which
+    // only sees this install's agent usage.
+    use('/api/analytics/providers', async (_req, res) => {
+        try {
+            json(res, await fetchAllProviderUsage());
         } catch (e: unknown) {
             json(res, { error: e instanceof Error ? e.message : String(e) }, 500);
         }
