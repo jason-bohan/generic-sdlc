@@ -17,6 +17,7 @@ import { AgentDetailIdleHero } from './components/AgentDetailIdleHero';
 import { AgentDetailPullRequestsSection } from './components/AgentDetailPullRequestsSection';
 import { AiCostGaugePanel } from './components/AiCostGaugePanel';
 import { AiQaQualityPanel } from './components/AiQaQualityPanel';
+import { AiQaObservabilityPanel } from './components/AiQaObservabilityPanel';
 import { AgentDetailCypressColumn } from './components/AgentDetailCypressColumn';
 import { AgentTerminal } from './components/AgentTerminal';
 
@@ -79,6 +80,7 @@ export default function AgentDetail({ agent, displayName, agentDisplayNameOverri
                 <>
                     <AiCostGaugePanel accentColor={agent.accentColor} />
                     <AiQaQualityPanel accentColor={agent.accentColor} />
+                    <AiQaObservabilityPanel accentColor={agent.accentColor} />
                 </>
             )}
 

@@ -5,6 +5,7 @@ import { parseJsonUtf8File } from '../json-file';
 import { getActiveProject, getActiveProjectName } from '../project-config';
 import { json } from '../router';
 import { getDefaultStatus, normalizeStatus } from '../status-normalize';
+import { readTelemetry } from '../telemetry-reader';
 import type { UseFn } from './types';
 
 const AGENT_IDS = ['frontend', 'backend', 'qa', 'ux', 'reviewer', 'devops', 'aiqa'] as const;
@@ -77,20 +78,21 @@ const CONTROL_EVIDENCE_RE = /\b(test|tests|tested|vitest|cypress|playwright|reco
 const UNAPPROVED_PROVIDER_RE = /\b(openrouter|external model|unapproved provider|public model|non-approved|unauthorized model)\b/i;
 
 export function mount(use: UseFn, rootDir: string, configFile: string): void {
-    use('/api/aiqa/scorecard', (req, res) => {
+    use('/api/aiqa/scorecard', async (req, res) => {
         if (req.method !== 'GET') { res.statusCode = 405; res.end('Method not allowed'); return; }
-        json(res, buildAiQaScorecard(rootDir, configFile));
+        const scorecard = await buildAiQaScorecard(rootDir, configFile);
+        json(res, scorecard);
     });
 
-    use('/api/aiqa/sweep', (req, res) => {
+    use('/api/aiqa/sweep', async (req, res) => {
         if (req.method !== 'POST') { res.statusCode = 405; res.end('Method not allowed'); return; }
-        const scorecard = buildAiQaScorecard(rootDir, configFile);
+        const scorecard = await buildAiQaScorecard(rootDir, configFile);
         const written = writeAiQaTaskPills(rootDir, scorecard.findings);
         json(res, { ok: true, written, scorecard });
     });
 }
 
-function buildAiQaScorecard(rootDir: string, configFile: string) {
+async function buildAiQaScorecard(rootDir: string, configFile: string) {
     const generatedAt = new Date().toISOString();
     const statuses = new Map<string, Record<string, any>>();
     const findings: AiQaFinding[] = [];
@@ -120,6 +122,19 @@ function buildAiQaScorecard(rootDir: string, configFile: string) {
         } else if (total > 25_000) {
             findings.push(makeFinding('medium', agentId, 'Elevated token burn should be reviewed', `${agentId} has ${total.toLocaleString()} recorded tokens in the ledger.`, 'aiqa', 'tokens', generatedAt));
         }
+    }
+
+    const telemetry = await readTelemetry(configFile);
+    for (const anomaly of telemetry.anomalies) {
+        findings.push(makeFinding(
+            anomaly.severity === 'critical' ? 'high' : 'medium',
+            'aiqa',
+            `Telemetry anomaly: ${anomaly.title}`,
+            `${anomaly.description} (service: ${anomaly.service}, metric: ${anomaly.metric}, observed: ${anomaly.observedValue}, threshold: ${anomaly.threshold})`,
+            'aiqa',
+            'eval',
+            generatedAt,
+        ));
     }
 
     const deduped = dedupeFindings(findings);

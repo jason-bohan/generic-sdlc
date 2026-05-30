@@ -274,10 +274,62 @@ export const LUMON_THEME: ThemeDefinition = {
     },
 };
 
-export const THEMES: ThemeDefinition[] = [FAR_OUT_THEME, NICE_ADMIN_THEME, SIMPLE_THEME, ROCK_AND_ROLL_THEME, LUMON_THEME];
+export const KEYBANK_THEME: ThemeDefinition = {
+    id: 'keybank',
+    name: 'KeyBank',
+    bgPrimary: '#F4F4F6',
+    bgSecondary: '#FFFFFF',
+    bgCard: '#FFFFFF',
+    bgCardHover: '#F8F8FA',
+    border: '#D4D4D8',
+    textPrimary: '#1C1C1E',
+    textSecondary: '#48484A',
+    textTertiary: '#6E6E72',
+    accent: '#CC0000',
+    accentDim: 'rgba(204, 0, 0, 0.10)',
+    success: '#003366',
+    warning: '#CC6600',
+    error: '#CC0000',
+    info: '#003366',
+    fontMono: "'IBM Plex Mono', 'Courier New', monospace",
+    fontSans: "'IBM Plex Sans', 'Helvetica Neue', system-ui, sans-serif",
+    teakwood: '#003366',
+    seaTurtle: '#CC0000',
+    autumnCream: '#F4F4F6',
+    mikado: '#1C1C1E',
+    sisal: '#D4D4D8',
+    paleGold: '#6E6E72',
+    floor: '#CC0000',
+    floorAccent: '#003366',
+    floorGrout: '#1C1C1E',
+    scene: {
+        bg: '#1A1A20',
+        wall: '#FFFFFF',
+        wallAccent: '#CC0000',
+        wallTrim: '#003366',
+        wallBase: '#F4F4F6',
+        ambientLight: '#FFE0E0',
+        pointLight: '#FFD0D0',
+        floorBase: '#F4F4F6',
+        deskSurface: '#FFFFFF',
+        mainframeCabinet: '#CC0000',
+        mainframeTrim: '#003366',
+        mainframeGlow: '#CC0000',
+        consoleSurface: '#FFFFFF',
+        consoleBase: '#F4F4F6',
+    },
+};
+
+export const THEMES: ThemeDefinition[] = [FAR_OUT_THEME, NICE_ADMIN_THEME, SIMPLE_THEME, ROCK_AND_ROLL_THEME, LUMON_THEME, KEYBANK_THEME];
 
 /** Default dashboard palette when none is saved (Simple Floor 2D view). */
 export const DEFAULT_THEME_ID = SIMPLE_THEME.id;
+
+/** Map each demo mode to a recommended theme ID. */
+export const DEMO_MODE_THEME_MAP: Record<string, string> = {
+    standard: SIMPLE_THEME.id,
+    financial: KEYBANK_THEME.id,
+};
 
 const VAR_MAP: Record<keyof Omit<ThemeDefinition, 'id' | 'name' | 'scene'>, string> = {
     bgPrimary: '--bg-primary',

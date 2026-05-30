@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { fetchAiQaScorecard, postAiQaSweep } from '../api';
+import { useDemoMode } from '../DemoModeProvider';
 
 type Severity = 'high' | 'medium' | 'low';
 type EvalStatus = 'pass' | 'warn' | 'fail';
@@ -92,6 +93,10 @@ function evalColor(status: EvalStatus): string {
 }
 
 export function AiQaQualityPanel({ accentColor }: { accentColor: string }) {
+    const { mode } = useDemoMode();
+    const isFinancial = mode === 'financial';
+    const effectiveAccent = isFinancial ? '#CC0000' : accentColor;
+
     const [data, setData] = useState<AiQaScorecard | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -136,7 +141,7 @@ export function AiQaQualityPanel({ accentColor }: { accentColor: string }) {
         <section
             data-testid="aiqa-quality-panel"
             style={{
-                border: `1px solid ${accentColor}40`,
+                border: `1px solid ${effectiveAccent}40`,
                 borderRadius: 8,
                 padding: 16,
                 margin: '12px 0',
@@ -144,15 +149,23 @@ export function AiQaQualityPanel({ accentColor }: { accentColor: string }) {
                 display: 'flex',
                 flexDirection: 'column',
                 gap: 14,
+                ...(isFinancial ? { borderTop: `3px solid #CC0000` } : {}),
             }}
         >
             <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
                 <div>
-                    <h3 style={{ margin: 0, fontSize: 14, color: 'var(--text-primary)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: 0 }}>
-                        AI Workforce Quality
-                    </h3>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                        <h3 style={{ margin: 0, fontSize: 14, color: 'var(--text-primary)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: 0 }}>
+                            AI Workforce Quality
+                        </h3>
+                        {isFinancial && (
+                            <span style={styles.fdicBadge}>FDIC-Insured</span>
+                        )}
+                    </div>
                     <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--text-tertiary)' }}>
-                        Agent telemetry, eval checks, and actionable findings.
+                        {isFinancial
+                            ? 'Agent telemetry, financial controls, and compliance oversight.'
+                            : 'Agent telemetry, eval checks, and actionable findings.'}
                     </p>
                 </div>
                 <div style={styles.actionRow}>
@@ -161,9 +174,9 @@ export function AiQaQualityPanel({ accentColor }: { accentColor: string }) {
                         onClick={runSweep}
                         disabled={sweeping}
                         style={{
-                            border: `1px solid ${accentColor}`,
-                            background: `${accentColor}1a`,
-                            color: accentColor,
+                            border: `1px solid ${effectiveAccent}`,
+                            background: `${effectiveAccent}1a`,
+                            color: effectiveAccent,
                             borderRadius: 6,
                             padding: '8px 12px',
                             cursor: sweeping ? 'wait' : 'pointer',
@@ -222,8 +235,8 @@ export function AiQaQualityPanel({ accentColor }: { accentColor: string }) {
                     </div>
 
                     {data.financial && (
-                        <div style={styles.financialPanel} data-testid="aiqa-financial-controls">
-                            <div style={styles.sectionTitle}>Financial Controls</div>
+                        <div style={{ ...styles.financialPanel, ...(isFinancial ? { borderLeft: `3px solid #CC0000`, paddingLeft: 12 } : {}) }} data-testid="aiqa-financial-controls">
+                            <div style={{ ...styles.sectionTitle, ...(isFinancial ? { color: '#CC0000' } : {}) }}>Financial Controls</div>
                             <div style={styles.targetRepo}>
                                 Target: {data.financial.targetRepo?.project ?? 'default'}
                                 {data.financial.targetRepo?.workspacePath ? ` | ${data.financial.targetRepo.scannedFiles} files scanned` : ''}
@@ -294,6 +307,18 @@ function Metric({ label, value, tone = 'var(--text-primary)' }: { label: string;
 
 const styles: Record<string, React.CSSProperties> = {
     muted: { margin: 0, fontSize: 12, color: 'var(--text-tertiary)' },
+    fdicBadge: {
+        fontSize: 9,
+        fontWeight: 800,
+        fontFamily: 'var(--font-mono)',
+        color: '#FFFFFF',
+        background: '#003366',
+        padding: '3px 8px',
+        borderRadius: 4,
+        letterSpacing: 0.5,
+        textTransform: 'uppercase' as const,
+        lineHeight: 1.3,
+    },
     actionRow: { display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 8 },
     metricsGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8 },
     metric: { border: '1px solid var(--border)', borderRadius: 6, padding: 10, background: 'var(--bg-secondary)', display: 'flex', flexDirection: 'column', gap: 2 },

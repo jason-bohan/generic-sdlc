@@ -3,6 +3,7 @@ import { useTheme } from './ThemeProvider';
 import type { ThemeDefinition } from './themes';
 import { useFocusTrap } from './hooks/useFocusTrap';
 import { AGENT_RESET_CONFIRM_PHRASE } from '../shared/agentResetConfirm';
+import { DemoModeSelector } from './DemoModeSelector';
 
 interface Props {
     open: boolean;
@@ -99,6 +100,11 @@ export function SettingsPanel({ open, onClose, onRefreshAgents }: Props) {
                 </div>
 
                 <div style={styles.section}>
+                    <span style={styles.sectionLabel}>Demo Mode</span>
+                    <DemoModeSelector />
+                </div>
+
+                <div style={{ ...styles.section, marginTop: 20 }}>
                     <span style={styles.sectionLabel}>Theme</span>
                     <div style={styles.themeGrid}>
                         {themes.map(theme => (

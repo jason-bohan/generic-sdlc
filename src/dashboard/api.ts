@@ -148,3 +148,15 @@ export function postPlanningTasksSync(agentId: string, storyNumber: string) {
         body: JSON.stringify({ agentId, storyNumber }),
     });
 }
+
+export function fetchDemoMode() {
+    return fetch('/api/demo-mode');
+}
+
+export function putDemoMode(mode: string) {
+    return fetch('/api/demo-mode', {
+        method: 'PUT',
+        headers: JSON_HEADERS,
+        body: JSON.stringify({ mode }),
+    });
+}
