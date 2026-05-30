@@ -1,7 +1,7 @@
 import type { SdlcAgentId, SdlcPhaseId } from '../shared/sdlcContracts';
 import { normalizeReviewerWorkCardPrs } from './reviewer-work-card';
 
-export const SDLC_AGENT_IDS = new Set(['frontend', 'backend', 'qa', 'ux', 'reviewer', 'devops', 'orchestrator']);
+export const SDLC_AGENT_IDS = new Set(['frontend', 'backend', 'qa', 'ux', 'reviewer', 'devops', 'orchestrator', 'aiqa']);
 export const SDLC_PHASE_IDS = new Set([
     'story-intake', 'pre-planning', 'reading-story', 'analyzing', 'generating-code',
     'validating', 'creating-pr', 'watching-reviews', 'addressing-feedback',

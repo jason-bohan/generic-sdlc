@@ -10,6 +10,7 @@ export const AGENT_DISPLAY_NAME_DEFAULTS: Readonly<Record<string, string>> = {
     ux: 'Prism',
     reviewer: 'Brehon',
     devops: 'Cairde',
+    aiqa: 'AI Quality Engineer',
 };
 
 export function defaultAgentDisplayName(agentId: string): string {

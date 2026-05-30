@@ -67,4 +67,14 @@ describe('SDLC phase contracts', () => {
         expect(isAllowedSdlcTransition('qa', 'running-cypress', 'addressing-feedback')).toBe(true);
         expect(isAllowedSdlcTransition('ux', 'designing', 'spec-ready')).toBe(true);
     });
+
+    it('registers the aiqa (AI Quality Engineer) workflow that validates without generating code', () => {
+        const graph = SDLC_WORKFLOW_GRAPHS.aiqa;
+        expect(graph.start).toBe('reading-story');
+        expect(graph.phases).not.toContain('generating-code'); // reviews/validates, never authors app code
+        expect(isAllowedSdlcTransition('aiqa', 'analyzing', 'validating')).toBe(true);
+        expect(isAllowedSdlcTransition('aiqa', 'validating', 'complete')).toBe(true);
+        // aiqa is an owner of the validating phase
+        expect(getSdlcPhaseContract('validating').ownerAgents).toContain('aiqa');
+    });
 });

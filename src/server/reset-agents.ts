@@ -31,7 +31,7 @@ export function resetAllAgentsToIdle(baseDir: string): AgentIdleResetResult {
     const configPath = resolve(baseDir, '.sdlc-framework.config.json');
     const worktreeRoots = resolveWorktreeRepoRoots(baseDir, configPath);
     const storyNums = new Set<string>();
-    for (const agentId of ['frontend', 'backend', 'qa', 'ux', 'reviewer', 'devops', 'orchestrator']) {
+    for (const agentId of ['frontend', 'backend', 'qa', 'ux', 'reviewer', 'devops', 'orchestrator', 'aiqa']) {
         const n = storyNumberFromAgentStatusFile(baseDir, agentId);
         if (n) storyNums.add(n);
     }

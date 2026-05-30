@@ -58,7 +58,7 @@ export function onChatMessage(agentId: string, handler: (ev: ChatMessageEvent) =
 
 // ── File watcher (subprocess agents write status files directly) ──────────────
 
-const AGENT_IDS = ['frontend', 'backend', 'qa', 'ux', 'reviewer', 'devops'];
+const AGENT_IDS = ['frontend', 'backend', 'qa', 'ux', 'reviewer', 'devops', 'aiqa'];
 const DEBOUNCE_MS = 150;
 const debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
 let watchedDir: string | null = null;

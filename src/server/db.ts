@@ -22,7 +22,7 @@ import { emitChatMessage } from './status-events';
 
 // ─── Canonical agent IDs ──────────────────────────────────────────────────────
 
-const CANONICAL_AGENT_IDS = new Set(['frontend', 'backend', 'qa', 'ux', 'reviewer', 'devops', 'orchestrator']);
+const CANONICAL_AGENT_IDS = new Set(['frontend', 'backend', 'qa', 'ux', 'reviewer', 'devops', 'orchestrator', 'aiqa']);
 
 /** Map display names back to canonical IDs so stale callers don't pollute the DB. */
 const DISPLAY_TO_CANONICAL: Record<string, string> = {

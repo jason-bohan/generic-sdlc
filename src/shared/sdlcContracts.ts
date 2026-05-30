@@ -1,4 +1,4 @@
-﻿export type SdlcAgentId = 'frontend' | 'backend' | 'qa' | 'ux' | 'reviewer' | 'devops' | 'orchestrator';
+﻿export type SdlcAgentId = 'frontend' | 'backend' | 'qa' | 'ux' | 'reviewer' | 'devops' | 'orchestrator' | 'aiqa';
 
 export type SdlcPhaseId =
     | 'story-intake'
@@ -94,7 +94,7 @@ export const SDLC_PHASE_CONTRACTS: Readonly<Record<SdlcPhaseId, SdlcPhaseContrac
     },
     'reading-story': {
         id: 'reading-story',
-        ownerAgents: ['frontend', 'backend', 'qa', 'ux'],
+        ownerAgents: ['frontend', 'backend', 'qa', 'ux', 'aiqa'],
         purpose: 'Read the story, create/refine tasks, and produce the implementation plan.',
         requires: ['story', 'classification', 'affectedRepo'],
         produces: ['tasks', 'taskIds', 'branchPlan', 'testMatrix', 'risks', 'openQuestions', 'auditEvent'],
@@ -103,7 +103,7 @@ export const SDLC_PHASE_CONTRACTS: Readonly<Record<SdlcPhaseId, SdlcPhaseContrac
     },
     analyzing: {
         id: 'analyzing',
-        ownerAgents: ['frontend', 'backend', 'devops'],
+        ownerAgents: ['frontend', 'backend', 'devops', 'aiqa'],
         purpose: 'Analyze affected code, existing patterns, environment constraints, and implementation shape.',
         requires: ['story', 'tasks', 'affectedRepo', 'branchPlan'],
         produces: ['codeChanges', 'risks', 'auditEvent'],
@@ -130,7 +130,7 @@ export const SDLC_PHASE_CONTRACTS: Readonly<Record<SdlcPhaseId, SdlcPhaseContrac
     },
     validating: {
         id: 'validating',
-        ownerAgents: ['frontend', 'backend', 'devops'],
+        ownerAgents: ['frontend', 'backend', 'devops', 'aiqa'],
         purpose: 'Run local validation before PR creation or after feedback/build failure.',
         requires: ['codeChanges', 'testMatrix'],
         produces: ['validationResults', 'staticAnalysis', 'testResults', 'risks', 'auditEvent'],
@@ -157,7 +157,7 @@ export const SDLC_PHASE_CONTRACTS: Readonly<Record<SdlcPhaseId, SdlcPhaseContrac
     },
     'addressing-feedback': {
         id: 'addressing-feedback',
-        ownerAgents: ['frontend', 'backend', 'ux'],
+        ownerAgents: ['frontend', 'backend', 'ux', 'aiqa'],
         purpose: 'Resolve reviewer, design, QA, or build feedback.',
         requires: ['reviewThreads'],
         produces: ['codeChanges', 'validationResults', 'auditEvent'],
@@ -283,7 +283,7 @@ export const SDLC_PHASE_CONTRACTS: Readonly<Record<SdlcPhaseId, SdlcPhaseContrac
     },
     complete: {
         id: 'complete',
-        ownerAgents: ['frontend', 'backend', 'qa', 'ux', 'reviewer', 'devops', 'orchestrator'],
+        ownerAgents: ['frontend', 'backend', 'qa', 'ux', 'reviewer', 'devops', 'orchestrator', 'aiqa'],
         purpose: 'Record story/workflow completion and close the loop.',
         requires: ['auditEvent'],
         produces: ['auditEvent'],
@@ -292,7 +292,7 @@ export const SDLC_PHASE_CONTRACTS: Readonly<Record<SdlcPhaseId, SdlcPhaseContrac
     },
     error: {
         id: 'error',
-        ownerAgents: ['frontend', 'backend', 'qa', 'ux', 'reviewer', 'devops', 'orchestrator'],
+        ownerAgents: ['frontend', 'backend', 'qa', 'ux', 'reviewer', 'devops', 'orchestrator', 'aiqa'],
         purpose: 'Pause workflow because a contract, tool, test, or external dependency failed.',
         requires: ['risks'],
         produces: ['auditEvent'],
@@ -395,6 +395,20 @@ export const SDLC_WORKFLOW_GRAPHS: Readonly<Record<SdlcAgentId, SdlcWorkflowGrap
             'changes-requested': ['complete'],
             complete: [],
             error: ['reviewing'],
+        },
+    },
+    aiqa: {
+        agentId: 'aiqa',
+        start: 'reading-story',
+        terminal: ['complete', 'error'],
+        phases: ['reading-story', 'analyzing', 'validating', 'addressing-feedback', 'complete', 'error'],
+        transitions: {
+            'reading-story': ['analyzing', 'error'],
+            analyzing: ['validating', 'error'],
+            validating: ['addressing-feedback', 'complete', 'error'],
+            'addressing-feedback': ['validating', 'error'],
+            complete: [],
+            error: ['reading-story', 'analyzing', 'validating'],
         },
     },
     devops: {
