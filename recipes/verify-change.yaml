@@ -1,0 +1,87 @@
+version: "1.0.0"
+title: "Verify a Code Change by Running the App"
+description: >
+  Verify that a change actually works by building the app, running it, driving
+  the real surface (CLI / HTTP / UI), and capturing what happens — not by running
+  tests or typechecking. Mirrors the Claude Code `/verify` skill so framework
+  agents on the `goose` driver get the same evidence-based verdict on any model,
+  without needing the claude-code driver (Claude tokens).
+
+extensions:
+  - type: builtin
+    name: developer
+    bundled: true
+    description: "Built-in developer tools: shell + text editor for build/launch/drive"
+
+parameters:
+  - key: scope
+    input_type: string
+    requirement: required
+    description: "What to verify — a diff range (e.g. 'main..HEAD'), a PR number, or a plain-English description of the change."
+  - key: workspaceDir
+    input_type: string
+    requirement: optional
+    default: "."
+    description: "Absolute path to the target codebase."
+  - key: launch
+    input_type: string
+    requirement: optional
+    default: ""
+    description: "Known build/launch command for the app, if any (e.g. 'npm run server'). Leave blank to have the agent infer it from README/package.json."
+
+prompt: |
+  Verify the change described by: "{{ scope }}".
+  Work in "{{ workspaceDir }}".
+  {% if launch %}Launch the app with: {{ launch }}{% endif %}
+  Follow the instructions below exactly. Runtime observation is the only evidence that counts.
+
+instructions: |
+  You verify a change by RUNNING THE APP and observing it. Tests and typechecks are
+  NOT verification — do not run them, not even as a warm-up. Be concise; act, don't narrate.
+
+  ## 1 — Find the change
+  Establish the exact scope in "{{ workspaceDir }}":
+  - Diff range → `git diff <range> --stat` then read the hunks.
+  - PR number → `gh pr diff <n>`.
+  - Uncommitted → `git diff HEAD --stat`.
+  Read the diff. Any description is a claim ABOUT the diff — if they disagree, that's a finding.
+  If there is no runtime surface at all (docs-only, types-only, tests-only) → report **SKIP** with one line and stop.
+
+  ## 2 — Identify the surface
+  The surface is where a user (human or programmatic) meets the change:
+  CLI → the terminal command; server/API → the socket (a request); GUI → the rendered pixels;
+  library → the public export. An internal function is NOT a surface — follow its callers out to one of these.
+
+  ## 3 — Get a handle (build + launch)
+  Build and launch the app{% if launch %} using `{{ launch }}`{% else %} (infer the command from README / package.json / Makefile){% endif %}.
+  Isolate shared state: bind a free port, use a temp workspace/DB, never collide with a running instance.
+  If you cannot get it running in ~15 min, report **BLOCKED** with exactly where it stopped.
+
+  ## 4 — Drive it
+  Take the smallest path that makes the CHANGED code execute, through the real interface:
+  changed a flag → run with it; changed a handler → hit that route; changed error handling → trigger the error.
+  Capture the app's own output at each step (stdout, response body, screenshot).
+
+  ## 5 — Probe (at least one)
+  Push just past the happy path at the same surface: empty/duplicate/conflicting input, wrong method,
+  malformed body, do-it-twice, stale state. A probe that finds nothing is still evidence — record it.
+
+  ## 6 — Report
+  Output ONLY this block (no extra prose):
+
+  ```
+  ## Verification: <one line: what changed>
+  Verdict: PASS | FAIL | BLOCKED | SKIP
+  Claim: <your read of the diff + any mismatch with its description>
+  Method: <how you built/launched and what surface you drove>
+  Steps:
+    1. <action on the running app> -> <observed output / evidence>
+    ...
+    (mark probes with [probe]; include at least one)
+  Findings: <bugs, friction, surprises — anything you'd mention if the author were next to you; "none" is allowed>
+  ```
+
+  Verdict rules: PASS = you ran it and it did what it should at its surface (NOT "tests pass").
+  FAIL = you ran it and it didn't, or it broke something adjacent, or claim and diff disagree.
+  BLOCKED = couldn't reach an observable state (build/env). SKIP = no runtime surface.
+  No partial pass — "3 of 4" is FAIL until the 4th passes or is explained. When in doubt, FAIL.
