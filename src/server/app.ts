@@ -30,6 +30,7 @@ import { mount as mountFinetune } from './routes/finetune';
 import { mount as mountOpenRouter } from './routes/openrouter';
 import { mount as mountMlx } from './routes/mlx';
 import { mount as mountWebhooks } from './routes/webhooks';
+import { mount as mountAiQa } from './routes/aiqa';
 
 export function createApp(rootDir: string): http.RequestListener {
     const configFile = resolve(rootDir, '.sdlc-framework.config.json');
@@ -58,6 +59,7 @@ export function createApp(rootDir: string): http.RequestListener {
     mountOpenRouter(use);
     mountMlx(use, rootDir, configFile);
     mountWebhooks(use, rootDir, configFile);
+    mountAiQa(use, rootDir, configFile);
 
     return dispatch;
 }
