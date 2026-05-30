@@ -7,6 +7,8 @@ import {
     buildCursorSpawnSpec,
     buildGenericSpawnSpec,
     buildGooseSpawnSpec,
+    buildGooseRecipeSpawnSpec,
+    buildGooseVerifySpawnSpec,
     buildOpenCodeSpawnSpec,
     buildSpawnSpec,
     findAiderCli,
@@ -269,6 +271,79 @@ describe('buildGooseSpawnSpec', () => {
         if ('error' in spec) {
             expect(spec.error).toContain('Goose CLI');
         }
+    });
+});
+
+// ─── Goose recipe driver (verify-change wiring) ───────────────────────────────
+
+describe('buildGooseRecipeSpawnSpec / buildGooseVerifySpawnSpec', () => {
+    let originalHome: string | undefined;
+    let originalUserProfile: string | undefined;
+
+    // Plant a fake goose under a temp HOME so findGooseCli resolves deterministically,
+    // independent of whether goose is actually installed on the test machine.
+    function plantFakeGoose(): string {
+        const binDir = resolve(TMP, 'home', '.local', 'bin');
+        mkdirSync(binDir, { recursive: true });
+        const goosePath = resolve(binDir, isWin ? 'goose.exe' : 'goose');
+        writeFileSync(goosePath, isWin ? '@echo off\r\n' : '#!/usr/bin/env sh\n');
+        if (!isWin) chmodSync(goosePath, 0o755);
+        return goosePath;
+    }
+
+    beforeEach(() => {
+        originalHome = process.env.HOME;
+        originalUserProfile = process.env.USERPROFILE;
+        const home = resolve(TMP, 'home');
+        process.env.HOME = home;
+        process.env.USERPROFILE = home;
+    });
+
+    afterEach(() => {
+        process.env.HOME = originalHome;
+        process.env.USERPROFILE = originalUserProfile;
+    });
+
+    it('errors when the recipe file is missing', () => {
+        plantFakeGoose();
+        const spec = buildGooseRecipeSpawnSpec(resolve(TMP, 'recipes', 'nope.yaml'), { scope: 'x' }, TMP);
+        expect('error' in spec).toBe(true);
+        if ('error' in spec) expect(spec.error).toContain('recipe not found');
+    });
+
+    it('builds a goose run --recipe with --params for the verify recipe', () => {
+        const goosePath = plantFakeGoose();
+        const recipeDir = resolve(TMP, 'recipes');
+        mkdirSync(recipeDir, { recursive: true });
+        writeFileSync(resolve(recipeDir, 'verify-change.yaml'), 'version: "1.0.0"\n');
+
+        const spec = buildGooseVerifySpawnSpec('main..HEAD', TMP);
+        expect('error' in spec).toBe(false);
+        if ('error' in spec) return;
+
+        expect(spec.cmd).toBe(goosePath);
+        expect(spec.args.slice(0, 3)).toEqual(['run', '--recipe', resolve(recipeDir, 'verify-change.yaml')]);
+        // scope + workspaceDir passed as --params; launch omitted when undefined.
+        const joined = spec.args.join(' ');
+        expect(joined).toContain('--params scope=main..HEAD');
+        expect(joined).toContain(`--params workspaceDir=${TMP}`);
+        expect(joined).not.toContain('launch=');
+        expect(spec.args).toContain('--with-builtin');
+    });
+
+    it('includes the launch param only when provided, and skips empty values', () => {
+        plantFakeGoose();
+        const recipeDir = resolve(TMP, 'recipes');
+        mkdirSync(recipeDir, { recursive: true });
+        writeFileSync(resolve(recipeDir, 'verify-change.yaml'), 'version: "1.0.0"\n');
+
+        const withLaunch = buildGooseVerifySpawnSpec('x', TMP, 'npm run server');
+        if ('error' in withLaunch) throw new Error(withLaunch.error);
+        expect(withLaunch.args.join(' ')).toContain('--params launch=npm run server');
+
+        const emptyParam = buildGooseRecipeSpawnSpec(resolve(recipeDir, 'verify-change.yaml'), { scope: 'x', launch: '' }, TMP);
+        if ('error' in emptyParam) throw new Error(emptyParam.error);
+        expect(emptyParam.args.join(' ')).not.toContain('launch=');
     });
 });
 

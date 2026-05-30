@@ -276,7 +276,19 @@ export function buildClaudeCodeSpawnSpec(
 // ─── Goose ───────────────────────────────────────────────────────────────────
 
 function findGooseCli(): string {
-    return resolve(process.env.USERPROFILE || '', '.local', 'bin', 'goose.exe');
+    const home = process.env.USERPROFILE || process.env.HOME || '';
+    const bin = process.platform === 'win32' ? 'goose.exe' : 'goose';
+    return resolve(home, '.local', 'bin', bin);
+}
+
+function gooseNotFound(): { error: string } {
+    return {
+        error: 'Goose CLI not found at ~/.local/bin/goose. ' +
+            'Install from https://block.github.io/goose/ or set scheduler.driver to another option.' };
+}
+
+function gooseEnv(): Record<string, string> {
+    return { OLLAMA_HOST: process.env.OLLAMA_HOST || 'http://localhost:11434' };
 }
 
 export function buildGooseSpawnSpec(
@@ -284,15 +296,54 @@ export function buildGooseSpawnSpec(
     workspaceDir: string,
 ): DriverSpawnSpec | { error: string } {
     const gooseExe = findGooseCli();
-    if (!existsSync(gooseExe)) {
-        return {
-            error: 'Goose CLI not found at ~/.local/bin/goose.exe. ' +
-                'Install from https://block.github.io/goose/ or set scheduler.driver to another option.' };
-    }
+    if (!existsSync(gooseExe)) return gooseNotFound();
     return {
         cmd: gooseExe,
         args: ['run', '--text', prompt, '--with-builtin', 'developer', '--no-session', '--max-turns', '20'],
-        env: { OLLAMA_HOST: process.env.OLLAMA_HOST || 'http://localhost:11434' } };
+        env: gooseEnv() };
+}
+
+/**
+ * Run a Goose recipe (recipes/<name>.yaml) through the goose driver, passing
+ * `--params key=value` for each entry. Empty/undefined values are skipped.
+ * Mirrors the create-story recipe invocation in modes.ts.
+ */
+export function buildGooseRecipeSpawnSpec(
+    recipePath: string,
+    params: Record<string, string | undefined>,
+    workspaceDir: string,
+    maxTurns = 25,
+): DriverSpawnSpec | { error: string } {
+    const gooseExe = findGooseCli();
+    if (!existsSync(gooseExe)) return gooseNotFound();
+    if (!existsSync(recipePath)) return { error: `Goose recipe not found: ${recipePath}` };
+
+    const paramArgs: string[] = [];
+    for (const [key, value] of Object.entries(params)) {
+        if (value !== undefined && value !== '') paramArgs.push('--params', `${key}=${value}`);
+    }
+    return {
+        cmd: gooseExe,
+        args: [
+            'run', '--recipe', recipePath,
+            ...paramArgs,
+            '--with-builtin', 'developer',
+            '--no-session', '--max-turns', String(maxTurns),
+        ],
+        env: gooseEnv() };
+}
+
+/**
+ * Wire the verify-change recipe into the goose driver: build a goose run that
+ * executes recipes/verify-change.yaml to verify `scope` by running the app.
+ */
+export function buildGooseVerifySpawnSpec(
+    scope: string,
+    workspaceDir: string,
+    launch?: string,
+): DriverSpawnSpec | { error: string } {
+    const recipePath = resolve(workspaceDir, 'recipes', 'verify-change.yaml');
+    return buildGooseRecipeSpawnSpec(recipePath, { scope, workspaceDir, launch }, workspaceDir);
 }
 
 // ─── Aider ───────────────────────────────────────────────────────────────────
