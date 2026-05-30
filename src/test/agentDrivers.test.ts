@@ -224,14 +224,39 @@ describe('buildClaudeCodeSpawnSpec', () => {
         expect(content).not.toContain('-Model');
     });
 
-    it.skipIf(isWin)('requires Windows when run-agent-claude.ps1 exists on Linux', () => {
+    it.skipIf(isWin)('uses the bash launcher on macOS/Linux when run-agent-claude.sh exists', () => {
         const binDir = resolve(TMP, 'bin');
         mkdirSync(binDir, { recursive: true });
-        writeFileSync(resolve(binDir, 'run-agent-claude.ps1'), '# stub');
+        writeFileSync(resolve(binDir, 'run-agent-claude.sh'), '#!/usr/bin/env bash\n');
 
         const spec = buildClaudeCodeSpawnSpec('frontend', TMP, PROMPT_FILE, 'claude-sonnet-4-6', OUTPUT);
+        expect('error' in spec).toBe(false);
+        if ('error' in spec) return;
+
+        expect(spec.cmd).toBe('/bin/bash');
+        expect(spec.ignoreStdio).toBe(true);
+        expect(spec.args[0]).toMatch(/run-agent-claude\.sh$/);
+        // positional contract: <script> <agentId> <promptFile> <workspaceDir> <model>
+        expect(spec.args).toEqual([
+            resolve(binDir, 'run-agent-claude.sh'), 'frontend', PROMPT_FILE, TMP, 'claude-sonnet-4-6',
+        ]);
+    });
+
+    it.skipIf(isWin)('passes model "auto" through to the bash launcher', () => {
+        const binDir = resolve(TMP, 'bin');
+        mkdirSync(binDir, { recursive: true });
+        writeFileSync(resolve(binDir, 'run-agent-claude.sh'), '#!/usr/bin/env bash\n');
+
+        const spec = buildClaudeCodeSpawnSpec('frontend', TMP, PROMPT_FILE, 'auto', OUTPUT);
+        expect('error' in spec).toBe(false);
+        if ('error' in spec) return;
+        expect(spec.args[spec.args.length - 1]).toBe('auto');
+    });
+
+    it.skipIf(isWin)('errors when run-agent-claude.sh is missing on macOS/Linux', () => {
+        const spec = buildClaudeCodeSpawnSpec('frontend', TMP, PROMPT_FILE, 'claude-sonnet-4-6', OUTPUT);
         expect('error' in spec).toBe(true);
-        if ('error' in spec) expect(spec.error).toContain('Windows');
+        if ('error' in spec) expect(spec.error).toContain('run-agent-claude.sh');
     });
 });
 
@@ -541,9 +566,11 @@ describe('buildSpawnSpec', () => {
     it('routes claude-code driver through claude spec', () => {
         const cfg: AgentDriverConfig = { type: 'claude-code' };
         const spec = buildSpawnSpec(cfg, 'frontend', 'do work', TMP, PROMPT_FILE, undefined, OUTPUT);
+        // No launcher script in TMP/bin, so the claude path errors referencing the
+        // platform's launcher (.ps1 on Windows, .sh on macOS/Linux).
         expect('error' in spec).toBe(true);
         if ('error' in spec) {
-            expect(isWin ? spec.error.includes('run-agent-claude.ps1') : spec.error.includes('Windows')).toBe(true);
+            expect(spec.error.includes(isWin ? 'run-agent-claude.ps1' : 'run-agent-claude.sh')).toBe(true);
         }
     });
 
