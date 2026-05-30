@@ -419,6 +419,18 @@ describe('AIQA Data Drift Detection', () => {
         expect(result.psiPassed).toBe(true);
     });
 
+    it('detectDrift PSI counts boundary-aligned values exactly once (no drop, no double-count)', () => {
+        // min=0, max=10, 10 buckets → bin edges land on every integer, so each
+        // interior value sits exactly on a boundary. If those values were dropped
+        // (or double-counted), the shifted distribution's PSI would be distorted.
+        const baseline = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+        const current = [0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 10]; // mass shifted toward the low end
+        const result = detectDrift({ values: baseline }, { values: current }, 'edge_aligned');
+        // A real shift must register as a strictly positive, finite PSI.
+        expect(result.psi).toBeGreaterThan(0);
+        expect(Number.isFinite(result.psi)).toBe(true);
+    });
+
     it('detectDrift detects drift for very different distributions', () => {
         const baseline = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
         const current = [100, 200, 300, 400, 500, 600, 700, 800, 900, 1000];

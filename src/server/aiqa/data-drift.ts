@@ -75,9 +75,10 @@ function calcPsi(expected: number[], actual: number[], buckets = 10): number {
   for (let i = 0; i < buckets; i++) {
     const lo = min + i * binSize;
     const hi = lo + binSize;
-    // Half-open bins [lo, hi) so boundary values aren't double-counted; the first
-    // bucket includes `min` (lo === min) and the last bucket includes `max` (v <= hi).
-    const inBin = (v: number) => (i === 0 ? v >= lo : v > lo) && (i === buckets - 1 ? v <= hi : v < hi);
+    // Half-open bins [lo, hi): lower bound inclusive for every bucket, upper bound
+    // exclusive — except the last bucket, which includes `max` (v <= hi). This counts
+    // each value exactly once (no double-counting on boundaries, none dropped either).
+    const inBin = (v: number) => v >= lo && (i === buckets - 1 ? v <= hi : v < hi);
     const expCount = expected.filter(inBin).length;
     const actCount = actual.filter(inBin).length;
     const expPct = (expCount + 0.5) / (expected.length + 0.5 * buckets);
