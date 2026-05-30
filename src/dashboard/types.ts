@@ -175,7 +175,7 @@ export function devopsWrapUpAttentionCount(status: AgentStatus | null | undefine
 /** @deprecated Use AgentStatus instead */
 export type LasairStatus = AgentStatus;
 
-export type AgentRole = 'frontend' | 'backend' | 'qa' | 'ux' | 'devops' | 'reviewer';
+export type AgentRole = 'frontend' | 'backend' | 'qa' | 'ux' | 'devops' | 'reviewer' | 'aiqa';
 
 export interface AgentProfile {
     id: string;
@@ -280,6 +280,17 @@ export const AGENT_ROSTER: AgentProfile[] = [
         active: true,
         avatar: 'O',
     },
+    {
+        id: 'aiqa',
+        name: defaultAgentDisplayName('aiqa'),
+        shortName: defaultAgentDisplayName('aiqa'),
+        role: 'aiqa',
+        title: 'AI Quality Engineer',
+        accentColor: '#14b8a6',
+        statusFile: '.aiqa-status.json',
+        active: true,
+        avatar: 'AI',
+    },
 ];
 
 export type PullRequestWithAgentName = PullRequest & { agentName: string };
@@ -333,6 +344,7 @@ export const ROLE_LABELS: Record<AgentRole, string> = {
     ux: 'UX Design',
     devops: 'DevOps',
     reviewer: 'Code Review',
+    aiqa: 'AI Quality',
 };
 
 export type OrgNodeKind = 'lead' | 'agent' | 'delegate' | 'contractor';

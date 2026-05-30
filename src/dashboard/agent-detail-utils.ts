@@ -169,4 +169,8 @@ export const ROLE_DESCRIPTIONS: Record<AgentRole, { summary: string; capabilitie
         summary: 'Code reviewer that analyzes PRs, leaves feedback, and approves or requests changes.',
         capabilities: ['PR review', 'Code quality checks', 'Architectural feedback', 'Merge approval'],
     },
+    aiqa: {
+        summary: 'AI Quality Engineer that reviews agent logs/telemetry to find improvements, validates data, traces pipelines, and stress-tests prompts and tool calls.',
+        capabilities: ['Log/telemetry review', 'Data validation', 'Pipeline observability', 'Edge-case stress testing', 'AI cost analysis'],
+    },
 };
