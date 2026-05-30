@@ -168,8 +168,10 @@ CREATE TABLE IF NOT EXISTS token_ledger (
     recorded_at   TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_ledger_story ON token_ledger(story_number);
-CREATE INDEX IF NOT EXISTS idx_ledger_project ON token_ledger(project);
-CREATE INDEX IF NOT EXISTS idx_ledger_team ON token_ledger(team);
+-- NB: indexes on the project/team columns are created in _migrateLedgerProject, not
+-- here. On an upgraded DB the table already exists without those columns, so a
+-- CREATE INDEX in this always-run SCHEMA block would fail ("no such column") before
+-- the ALTER TABLE migration adds them.
 
 CREATE TABLE IF NOT EXISTS ollama_state (
     key   TEXT PRIMARY KEY,
@@ -349,12 +351,15 @@ function _migrateLedgerProject(db: Database.Database): void {
     const cols = db.prepare("PRAGMA table_info('token_ledger')").all() as { name: string }[];
     if (!cols.some(c => c.name === 'project')) {
         db.exec("ALTER TABLE token_ledger ADD COLUMN project TEXT");
-        db.exec("CREATE INDEX IF NOT EXISTS idx_ledger_project ON token_ledger(project)");
     }
     if (!cols.some(c => c.name === 'team')) {
         db.exec("ALTER TABLE token_ledger ADD COLUMN team TEXT");
-        db.exec("CREATE INDEX IF NOT EXISTS idx_ledger_team ON token_ledger(team)");
     }
+    // Create the indexes unconditionally (idempotent): the columns now exist whether
+    // they came from CREATE TABLE (fresh DB) or the ALTER above (upgraded DB). Doing
+    // this here — not in SCHEMA — is what keeps an upgraded DB from crashing on boot.
+    db.exec("CREATE INDEX IF NOT EXISTS idx_ledger_project ON token_ledger(project)");
+    db.exec("CREATE INDEX IF NOT EXISTS idx_ledger_team ON token_ledger(team)");
 }
 
 export function getDb(): Database.Database {
