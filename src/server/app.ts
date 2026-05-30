@@ -31,6 +31,8 @@ import { mount as mountOpenRouter } from './routes/openrouter';
 import { mount as mountMlx } from './routes/mlx';
 import { mount as mountWebhooks } from './routes/webhooks';
 import { mount as mountAiQa } from './routes/aiqa';
+import { mount as mountDemoMode } from './routes/demo-mode';
+import { mount as mountAiQaTelemetry } from './routes/aiqa-telemetry';
 
 export function createApp(rootDir: string): http.RequestListener {
     const configFile = resolve(rootDir, '.sdlc-framework.config.json');
@@ -60,6 +62,8 @@ export function createApp(rootDir: string): http.RequestListener {
     mountMlx(use, rootDir, configFile);
     mountWebhooks(use, rootDir, configFile);
     mountAiQa(use, rootDir, configFile);
+    mountDemoMode(use, rootDir, configFile);
+    mountAiQaTelemetry(use, rootDir, configFile);
 
     return dispatch;
 }
