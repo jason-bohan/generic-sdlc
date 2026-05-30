@@ -45,6 +45,7 @@ export interface LedgerRow {
     story_number: string;
     story_name: string | null;
     project: string | null;
+    team: string | null;
     agent: string;
     source: string;
     phase: string;
@@ -158,6 +159,7 @@ CREATE TABLE IF NOT EXISTS token_ledger (
     story_number  TEXT    NOT NULL,
     story_name    TEXT,
     project       TEXT,
+    team          TEXT,
     agent         TEXT    NOT NULL,
     source        TEXT    NOT NULL,
     phase         TEXT    NOT NULL,
@@ -167,6 +169,7 @@ CREATE TABLE IF NOT EXISTS token_ledger (
 );
 CREATE INDEX IF NOT EXISTS idx_ledger_story ON token_ledger(story_number);
 CREATE INDEX IF NOT EXISTS idx_ledger_project ON token_ledger(project);
+CREATE INDEX IF NOT EXISTS idx_ledger_team ON token_ledger(team);
 
 CREATE TABLE IF NOT EXISTS ollama_state (
     key   TEXT PRIMARY KEY,
@@ -348,6 +351,10 @@ function _migrateLedgerProject(db: Database.Database): void {
         db.exec("ALTER TABLE token_ledger ADD COLUMN project TEXT");
         db.exec("CREATE INDEX IF NOT EXISTS idx_ledger_project ON token_ledger(project)");
     }
+    if (!cols.some(c => c.name === 'team')) {
+        db.exec("ALTER TABLE token_ledger ADD COLUMN team TEXT");
+        db.exec("CREATE INDEX IF NOT EXISTS idx_ledger_team ON token_ledger(team)");
+    }
 }
 
 export function getDb(): Database.Database {
@@ -363,14 +370,15 @@ export function closeDb(): void {
 // ─── Token ledger ─────────────────────────────────────────────────────────────
 
 const INSERT_LEDGER = `
-    INSERT INTO token_ledger (story_number, story_name, project, agent, source, phase, input_tokens, output_tokens)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO token_ledger (story_number, story_name, project, team, agent, source, phase, input_tokens, output_tokens)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 `;
 
 export function dbRecordTokens(params: {
     storyNumber: string;
     storyName?: string | null;
     project?: string | null;
+    team?: string | null;
     agent: string;
     source: TokenSource;
     phase: TokenPhase;
@@ -381,6 +389,7 @@ export function dbRecordTokens(params: {
         params.storyNumber,
         params.storyName ?? null,
         params.project ?? null,
+        params.team ?? null,
         params.agent,
         params.source,
         params.phase,

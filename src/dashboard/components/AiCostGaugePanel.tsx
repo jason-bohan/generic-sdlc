@@ -4,11 +4,13 @@ import { Gauge } from './Gauge';
 interface AiCostSummary {
     currency: string;
     project: string | null;
+    team: string | null;
     spend: number;
     budget: number;
     utilization: number;
     byAgent: Array<{ agent: string; cost: number }>;
     byProject: Array<{ project: string; cost: number }>;
+    byTeam: Array<{ team: string; cost: number }>;
 }
 
 function fmtUsd(n: number): string {

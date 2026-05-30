@@ -16,12 +16,14 @@ export interface AiCostSummary {
     currency: 'USD';
     period: string;
     project: string | null;   // the project this summary is scoped to, or null for all repos
+    team: string | null;      // the team this summary is scoped to, or null for all teams
     spend: number;            // total cloud spend in USD
     budget: number;           // budget ceiling for the gauge max
     utilization: number;      // spend / budget (0..1+), clamped at >=0
     tokens: { cloudInput: number; cloudOutput: number; localInput: number; localOutput: number };
     byAgent: Array<{ agent: string; cost: number; cloudInput: number; cloudOutput: number }>;
     byProject: Array<{ project: string; cost: number }>; // per-repo breakdown (each repo's card)
+    byTeam: Array<{ team: string; cost: number }>;       // per-team breakdown (filterable)
 }
 
 /**
@@ -31,16 +33,19 @@ export interface AiCostSummary {
  * org this is the seam where you'd swap the source (rollup table / vendor
  * billing API) without touching the gauge.
  */
-export function aggregateAiCost(ledger: TokenLedger, opts: { budgetUsd: number; project?: string | null }): AiCostSummary {
+export function aggregateAiCost(ledger: TokenLedger, opts: { budgetUsd: number; project?: string | null; team?: string | null }): AiCostSummary {
     const filterProject = opts.project ?? null;
+    const filterTeam = opts.team ?? null;
     let cloudInput = 0, cloudOutput = 0, localInput = 0, localOutput = 0;
     const perAgent = new Map<string, { cloudInput: number; cloudOutput: number }>();
     const perProject = new Map<string, { cloudInput: number; cloudOutput: number }>();
+    const perTeam = new Map<string, { cloudInput: number; cloudOutput: number }>();
 
     for (const record of Object.values(ledger)) {
         for (const e of record.entries) {
-            // When scoped to a project, skip entries that belong to other repos.
+            // When scoped, skip entries that belong to other repos/teams.
             if (filterProject !== null && (e.project ?? null) !== filterProject) continue;
+            if (filterTeam !== null && (e.team ?? null) !== filterTeam) continue;
 
             const isCloud = e.source === 'cloud';
             if (isCloud) { cloudInput += e.input; cloudOutput += e.output; }
@@ -55,6 +60,12 @@ export function aggregateAiCost(ledger: TokenLedger, opts: { budgetUsd: number; 
             const pagg = perProject.get(projKey) ?? { cloudInput: 0, cloudOutput: 0 };
             if (isCloud) { pagg.cloudInput += e.input; pagg.cloudOutput += e.output; }
             perProject.set(projKey, pagg);
+
+            // Per-team breakdown (entries without a team roll up under "unassigned").
+            const teamKey = e.team ?? 'unassigned';
+            const tagg = perTeam.get(teamKey) ?? { cloudInput: 0, cloudOutput: 0 };
+            if (isCloud) { tagg.cloudInput += e.input; tagg.cloudOutput += e.output; }
+            perTeam.set(teamKey, tagg);
         }
     }
 
@@ -66,17 +77,22 @@ export function aggregateAiCost(ledger: TokenLedger, opts: { budgetUsd: number; 
     const byProject = [...perProject.entries()]
         .map(([project, t]) => ({ project, cost: cloudCost(t.cloudInput, t.cloudOutput) }))
         .sort((a, b) => b.cost - a.cost);
+    const byTeam = [...perTeam.entries()]
+        .map(([team, t]) => ({ team, cost: cloudCost(t.cloudInput, t.cloudOutput) }))
+        .sort((a, b) => b.cost - a.cost);
 
     return {
         currency: 'USD',
         period: 'all-time',
         project: filterProject,
+        team: filterTeam,
         spend,
         budget,
         utilization: Math.max(0, spend / budget),
         tokens: { cloudInput, cloudOutput, localInput, localOutput },
         byAgent,
         byProject,
+        byTeam,
     };
 }
 
@@ -93,7 +109,8 @@ export function mount(use: UseFn, rootDir: string, _configFile: string): void {
         try {
             const url = new URL(req.url || '', `http://${req.headers.host}`);
             const project = url.searchParams.get('project'); // omit → all repos
-            const summary = aggregateAiCost(getLedger(rootDir), { budgetUsd: resolveBudget(), project });
+            const team = url.searchParams.get('team');       // omit → all teams
+            const summary = aggregateAiCost(getLedger(rootDir), { budgetUsd: resolveBudget(), project, team });
             json(res, summary);
         } catch (e: unknown) {
             json(res, { error: e instanceof Error ? e.message : String(e) }, 500);

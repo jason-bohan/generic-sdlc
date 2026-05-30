@@ -2,11 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { aggregateAiCost, cloudCost } from '../server/routes/analytics';
 import type { TokenLedger } from '../server/ledger';
 
-function ledger(entries: Array<{ agent: string; source: string; input: number; output: number; project?: string }>): TokenLedger {
+function ledger(entries: Array<{ agent: string; source: string; input: number; output: number; project?: string; team?: string }>): TokenLedger {
     return {
         'S-1': {
             storyName: 'Story 1',
-            entries: entries.map(e => ({ ts: new Date().toISOString(), agent: e.agent, project: e.project ?? null, source: e.source as any, phase: 'development' as const, input: e.input, output: e.output })),
+            entries: entries.map(e => ({ ts: new Date().toISOString(), agent: e.agent, project: e.project ?? null, team: e.team ?? null, source: e.source as any, phase: 'development' as const, input: e.input, output: e.output })),
             totals: { input: 0, output: 0 },
         },
     };
@@ -81,5 +81,28 @@ describe('aggregateAiCost', () => {
             { agent: 'backend', source: 'cloud', input: 1_000_000, output: 0 }, // no project
         ]), { budgetUsd: 100 });
         expect(summary.byProject[0].project).toBe('unattributed');
+    });
+
+    it('scopes and breaks down by team, the same way as project', () => {
+        const l = ledger([
+            { agent: 'backend', source: 'cloud', input: 1_000_000, output: 0, team: 'Team A' },   // $3
+            { agent: 'frontend', source: 'cloud', input: 3_000_000, output: 0, team: 'Team B' },   // $9
+        ]);
+        const all = aggregateAiCost(l, { budgetUsd: 100 });
+        expect(all.byTeam.map(t => t.team)).toEqual(['Team B', 'Team A']); // sorted by cost desc
+
+        const a = aggregateAiCost(l, { budgetUsd: 100, team: 'Team A' });
+        expect(a.spend).toBeCloseTo(3, 5);
+        expect(a.team).toBe('Team A');
+    });
+
+    it('combines project and team filters', () => {
+        const l = ledger([
+            { agent: 'backend', source: 'cloud', input: 1_000_000, output: 0, project: 'flowboard', team: 'Team A' }, // $3
+            { agent: 'backend', source: 'cloud', input: 5_000_000, output: 0, project: 'flowboard', team: 'Team B' }, // excluded
+            { agent: 'backend', source: 'cloud', input: 9_000_000, output: 0, project: 'other', team: 'Team A' },     // excluded
+        ]);
+        const scoped = aggregateAiCost(l, { budgetUsd: 100, project: 'flowboard', team: 'Team A' });
+        expect(scoped.spend).toBeCloseTo(3, 5);
     });
 });

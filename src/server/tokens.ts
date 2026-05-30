@@ -14,6 +14,8 @@ export interface TokenUpdate {
     phase?: TokenPhase;
     /** Target repo the work belongs to. Recorded on the ledger for per-repo attribution. */
     project?: string | null;
+    /** Planning team the story belongs to. Recorded for per-team attribution/filtering. */
+    team?: string | null;
 }
 
 export interface TokenMetrics {
@@ -110,6 +112,7 @@ export function updateTokens(
             storyNumber,
             storyName: (raw.storyName as string | null) ?? null,
             project: update.project ?? (raw.project as string | null) ?? null,
+            team: update.team ?? (raw.teamId as string | null) ?? null,
             agent: update.agentId,
             source: update.source,
             phase: update.phase ?? 'development',
