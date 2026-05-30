@@ -125,6 +125,14 @@ export function fetchTestResultsForAgent(agentId: string, latest?: boolean) {
     return fetch(`/api/test-results?${params.toString()}`);
 }
 
+export function fetchAiQaScorecard() {
+    return fetch('/api/aiqa/scorecard');
+}
+
+export function postAiQaSweep() {
+    return fetch('/api/aiqa/sweep', { method: 'POST' });
+}
+
 export function postSchedulerApprove(agentId: string) {
     return fetch(`${window.location.origin}/api/scheduler/approve`, {
         method: 'POST',
