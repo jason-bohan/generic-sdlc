@@ -73,16 +73,22 @@ export function getStoryTokens(_rootDir: string, storyNumber: string): StoryToke
     } catch { return null; }
 }
 
+// Bucket for usage recorded outside a story (self-directed / story-less agent work).
+// Without this, token spend with no `storyNumber` was silently dropped from the ledger,
+// blinding the AIQA scorecard and the executive cost views to real spend.
+export const UNASSIGNED_STORY = '(unassigned)';
+
 export function recordStoryTokens(
     _rootDir: string,
     params: RecordParams,
 ): { ok: boolean; error?: string } {
-    if (!params.storyNumber || !params.agent || !params.source) {
-        return { ok: false, error: 'storyNumber, agent, and source are required' };
+    if (!params.agent || !params.source) {
+        return { ok: false, error: 'agent and source are required' };
     }
     if (params.input === 0 && params.output === 0) return { ok: true };
+    const storyNumber = params.storyNumber || UNASSIGNED_STORY;
     try {
-        dbRecordTokens(params);
+        dbRecordTokens({ ...params, storyNumber });
         return { ok: true };
     } catch (e: unknown) {
         return { ok: false, error: `Failed to record tokens: ${e instanceof Error ? e.message : String(e)}` };

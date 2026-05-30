@@ -106,10 +106,13 @@ export function updateTokens(
         return { ok: false, error: `Failed to write status file: ${writeErr}` };
     }
 
+    // Record to the DB ledger regardless of story attachment — story-less /
+    // self-directed usage is bucketed under UNASSIGNED_STORY by recordStoryTokens
+    // rather than being dropped (which previously hid it from the cost ledger).
     const storyNumber = raw.storyNumber as string | null | undefined;
-    if (storyNumber && (update.input > 0 || update.output > 0)) {
+    if (update.input > 0 || update.output > 0) {
         recordStoryTokens(rootDir, {
-            storyNumber,
+            storyNumber: storyNumber ?? '',
             storyName: (raw.storyName as string | null) ?? null,
             project: update.project ?? (raw.project as string | null) ?? null,
             team: update.team ?? (raw.teamId as string | null) ?? null,
