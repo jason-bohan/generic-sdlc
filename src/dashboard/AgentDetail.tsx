@@ -15,6 +15,7 @@ import { AgentDetailStats } from './components/AgentDetailStats';
 import { AgentDetailDevopsWrapUpBanner } from './components/AgentDetailDevopsWrapUpBanner';
 import { AgentDetailIdleHero } from './components/AgentDetailIdleHero';
 import { AgentDetailPullRequestsSection } from './components/AgentDetailPullRequestsSection';
+import { AiCostGaugePanel } from './components/AiCostGaugePanel';
 import { AgentDetailCypressColumn } from './components/AgentDetailCypressColumn';
 import { AgentTerminal } from './components/AgentTerminal';
 
@@ -72,6 +73,10 @@ export default function AgentDetail({ agent, displayName, agentDisplayNameOverri
             />
 
             {status.storyName && <p style={s.storyName}>{status.storyName}</p>}
+
+            {agent.role === 'aiqa' && (
+                <AiCostGaugePanel accentColor={agent.accentColor} />
+            )}
 
             {agent.role === 'reviewer' && (
                 <ReviewerDeskPanel
