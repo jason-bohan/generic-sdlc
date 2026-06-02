@@ -626,15 +626,25 @@ async function toolCompletePhase(
             });
             const text = await res.text();
             if (res.ok) {
+                // The server is authoritative for the resulting phase — it may coerce
+                // the requested next_phase (e.g. the forward-progress guard turns a
+                // PASSED validating -> generating-code bounce into -> committing). Use
+                // the phase the server actually recorded so the status file (which
+                // drives auto-resume) and the sentinel stay consistent with the DB.
+                let recordedPhase = nextPhase;
+                try {
+                    const parsed = JSON.parse(text) as { workflow?: { active_phase?: string } };
+                    if (parsed?.workflow?.active_phase) recordedPhase = parsed.workflow.active_phase;
+                } catch { /* non-JSON body — fall back to the requested next_phase */ }
                 try {
                     const status = parseJsonUtf8File(statusFile) as Record<string, unknown>;
-                    status.currentPhase = nextPhase;
+                    status.currentPhase = recordedPhase;
                     writeFileSync(statusFile, JSON.stringify(status, null, 2));
                     emitStatusChange(agentId, buildStatusBroadcast(status, agentId, true, frameworkDir));
                 } catch { /* workflow completion succeeded; do not mask the server response */ }
                 // Sentinel prefix tells AgentRunner to stop the loop immediately so
                 // the next phase starts with a fresh conversation context.
-                return `PHASE_COMPLETE::${nextPhase}\nHTTP ${res.status}\n${text.slice(0, 500)}`;
+                return `PHASE_COMPLETE::${recordedPhase}\nHTTP ${res.status}\n${text.slice(0, 500)}`;
             }
             return `HTTP ${res.status}\n${text.slice(0, 1000)}`;
         } catch (e) {
