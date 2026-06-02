@@ -581,6 +581,31 @@ export function startWorkflow(input: StartWorkflowInput): OrchestratorResult<{ i
     return { ok: true, value: { item, decision } };
 }
 
+/**
+ * Phases that mean "go back and rework" rather than advance. A `validating` phase
+ * whose own evidence reports PASSED must not bounce back to one of these — that's a
+ * model misnavigation (observed with the local 14B: it received OVERALL: PASSED yet
+ * set next_phase="generating-code"), which stalls the story until the auto-resume
+ * retry cap trips. The guard is deterministic and server-side, so it holds for any
+ * driver/model and costs no tokens.
+ */
+const REWORK_PHASES = new Set<SdlcPhaseId>(['generating-code', 'analyzing', 'reading-story']);
+
+/**
+ * True only when the validating-phase evidence positively reports PASSED with no
+ * FAILED signal. Conservative: if the evidence is absent or ambiguous we return
+ * false so a genuine FAILED → generating-code rework route is never overridden.
+ */
+function validationEvidencePassed(outputs: Partial<Record<SdlcOutputKey, unknown>>): boolean {
+    const evidence = (['validationResults', 'testResults', 'staticAnalysis'] as SdlcOutputKey[])
+        .map((k) => outputs[k])
+        .filter((v): v is string => typeof v === 'string')
+        .join('\n');
+    if (!evidence) return false;
+    if (/\bFAILED\b/i.test(evidence)) return false;
+    return /\bPASSED\b/i.test(evidence);
+}
+
 export function completePhase(input: CompletePhaseInput): OrchestratorResult<WorkflowItemRow> {
     const item = dbGetWorkflowItem(input.workflowItemId);
     if (!item) return { ok: false, error: `Workflow item ${input.workflowItemId} not found` };
@@ -596,8 +621,17 @@ export function completePhase(input: CompletePhaseInput): OrchestratorResult<Wor
         return { ok: false, error: `Phase ${input.phase} output contract is incomplete`, missing: outputValidation.missing };
     }
 
-    if (!isAllowedSdlcTransition(input.agentId, input.phase, input.nextPhase)) {
-        return { ok: false, error: `${input.agentId} cannot transition ${input.phase} -> ${input.nextPhase}` };
+    // Forward-progress guard: a validating phase that passed may not route backward.
+    let effectiveNextPhase = input.nextPhase;
+    let guardNote: string | null = null;
+    if (input.phase === 'validating' && REWORK_PHASES.has(input.nextPhase) && validationEvidencePassed(input.outputs)) {
+        effectiveNextPhase = 'committing';
+        guardNote = `Forward-progress guard: validation reported PASSED, so '${input.phase}' was not allowed to return to '${input.nextPhase}'. Advanced to '${effectiveNextPhase}'.`;
+        console.warn(`[forward-progress] ${input.agentId}: validating PASSED but next_phase='${input.nextPhase}' — coerced to '${effectiveNextPhase}'`);
+    }
+
+    if (!isAllowedSdlcTransition(input.agentId, input.phase, effectiveNextPhase)) {
+        return { ok: false, error: `${input.agentId} cannot transition ${input.phase} -> ${effectiveNextPhase}` };
     }
 
     const next = getDb().transaction((): WorkflowItemRow => {
@@ -607,7 +641,7 @@ export function completePhase(input: CompletePhaseInput): OrchestratorResult<Wor
             phase: input.phase,
             eventType: 'phase-completed',
             outputs: input.outputs,
-            message: input.message ?? null,
+            message: [input.message, guardNote].filter(Boolean).join(' | ') || null,
         });
 
         const taskIds = Array.isArray(input.outputs.taskIds) ? input.outputs.taskIds.map(id => String(id)) : [];
@@ -626,9 +660,9 @@ export function completePhase(input: CompletePhaseInput): OrchestratorResult<Wor
         return dbTransitionWorkflowItem({
             workflowItemId: item.id,
             agentId: input.agentId,
-            nextPhase: input.nextPhase,
-            outputs: { auditEvent: { from: input.phase, to: input.nextPhase } },
-            message: `Transitioned ${input.phase} -> ${input.nextPhase}`,
+            nextPhase: effectiveNextPhase,
+            outputs: { auditEvent: { from: input.phase, to: effectiveNextPhase, ...(guardNote ? { forwardProgressGuard: true } : {}) } },
+            message: `Transitioned ${input.phase} -> ${effectiveNextPhase}${guardNote ? ' (forward-progress guard)' : ''}`,
         });
     })();
 
