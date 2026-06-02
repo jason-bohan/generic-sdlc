@@ -74,6 +74,11 @@ export class AgentRunner extends EventEmitter {
     private mutationCount = 0;
     private prematureCompleteBlocks = 0;
     private phaseName = '';
+    // Cumulative token usage across all turns in this run, summed from each
+    // completion's usage. Surfaced on the 'complete' event so the registry can
+    // record it to the token ledger.
+    private usageInput = 0;
+    private usageOutput = 0;
     private onCheckpoint?: (messages: Message[]) => void;
 
     constructor(
@@ -162,6 +167,11 @@ export class AgentRunner extends EventEmitter {
                 } catch (e) {
                     this._emit('error', { message: e instanceof Error ? e.message : String(e), turn: this.turnCount });
                     break;
+                }
+
+                if (response.usage) {
+                    this.usageInput += response.usage.inputTokens;
+                    this.usageOutput += response.usage.outputTokens;
                 }
 
                 const msg = response.message;
@@ -279,7 +289,12 @@ export class AgentRunner extends EventEmitter {
                 if (phaseCompleted) break;
             }
 
-            this._emit('complete', { turns: this.turnCount, aborted: this._aborted, sessionId: this.sessionId });
+            this._emit('complete', {
+                turns: this.turnCount,
+                aborted: this._aborted,
+                sessionId: this.sessionId,
+                usage: { input: this.usageInput, output: this.usageOutput },
+            });
         } finally {
             this._running = false;
         }

@@ -3,7 +3,9 @@ import { existsSync, writeFileSync, appendFileSync, mkdirSync } from 'fs';
 import { spawn } from 'child_process';
 import { EventEmitter } from 'events';
 import { AgentRunner } from './AgentRunner';
-import { OpenAICompatibleProvider, readLoopProviderConfig } from './provider';
+import { OpenAICompatibleProvider, readLoopProviderConfig, detectLoopProvider } from './provider';
+import { updateTokens } from '../tokens';
+import type { TokenSource } from '../tokens';
 import {
     dbCreateSession,
     dbGetActiveSession,
@@ -24,6 +26,17 @@ registryEvents.setMaxListeners(50);
 const TERMINAL_PHASES = new Set(['idle', 'complete', 'error']);
 
 const runners = new Map<string, AgentRunner>();
+
+/** Map the resolved loop-provider backend to a token-ledger source bucket. */
+function loopTokenSource(baseUrl: string): TokenSource {
+    switch (detectLoopProvider(baseUrl)) {
+        case 'openrouter': return 'cloud';
+        case 'meshllm': return 'meshllm';
+        case 'ollama': return 'ollama';
+        case 'mlx': return 'mlx';
+        default: return 'cloud'; // custom OpenAI-compatible endpoint — bucket as cloud
+    }
+}
 
 export function getRunner(agentId: string): AgentRunner | undefined {
     const runner = runners.get(agentId);
@@ -232,7 +245,7 @@ export function startRunner(
     }
 
     runner.on('event', (ev) => {
-        const { type, data } = ev as { type: string; data?: { message?: string; name?: string; content?: string; outputLength?: number } };
+        const { type, data } = ev as { type: string; data?: { message?: string; name?: string; content?: string; outputLength?: number; usage?: { input: number; output: number } } };
         const evTs = new Date().toISOString();
         if (type === 'error') {
             console.error(`[agent-runner:${agentId}] error:`, data?.message);
@@ -256,6 +269,23 @@ export function startRunner(
             console.log(`[agent-runner:${agentId}] complete`);
             appendFileSync(logFile, `[exit] ${evTs} COMPLETE\n`);
             appendFileSync(spawnLog, `${evTs} | ${agentId} | loop | session=${sessionId} COMPLETE\n`);
+            // Record token usage to the ledger. The in-process loop driver is the
+            // only agent path with the model's usage in hand (subprocess drivers
+            // pipe to a log and report nothing). updateTokens also attributes the
+            // story from the status file and updates per-source status accounting.
+            const usage = data?.usage;
+            if (usage && (usage.input > 0 || usage.output > 0)) {
+                try {
+                    updateTokens(frameworkDir, {
+                        agentId,
+                        source: loopTokenSource(providerConfig.baseUrl),
+                        input: usage.input,
+                        output: usage.output,
+                        phase: agentId === 'reviewer' ? 'review' : 'development',
+                    });
+                    appendFileSync(logFile, `[tokens] ${evTs} recorded input=${usage.input} output=${usage.output} source=${loopTokenSource(providerConfig.baseUrl)}\n`);
+                } catch { /* non-critical — ledger is informational for AIQA */ }
+            }
         }
     });
 

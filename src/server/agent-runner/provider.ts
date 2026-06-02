@@ -94,6 +94,7 @@ export class OpenAICompatibleProvider {
 
         const data = await res.json() as {
             choices: Array<{ message: Message; finish_reason: string }>;
+            usage?: { prompt_tokens?: number; completion_tokens?: number };
         };
 
         const choice = data.choices?.[0];
@@ -101,7 +102,10 @@ export class OpenAICompatibleProvider {
 
         return {
             message: choice.message,
-            finish_reason: choice.finish_reason as CompletionResponse['finish_reason'] };
+            finish_reason: choice.finish_reason as CompletionResponse['finish_reason'],
+            usage: data.usage
+                ? { inputTokens: data.usage.prompt_tokens ?? 0, outputTokens: data.usage.completion_tokens ?? 0 }
+                : undefined };
     }
 }
 
