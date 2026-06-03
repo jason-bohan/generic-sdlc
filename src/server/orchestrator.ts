@@ -5,6 +5,7 @@ import {
     validateSdlcPhaseOutput,
     type SdlcAgentId,
     type SdlcOutputKey,
+    type SdlcPhaseContract,
     type SdlcPhaseId,
 } from '../shared/sdlcContracts';
 import {
@@ -20,6 +21,8 @@ import {
     type WorkflowArtifactRow,
     type WorkflowItemRow,
 } from './db';
+import { resolve, isAbsolute } from 'path';
+import { parseJsonUtf8File } from './json-file';
 
 export type StoryClassification =
     | 'frontend'
@@ -242,13 +245,43 @@ function formatKeyList(keys: readonly string[]): string {
     return keys.length ? keys.map(k => `- ${k}`).join('\n') : '- none';
 }
 
-function phaseSpecificInstructions(item: WorkflowItemRow, serverBaseUrl: string): string {
+/** Maps each output key to the one-of group it belongs to (if any). */
+function oneOfGroupFor(contract: SdlcPhaseContract, key: SdlcOutputKey): readonly SdlcOutputKey[] | undefined {
+    return contract.producesOneOf?.find(group => group.includes(key));
+}
+
+/**
+ * The produced-keys list shown in the prompt, annotating mode-alternative keys so
+ * the model isn't told to supply two mutually-exclusive outputs (e.g. pr + mockPr).
+ */
+function producedKeyHints(contract: SdlcPhaseContract): string[] {
+    return contract.produces.map(key => {
+        const group = oneOfGroupFor(contract, key);
+        if (!group) return key;
+        const others = group.filter(k => k !== key);
+        return `${key} (provide this OR ${others.join(' / ')}, not both)`;
+    });
+}
+
+/**
+ * The example outputs payload. Keys in a one-of group are rendered as alternatives
+ * so the contract's "at least one" rule is obvious from the skeleton alone.
+ */
+function buildOutputsSkeleton(contract: SdlcPhaseContract): Record<string, string> {
+    return Object.fromEntries(contract.produces.map(key => {
+        const group = oneOfGroupFor(contract, key);
+        const hint = group ? `<one of: ${group.join(' | ')}>` : '<required>';
+        return [key, hint];
+    }));
+}
+
+function phaseSpecificInstructions(item: WorkflowItemRow, serverBaseUrl: string, priorValidationFailure?: string): string {
     if (item.active_phase === 'reading-story') {
         return [
             'Phase 1 tasking requirements:',
             `- Fetch or read story ${item.story_number} before planning.`,
-            `- Create/refine implementation tasks through ${serverBaseUrl}/api/scheduler/create-task so mock mode and live mode use the same API boundary.`,
-            '- For each task call: POST /api/scheduler/create-task with agentId, storyNumber, name, and estimate.',
+            `- Create/refine implementation tasks by calling the create_task tool (it handles the API call for you).`,
+            '- Call create_task{name, estimate} once per task.',
             '- Use the returned task numbers as taskIds.',
             '- Include tasks, taskIds, affected repo, branch plan, test matrix, risks, open questions, and auditEvent in the completion payload.',
         ].join('\n');
@@ -279,13 +312,91 @@ function phaseSpecificInstructions(item: WorkflowItemRow, serverBaseUrl: string)
     }
 
     if (item.active_phase === 'generating-code') {
+        const priorFailureBlock = priorValidationFailure
+            ? [
+                '⚠️ YOUR PREVIOUS ATTEMPT FAILED VALIDATION. Fix EXACTLY these errors:',
+                '```',
+                priorValidationFailure.trim(),
+                '```',
+                'Make the MINIMAL change needed to resolve the errors above — they are usually a',
+                'missing import or a typo, NOT a reason to rewrite working code. In particular, every',
+                'name you reference (e.g. readFileSync) MUST be imported at the top of the file; if an',
+                'error says a name is not defined, add it to the existing import from its module.',
+                'After editing, call run_validation again to confirm the errors are gone.',
+                '',
+            ]
+            : [];
         return [
-            'Generating-code phase — act immediately:',
-            '1. Call read_file on the status file to get the task list and branch plan.',
-            '2. Call read_file on each file that needs to change.',
-            '3. Call write_file to apply the fix to each file.',
-            '4. After writing all files, call complete_phase.',
-            'DO NOT describe what you plan to do. Call read_file immediately.',
+            ...priorFailureBlock,
+            'Generating-code phase:',
+            '',
+            '## Research first — then edit (LIMIT research to 5 calls)',
+            '',
+            'You have at most **5 research calls** (read_file, search_in_files/grep, list_directory) total.',
+            'After 5 research calls you MUST write code — even if you are not 100% sure of the patterns.',
+            '',
+            '### Recommended plan (use for any language/framework):',
+            '',
+            'Step 1 — Discover the tech stack (1-2 calls):',
+            '  Read the project\'s package.json (or Cargo.toml, pyproject.toml, Gemfile, go.mod)',
+            '  to find the language, framework, and test runner.',
+            '',
+            'Step 2 — Read the entry point (1-2 calls):',
+            '  Read the main server file (index.ts, main.rs, app.py, main.go, server.js)',
+            '  to understand route patterns, import style, and error handling conventions.',
+            '',
+            'Step 3 — Search for patterns (1 call):',
+            '  Search for existing route definitions so your code matches the project style.',
+            '',
+            'Step 4 — Write code:',
+            '  Use **edit_file** on existing files (it replaces an exact snippet).',
+            '  **CRITICAL: NEVER use write_file on an existing file** — it will destroy the entire file.',
+            '  Use **write_file** only for NEW files.',
+            '  write_file and edit_file automatically redirect into your git worktree.',
+            '',
+            'Step 4b — TypeScript strict-mode conventions (rules, NOT code to copy):',
+            '  Write the route THIS story requires. The notes below are conventions to follow,',
+            '  not a snippet to paste — there is deliberately no full handler example here.',
+            '  - Handler params: write `(_req, res)` with NO type annotations (TypeScript infers',
+            '    them from the app.get/app.post overload). Never `(req: Request, res: Response)`.',
+            '  - Every identifier you reference MUST be defined or imported in the same file',
+            '    (e.g. to read package.json, import `readFileSync` and parse it into a variable',
+            '    you declare — do not reference an undefined `pkg`).',
+            '  - Match the path, method, and response shape described in the story exactly.',
+            '  - Add your new route before the `export { app }` line; do NOT rewrite the whole file.',
+            '',
+            'Step 5 — Call **complete_phase** after writing all files.',
+            '',
+            'CRITICAL: After 5 research calls, stop researching and start writing.',
+            'If you research more than 5 times you are wasting time.',
+        ].join('\n');
+    }
+
+    if (item.active_phase === 'committing') {
+        return [
+            'Committing phase:',
+            '',
+            '## Do NOT run any git commands — the framework handles git automatically',
+            '',
+            'The framework will automatically run `git add` and `git commit` when complete_phase succeeds.',
+            'Do NOT call run_command with git commands. Do NOT run git worktree add, git add, git commit, etc.',
+            '',
+            'Just call: complete_phase with next_phase="creating-pr"',
+            '',
+            'If there are no changes committed, the phase will fail — go back to generating-code.',
+        ].join('\n');
+    }
+
+    if (item.active_phase === 'creating-pr') {
+        return [
+            'Creating-PR phase:',
+            '',
+            '## Do NOT run any git commands — the framework handles PR creation automatically',
+            '',
+            'The framework will automatically push the branch and create the PR (or mock PR in mock mode).',
+            'Do NOT call run_command with git/gh commands. Do NOT call http_request to create a PR manually.',
+            '',
+            'Just call: complete_phase with next_phase="watching-reviews"',
         ].join('\n');
     }
 
@@ -312,6 +423,19 @@ export function buildPhaseRunPrompt(input: BuildPhasePromptInput): OrchestratorR
     // skillFile defaults to the standard path, but passing null explicitly suppresses it
     const skillFile = input.skillFile !== null ? (input.skillFile ?? `skills/${agentId}/SKILL.md`) : null;
     const nextPhases = workflow.transitions[phase] ?? contract.allowedNext;
+    // On a re-entry into generating-code after a failed validation, surface the exact
+    // errors (captured by run_validation) so the model targets the fix instead of
+    // blindly regenerating the same broken code.
+    let priorValidationFailure: string | undefined;
+    if (phase === 'generating-code') {
+        try {
+            const sfPath = isAbsolute(statusFile) ? statusFile : resolve(process.cwd(), statusFile);
+            const s = parseJsonUtf8File(sfPath) as Record<string, unknown>;
+            if (typeof s.lastValidationFailure === 'string' && s.lastValidationFailure.trim()) {
+                priorValidationFailure = s.lastValidationFailure;
+            }
+        } catch { /* no prior failure recorded — first attempt */ }
+    }
     const prompt = [
         `You are ${agentId}. Run SDLC phase "${phase}" for story ${item.story_number}.`,
         '',
@@ -328,7 +452,8 @@ export function buildPhaseRunPrompt(input: BuildPhasePromptInput): OrchestratorR
                   `  Create (new branch):   git worktree add -b <branch> .claude/worktrees/${agentId}-${item.story_number} <base>\n` +
                   `  Attach (existing):     git worktree add .claude/worktrees/${agentId}-${item.story_number} <branch>\n` +
                   `  Run all git commands (commit, push, status) from inside that worktree directory.\n` +
-                  `  The main working tree belongs to the developer's active IDE session - never modify it directly.`
+                  `  The main working tree belongs to the developer's active IDE session - never modify it directly.\n` +
+                  `  NOTE: write_file and edit_file automatically redirect into the worktree — you do not need to do anything special.`
             : null,
         '',
         `Purpose: ${contract.purpose}`,
@@ -337,12 +462,12 @@ export function buildPhaseRunPrompt(input: BuildPhasePromptInput): OrchestratorR
         formatKeyList(contract.requires),
         '',
         'You must produce these output keys exactly:',
-        formatKeyList(contract.produces),
+        formatKeyList(producedKeyHints(contract)),
         '',
         'Gates before completing the phase:',
         formatKeyList(contract.gates),
         '',
-        phaseSpecificInstructions(item, serverBaseUrl),
+        phaseSpecificInstructions(item, serverBaseUrl, priorValidationFailure),
         '',
         'When the phase is complete, POST this contract payload:',
         `${serverBaseUrl}/api/workflows/complete-phase`,
@@ -351,7 +476,7 @@ export function buildPhaseRunPrompt(input: BuildPhasePromptInput): OrchestratorR
             agentId,
             phase,
             nextPhase: nextPhases[0] ?? 'complete',
-            outputs: Object.fromEntries(contract.produces.map(key => [key, '<required>'])),
+            outputs: buildOutputsSkeleton(contract),
             message: '<short phase summary>',
         }, null, 2),
         '',
