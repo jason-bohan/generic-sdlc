@@ -343,8 +343,19 @@ function phaseSpecificInstructions(item: WorkflowItemRow, serverBaseUrl: string,
                 '',
             ]
             : [];
+        const storyContract = item.story_name
+            ? [
+                '🎯 IMPLEMENT EXACTLY WHAT THE STORY ASKS — this is the contract the reviewer grades you on:',
+                `   STORY: ${item.story_name}`,
+                '   Use the EXACT route/path, HTTP method, identifier names, and response shape the story',
+                '   states. Do NOT invent a different or generic name, and do NOT return a placeholder',
+                '   response. If what you build does not match the story, the PR will be rejected.',
+                '',
+            ]
+            : [];
         return [
             ...priorFailureBlock,
+            ...storyContract,
             'Generating-code phase:',
             '',
             '## Research first — then edit (LIMIT research to 5 calls)',
@@ -379,8 +390,9 @@ function phaseSpecificInstructions(item: WorkflowItemRow, serverBaseUrl: string,
             '  - Every identifier you reference MUST be defined or imported in the same file',
             '    (e.g. to read package.json, import `readFileSync` and parse it into a variable',
             '    you declare — do not reference an undefined `pkg`).',
-            '  - Match the path, method, and response shape described in the story exactly.',
-            '  - Add your new route before the `export { app }` line; do NOT rewrite the whole file.',
+            '  - Match the path, method, and response shape from the story contract above — exactly.',
+            '  - Add the route the story specifies (NOT a generic/placeholder name) before the',
+            '    `export { app }` line; do NOT rewrite the whole file.',
             '',
             'Step 5 — Call **complete_phase** after writing all files.',
             '',
