@@ -27,5 +27,11 @@
     }
   },
   "model": "mlx/mlx-community/Qwen2.5-Coder-14B-Instruct-4bit",
-  "small_model": "ollama/qwen3:8b"
+  "small_model": "ollama/qwen3:8b",
+  "agent": {
+    "reviewer": {
+      "description": "Read-only PR reviewer: may read files and run git/gh to inspect a diff, but MUST NOT modify the repo. Write/edit/patch tools are disabled so it cannot implement instead of review.",
+      "tools": { "write": false, "edit": false, "patch": false }
+    }
+  }
 }

@@ -197,6 +197,10 @@ export function buildOpenCodeSpawnSpec(
     }
     const effectiveModel = model && model !== 'auto' ? model : undefined;
     const modelArgs = effectiveModel ? ['--model', effectiveModel] : [];
+    // Guardrail: the reviewer runs as the read-only `reviewer` opencode agent (write/edit/patch
+    // tools disabled in opencode.json) so it physically cannot edit the framework repo or
+    // "implement instead of review". Tool removal is not bypassed by --dangerously-skip-permissions.
+    const agentArgs = agentId === 'reviewer' ? ['--agent', 'reviewer'] : [];
     return {
         cmd: opencodeExe,
         args: [
@@ -204,6 +208,7 @@ export function buildOpenCodeSpawnSpec(
             '--dir', workspaceDir,
             '--file', promptFilePath,
             '--dangerously-skip-permissions',
+            ...agentArgs,
             ...modelArgs,
             'Follow the instructions in the attached prompt file.',
         ],
