@@ -86,6 +86,34 @@ SKILL_TAXONOMY: list[tuple[str, str, list[str]]] = [
      "Fix a race condition or timing issue",
      ["useEffect", "cleanup", "clearTimeout", "clearInterval", "AbortController",
       "signal", "unmount"]),
+
+    ("optimize_react_render",
+     "Prevent unnecessary re-renders using memoization",
+     ["useMemo", "useCallback", "React.memo", "memo(", "dependency array"]),
+
+    ("harden_type_safety",
+     "Use discriminated unions or strict type guards for better safety",
+     ["instanceof", "type guard", "discriminated union", "readonly", "Readonly<", "satisfies "]),
+
+    ("validate_input_schema",
+     "Add schema validation (e.g. Zod) to external inputs",
+     ["z.object", "z.string", "z.number", "z.parse", "z.safeParse", "schema.parse"]),
+
+    ("prevent_memory_leak",
+     "Fix memory leaks by clearing timers or using WeakMaps",
+     ["WeakMap", "WeakSet", "clearInterval", "clearTimeout", "removeEventListener"]),
+
+    ("secure_api_call",
+     "Add authentication headers or sanitize inputs for API calls",
+     ["Authorization", "Bearer ", "sanitize", "encodeURIComponent", "escape"]),
+
+    ("handle_concurrent_requests",
+     "Use Promise.all or Promise.allSettled for parallel execution",
+     ["Promise.all", "Promise.allSettled", "Promise.race", "Promise.any"]),
+
+    ("fix_css_layout",
+     "Fix layout issues using Flexbox or Grid properties",
+     ["display: flex", "display: grid", "justify-content", "align-items", "gap:"]),
 ]
 
 

@@ -22,6 +22,7 @@ import { startMeshllm } from './meshllmLauncher';
 import { probeMlx, startMlxIfConfigured } from './mlxProvider';
 import { meshllmLog, mlxLog } from './logger';
 import { startHookRunner, stopHookRunner } from './hook-runner';
+import { maybeAutoContinueAgent } from './auto-continue';
 import { maybeHandoffReviewVerdict } from './review-handoff';
 import { maybeTriggerVerification } from './verify-trigger';
 import { startAutoFinetune } from './autoFinetune';
@@ -31,6 +32,7 @@ import { serverLog as log } from './logger';
 import { existsSync } from 'fs';
 import { deriveApiPort, persistDevPort } from './worktree-port';
 import { parseJsonUtf8File } from './json-file';
+import { setOnAgentStop } from './spawn-agent';
 
 const PORT = deriveApiPort(ROOT_DIR);
 persistDevPort(ROOT_DIR, PORT);
@@ -144,7 +146,17 @@ server.listen(PORT, () => {
                 // route it back (changes → dev rework, approved → devops build).
                 try { maybeHandoffReviewVerdict(PORT, ev); }
                 catch (e) { log.warn(`[review-handoff] ${e instanceof Error ? e.message : String(e)}`); }
+                try { maybeAutoContinueAgent(ROOT_DIR, PORT, CONFIG_FILE, ev.agentId); }
+                catch (e) { log.warn(`[auto-continue] ${e instanceof Error ? e.message : String(e)}`); }
             },
+        });
+        // When a spawn-based agent process exits, run the same guarded auto-continue
+        // path. This complements the file-watcher-based hook-runner (which may miss
+        // rapid phase transitions before the process exits); the shared function
+        // honors step mode, driver type, and the active-agent guards either way.
+        setOnAgentStop((agentId) => {
+            try { maybeAutoContinueAgent(ROOT_DIR, PORT, CONFIG_FILE, agentId); }
+            catch (e) { log.warn(`[agent-stop] ${agentId}: ${e instanceof Error ? e.message : String(e)}`); }
         });
         startAutoFinetune(ROOT_DIR);
     }

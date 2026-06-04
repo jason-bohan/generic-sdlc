@@ -32,6 +32,9 @@ let _testRunnerActive = false;
 export function setTestRunnerActive(active: boolean): void { _testRunnerActive = active; }
 export function isTestRunnerActive(): boolean { return _testRunnerActive; }
 
+let _onAgentStop: ((agentId: string) => void) | null = null;
+export function setOnAgentStop(cb: (agentId: string) => void): void { _onAgentStop = cb; }
+
 function isProcessAlive(pid: number): boolean {
     try { process.kill(pid, 0); return true; } catch { return false; }
 }
@@ -254,6 +257,7 @@ function _doSpawn(
             appendFileSync(logFile, `\n[error] ${err.message} at ${new Date().toISOString()}\n`);
             if (sessionId) _finishDurableSession(sessionId, 'failed', { error: err.message });
             activeAgents.delete(agentId);
+            try { _onAgentStop?.(agentId); } catch { /* subscriber must not throw */ }
         });
 
         if (!spec.ignoreStdio && child.stdout && child.stderr) {
@@ -266,6 +270,7 @@ function _doSpawn(
             appendFileSync(logFile, `\n[exit] code=${code} at ${new Date().toISOString()}\n`);
             if (sessionId) _finishDurableSession(sessionId, code === 0 ? 'completed' : 'failed', { exitCode: code });
             activeAgents.delete(agentId);
+            try { _onAgentStop?.(agentId); } catch { /* subscriber must not throw */ }
         });
 
         child.unref();

@@ -17,6 +17,7 @@ debug_json.txt
 .env
 .meitheal.config.json
 .sdlc-framework.config.json
+.sdlc-framework.db
 .sdlc-framework/
 scripts/__pycache__/
 **/__pycache__/

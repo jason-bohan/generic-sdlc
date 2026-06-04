@@ -1,4 +1,5 @@
 ﻿import { writeFileSync, existsSync } from 'fs';
+import { execFileSync } from 'child_process';
 import { resolve } from 'path';
 import { getProjectProfile } from '../project-config';
 import { spawnAgent } from '../spawn-agent';
@@ -44,6 +45,18 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
             const prProjectProfile = getProjectProfile(configFile, statusProjectKey || undefined);
             const prUrlBase = prProjectProfile.prUrlBase || config.project?.prUrlBase || '';
             const prUrlFull = prUrl || (isMockExternalMode(configFile) ? `http://localhost:3001/mock-prs/${prId}` : (prUrlBase ? `${prUrlBase}/${prId}` : `PR #${prId}`));
+            // Branch HEAD commit — the idempotency key for creating-pr. A spurious re-entry
+            // (no new code) sees the same SHA; a real rework pushes a new commit (new SHA).
+            // Worktrees share refs with the repo root, so `rev-parse <branch>` resolves the tip.
+            let headSha: string | null = null;
+            const branchStr = typeof branch === 'string' ? branch.trim() : '';
+            const repoRoot = prProjectProfile.workspacePath;
+            if (branchStr && repoRoot && existsSync(repoRoot) && !isMockExternalMode(configFile)) {
+                try {
+                    headSha = execFileSync('git', ['-C', repoRoot, 'rev-parse', branchStr], { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }).trim() || null;
+                } catch { headSha = null; }
+            }
+            let priorHeadSha: string | null = null;
             if (existsSync(agentStatusFile)) {
                 const persistedBatchIds = Array.isArray(agentStatus?.activePrBatchTaskIds)
                     ? agentStatus.activePrBatchTaskIds.map((id: unknown) => String(id)).filter(Boolean)
@@ -63,9 +76,10 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                         return { ...task, status: 'completed' };
                     });
                 }
-                const prEntry = { id: prId, title: prTitle || `PR #${prId}`, status: 'active', comments: 0, approvals: 0, url: prUrlFull, projectKey: statusProjectKey, batchTaskIds };
+                const prEntry = { id: prId, title: prTitle || `PR #${prId}`, status: 'active', comments: 0, approvals: 0, url: prUrlFull, projectKey: statusProjectKey, batchTaskIds, headSha };
                 if (!agentStatus.prs) agentStatus.prs = [];
                 const existingIdx = agentStatus.prs.findIndex((p: any) => p.id === prId);
+                priorHeadSha = existingIdx >= 0 ? (agentStatus.prs[existingIdx]?.headSha ?? null) : null;
                 if (existingIdx >= 0) agentStatus.prs[existingIdx] = prEntry; else agentStatus.prs.push(prEntry);
                 agentStatus.activePrBatchTaskIds = batchTaskIds;
                 writeFileSync(agentStatusFile, JSON.stringify(agentStatus, null, 2));
@@ -76,6 +90,14 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                     title: prTitle || `PR #${prId}`,
                     sourceRefName: branch ? `refs/heads/${branch}` : undefined,
                     status: 'active' });
+            }
+            // Idempotent creating-pr: an already-registered PR on the same branch HEAD is a
+            // spurious re-entry (no new code). Skip reviewer re-assignment and milestone churn;
+            // the PR is unchanged and already parked at watching-reviews. A real rework pushes
+            // a new commit (different SHA) and falls through to a fresh review below.
+            if (priorHeadSha != null && headSha != null && priorHeadSha === headSha) {
+                json(res, { ok: true, duplicate: true, reason: 'pr-already-registered-same-commit', reviewerPhase: 'duplicate', prId });
+                return;
             }
             const creatorStepMode = isAgentStepMode(agentId, rootDir);
             const configPathResolved = resolve(rootDir, '.sdlc-framework.config.json');
@@ -88,7 +110,16 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
             try {
                 if (existsSync(reviewerStatusFile)) {
                     const prev = parseJsonUtf8File(reviewerStatusFile);
-                    if (prev.assignedPR?.id === prId) alreadyReviewerDeskDup = true;
+                    if (prev.assignedPR?.id === prId && headSha == null) {
+                        // No branch SHA available (e.g. mock mode) — the same-commit short-circuit
+                        // above can't run, so fall back to phase-based dedup: only re-review when
+                        // the reviewer had requested changes / is awaiting fixes.
+                        if (prev.currentPhase !== 'changes-requested' && prev.currentPhase !== 'waiting-for-fixes') {
+                            alreadyReviewerDeskDup = true;
+                        }
+                    }
+                    // With a SHA available, reaching here means a new commit (real rework) →
+                    // re-assign for re-review; same-commit re-entries already returned early.
                 }
             } catch { /* ok */ }
             if (!alreadyReviewerDeskDup) {

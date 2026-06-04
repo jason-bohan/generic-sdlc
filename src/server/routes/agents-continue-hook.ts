@@ -8,7 +8,7 @@ import { getSchedulerWorkflowMode } from '../schedulerMode';
 import { findStoryOwnerByPrId, wrapUpDeskRequestId } from '../handoff';
 import { phaseAllowsContinueTaskScope } from '../../shared/agentPhases';
 import { skillSubdirForAgentId } from '../../shared/agentSkillDirs';
-import { spawnAgent } from '../spawn-agent';
+import { spawnAgent, getActiveAgents } from '../spawn-agent';
 import { isAgentStepModePhase, isGlobalStepMode } from '../stepMode';
 import { readBody, json, cors } from '../router';
 import {
@@ -22,6 +22,10 @@ import { dbGetWorkflowItemByStory, dbGetPhaseEvents } from '../db';
 import { getActiveProject } from '../project-config';
 import { resolve as pathResolve } from 'path';
 import type { UseFn } from './types';
+
+// In-memory auto-resume counter for agents without a matching workflow item
+// (e.g. devops where storyNumber is a PR number, not a real story key).
+const memoryResumeCounts = new Map<string, number>();
 
 export function mount(use: UseFn, rootDir: string, configFile: string): void {
     // ── /api/agent/continue ──────────────────────────────────────────────────
@@ -54,6 +58,13 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                 return;
             }
             const agentIdStr = agentId.trim();
+            // Guard against double-spawn: the status-bus and process-exit auto-continue
+            // paths can both fire for the same transition. If a process is already
+            // running for this agent, skip rather than start a second one.
+            if (agentIdStr in getActiveAgents() || isRunnerActive(agentIdStr)) {
+                json(res, { ok: true, skipped: 'already-running' }, 200);
+                return;
+            }
             const statusFile = resolve(rootDir, `.${agentIdStr}-status.json`);
             let phase = 'idle', storyNum = '';
             let statusSnapshot: Record<string, unknown> | null = null;
@@ -406,20 +417,35 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                 }
             } catch { /* proceed with empty storyNum */ }
 
+            // Don't auto-resume in waiting phases — agent should pause for external input.
+            const WAITING_PHASES = new Set(['watching-reviews']);
+            if (WAITING_PHASES.has(phase)) {
+                return;
+            }
+
             // Prevent infinite loops: stop auto-resuming after 3 attempts in the same phase.
             const MAX_AUTO_RESUMES = 3;
+            let resumeCount = 0;
             if (storyNum) {
                 try {
                     const workflow = dbGetWorkflowItemByStory(storyNum, agentId);
                     if (workflow) {
-                        const starts = dbGetPhaseEvents(workflow.id)
+                        resumeCount = dbGetPhaseEvents(workflow.id)
                             .filter(e => e.phase === phase && e.event_type === 'phase-started').length;
-                        if (starts >= MAX_AUTO_RESUMES) {
-                            console.warn(`[auto-resume] ${agentId} hit max auto-resumes (${MAX_AUTO_RESUMES}) in '${phase}' — stopping`);
-                            return;
-                        }
                     }
                 } catch { /* proceed */ }
+            }
+            // Fallback: in-memory counter for agents without a matching workflow item.
+            if (resumeCount === 0) {
+                const key = `${agentId}::${phase}`;
+                resumeCount = (memoryResumeCounts.get(key) ?? 0) + 1;
+                memoryResumeCounts.set(key, resumeCount);
+                // GC stale entries after 10 minutes
+                setTimeout(() => memoryResumeCounts.delete(key), 600_000);
+            }
+            if (resumeCount >= MAX_AUTO_RESUMES) {
+                console.warn(`[auto-resume] ${agentId} hit max auto-resumes (${MAX_AUTO_RESUMES}) in '${phase}' — stopping`);
+                return;
             }
 
             const prompt = buildContinuePrompt(agentId, phase, storyNum, rootDir, configFile, '', '');
