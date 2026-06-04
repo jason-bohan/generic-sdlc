@@ -88,7 +88,15 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
             try {
                 if (existsSync(reviewerStatusFile)) {
                     const prev = parseJsonUtf8File(reviewerStatusFile);
-                    if (prev.assignedPR?.id === prId) alreadyReviewerDeskDup = true;
+                    if (prev.assignedPR?.id === prId) {
+                        // Re-review: if reviewer had requested changes and new code is pushed,
+                        // re-assign to trigger another review cycle.
+                        if (prev.currentPhase === 'changes-requested' || prev.currentPhase === 'waiting-for-fixes') {
+                            // fall through — do not set alreadyReviewerDeskDup
+                        } else {
+                            alreadyReviewerDeskDup = true;
+                        }
+                    }
                 }
             } catch { /* ok */ }
             if (!alreadyReviewerDeskDup) {
