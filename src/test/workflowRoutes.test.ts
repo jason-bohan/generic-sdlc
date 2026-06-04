@@ -287,7 +287,10 @@ describe('workflow routes', () => {
         expect(phaseRun.body.prompt).toContain('You must produce these output keys exactly:');
         expect(phaseRun.body.prompt).toContain('- tasks');
         expect(phaseRun.body.prompt).toContain('- taskIds');
-        expect(phaseRun.body.prompt).toContain('/api/scheduler/create-task');
+        // Phase 1 now instructs the agent to register tasks via the create_task tool
+        // (which performs the /api/scheduler/create-task POST itself) rather than
+        // calling the HTTP endpoint directly.
+        expect(phaseRun.body.prompt).toContain('create_task');
         expect(phaseRun.body.prompt).toContain('/api/workflows/complete-phase');
 
         const audit = await request(`/api/workflows?id=${workflowItemId}`);
