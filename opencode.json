@@ -18,7 +18,7 @@
       "npm": "@ai-sdk/openai-compatible",
       "name": "MLX (local)",
       "options": {
-        "baseURL": "http://localhost:8083/v1"
+        "baseURL": "http://localhost:8084/v1"
       },
       "models": {
         "mlx-community/Qwen2.5-Coder-14B-Instruct-4bit": { "name": "Qwen 2.5 Coder 14B Q4" },
@@ -26,6 +26,6 @@
       }
     }
   },
-  "model": "mlx/mlx-community/Qwen2.5-Coder-32B-Instruct-4bit",
+  "model": "mlx/mlx-community/Qwen2.5-Coder-14B-Instruct-4bit",
   "small_model": "ollama/qwen3:8b"
 }

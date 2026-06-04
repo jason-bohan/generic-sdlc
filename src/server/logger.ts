@@ -22,7 +22,7 @@ function makeLogger(emoji: string, label: string, labelColor: ChalkInstance) {
 export const serverLog = makeLogger('🤖', 'server',     chalk.magenta);
 export const ollamaLog = makeLogger('🦙', 'ollama',     chalk.cyan);
 export const meshllmLog = makeLogger('🕸️', 'meshllm',   chalk.hex('#a78bfa'));
-export const adoLog    = makeLogger('🔗', 'ado-bridge', chalk.blue);
+export const adoLog    = makeLogger('🔗', 'platform', chalk.blue);
 export const ragLog    = makeLogger('🔍', 'rag',        chalk.green);
 export const dbLog     = makeLogger('🗄️', 'db',         chalk.yellow);
 export const mlxLog    = makeLogger('🍎', 'mlx',        chalk.hex('#ff9f1c'));
