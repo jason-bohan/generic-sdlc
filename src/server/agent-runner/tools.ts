@@ -874,34 +874,40 @@ export interface AutoCommitResult { ok: boolean; committed: boolean; note: strin
  * Local commit only — pushing / PR creation is the creating-pr phase's job.
  */
 export function autoCommitWorktree(workspaceDir: string, agentId: string, storyNumber: string, message: string): AutoCommitResult {
-    const wt = findStoryWorktree(workspaceDir, agentId, storyNumber) ?? workspaceDir;
-    const tryDir = (dir: string, label: string): AutoCommitResult | null => {
-        const git = (cargs: string[]): string => {
-            try { return execFileSync('git', ['-C', dir, ...cargs], { encoding: 'utf8', timeout: 30_000 }).trimEnd(); }
-            catch (e) {
-                const err = e as { stdout?: string; stderr?: string; message?: string };
-                return `__ERR__${err.stdout ?? ''}${err.stderr ?? err.message ?? ''}`;
-            }
-        };
-    const status = git(['status', '--porcelain']);
-    if (status.startsWith('__ERR__')) return null;
-    if (!status) {
-            return { ok: true, committed: false, note: `already committed (clean) in ${label}: ${git(['log', '-1', '--oneline']) || '(no log)'}` };
-        }
-        const realPaths = parsePorcelainPaths(status).filter((p) => !COMMIT_JUNK_RE.test(p));
-        if (realPaths.length === 0) return null;
-        if (git(['add', '--', ...realPaths]).startsWith('__ERR__')) return { ok: false, committed: false, note: `git add failed in ${label}` };
-        const out = git(['commit', '-m', message]);
-        if (out.startsWith('__ERR__')) return { ok: false, committed: false, note: `auto-commit failed in ${label}: ${out.slice(7, 200)}` };
-        return { ok: true, committed: true, note: `committed ${realPaths.length} file(s) to ${label} → ${git(['rev-parse', '--short', 'HEAD'])}: ${message}` };
-    };
-    const r1 = tryDir(wt, wt === workspaceDir ? 'workspaceDir' : 'worktree');
-    if (r1) return r1;
-    if (wt !== workspaceDir) {
-        const r2 = tryDir(workspaceDir, 'workspaceDir (fallback)');
-        if (r2) return r2;
+    // Require the story's isolated worktree. We deliberately do NOT fall back to
+    // workspaceDir: committing in the main checkout (a) defeats worktree isolation
+    // and (b) sweeps up unrelated changes (e.g. the .claude/worktrees dir itself).
+    // No worktree → no-op failure so the caller routes back to generating-code.
+    const wt = findStoryWorktree(workspaceDir, agentId, storyNumber);
+    if (!wt) {
+        return { ok: false, committed: false, note: `no worktree found for ${agentId}-${storyNumber} — work must happen in .claude/worktrees/${agentId}-${storyNumber}` };
     }
-    return { ok: false, committed: false, note: 'no real source changes found in worktree or workspaceDir' };
+    const git = (cargs: string[]): string => {
+        try { return execFileSync('git', ['-C', wt, ...cargs], { encoding: 'utf8', timeout: 30_000 }).trimEnd(); }
+        catch (e) {
+            const err = e as { stdout?: string; stderr?: string; message?: string };
+            return `__ERR__${err.stdout ?? ''}${err.stderr ?? err.message ?? ''}`;
+        }
+    };
+    const status = git(['status', '--porcelain']);
+    if (status.startsWith('__ERR__')) {
+        return { ok: false, committed: false, note: `git status failed in worktree ${wt}: ${status.slice(7, 200)}` };
+    }
+    if (!status) {
+        return { ok: true, committed: false, note: `already committed (clean): ${git(['log', '-1', '--oneline']) || '(no log)'}` };
+    }
+    const realPaths = parsePorcelainPaths(status).filter((p) => !COMMIT_JUNK_RE.test(p));
+    if (realPaths.length === 0) {
+        return { ok: false, committed: false, note: 'no real work to commit (only build/cache junk changed)' };
+    }
+    if (git(['add', '--', ...realPaths]).startsWith('__ERR__')) {
+        return { ok: false, committed: false, note: `git add failed in worktree ${wt}` };
+    }
+    const out = git(['commit', '-m', message]);
+    if (out.startsWith('__ERR__')) {
+        return { ok: false, committed: false, note: `auto-commit failed in worktree ${wt}: ${out.slice(7, 200)}` };
+    }
+    return { ok: true, committed: true, note: `committed ${realPaths.length} file(s) → ${git(['rev-parse', '--short', 'HEAD'])}: ${message}` };
 }
 
 export interface AutoPrResult {
@@ -927,8 +933,10 @@ export function autoCreatePr(
     body: string,
     configPath: string,
 ): AutoPrResult {
-    let wt = findStoryWorktree(workspaceDir, agentId, storyNumber);
-    if (!wt) wt = workspaceDir;
+    const wt = findStoryWorktree(workspaceDir, agentId, storyNumber);
+    if (!wt) {
+        return { handoff: `${agentId}: no worktree found for ${agentId}-${storyNumber}`, note: `no worktree found for ${agentId}-${storyNumber}`, ok: false };
+    }
     const sh = (bin: string, cargs: string[]): { ok: boolean; out: string } => {
         try { return { ok: true, out: execFileSync(bin, cargs, { cwd: wt, encoding: 'utf8', timeout: 60_000 }).trim() }; }
         catch (e) {
