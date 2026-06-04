@@ -56,6 +56,15 @@ export interface SdlcPhaseContract {
     purpose: string;
     requires: readonly SdlcOutputKey[];
     produces: readonly SdlcOutputKey[];
+    /**
+     * Groups of interchangeable output keys where exactly one alternative applies
+     * per run, so the contract is satisfied by *any one* member rather than all of
+     * them. Used for mode-dependent outputs: e.g. creating-pr produces `pr` in live
+     * mode but `mockPr` in mock mode — requiring both makes the phase unsatisfiable.
+     * Keys listed here are still part of `produces` (documentation), but validation
+     * treats each group as "at least one present".
+     */
+    producesOneOf?: readonly (readonly SdlcOutputKey[])[];
     gates: readonly string[];
     allowedNext: readonly SdlcPhaseId[];
 }
@@ -143,6 +152,9 @@ export const SDLC_PHASE_CONTRACTS: Readonly<Record<SdlcPhaseId, SdlcPhaseContrac
         purpose: 'Create or simulate the PR and register it with SDLC Framework for review handoff.',
         requires: ['validationResults', 'branchPlan'],
         produces: ['pr', 'mockPr', 'handoff', 'auditEvent'],
+        // `pr` (live) and `mockPr` (mock) are mode alternatives — exactly one applies
+        // per run; requiring both would make the phase impossible to complete.
+        producesOneOf: [['pr', 'mockPr']],
         gates: ['Mock mode produces mockPr only', 'Live mode produces PR metadata', '/api/pr/created is called'],
         allowedNext: ['watching-reviews', 'error'],
     },
@@ -441,6 +453,18 @@ export function isAllowedSdlcTransition(agentId: SdlcAgentId, from: SdlcPhaseId,
 
 export function validateSdlcPhaseOutput(phase: SdlcPhaseId, output: Partial<Record<SdlcOutputKey, unknown>>): SdlcContractValidation {
     const contract = getSdlcPhaseContract(phase);
-    const missing = contract.produces.filter(key => output[key] === undefined || output[key] === null);
+    const present = (key: SdlcOutputKey) => output[key] !== undefined && output[key] !== null;
+    const groups = contract.producesOneOf ?? [];
+    const grouped = new Set(groups.flat());
+
+    // Keys outside any one-of group are each individually required.
+    const missing = contract.produces.filter(key => !grouped.has(key) && !present(key));
+
+    // Each one-of group needs at least one member present; if none are, report the
+    // whole group as missing so the caller sees the acceptable alternatives.
+    for (const group of groups) {
+        if (!group.some(present)) missing.push(...group);
+    }
+
     return { ok: missing.length === 0, missing };
 }
