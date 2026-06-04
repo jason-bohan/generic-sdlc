@@ -22,6 +22,7 @@ import { startMeshllm } from './meshllmLauncher';
 import { probeMlx, startMlxIfConfigured } from './mlxProvider';
 import { meshllmLog, mlxLog } from './logger';
 import { startHookRunner, stopHookRunner } from './hook-runner';
+import { maybeHandoffReviewVerdict } from './review-handoff';
 import { maybeTriggerVerification } from './verify-trigger';
 import { startAutoFinetune } from './autoFinetune';
 import { getActiveProject } from './project-config';
@@ -139,6 +140,10 @@ server.listen(PORT, () => {
             onEvent: (ev) => {
                 try { maybeTriggerVerification(ROOT_DIR, CONFIG_FILE, ev); }
                 catch (e) { log.warn(`[verify-trigger] ${e instanceof Error ? e.message : String(e)}`); }
+                // Autonomous reviewer→dev handoff: when the reviewer posts a verdict,
+                // route it back (changes → dev rework, approved → devops build).
+                try { maybeHandoffReviewVerdict(PORT, ev); }
+                catch (e) { log.warn(`[review-handoff] ${e instanceof Error ? e.message : String(e)}`); }
             },
         });
         startAutoFinetune(ROOT_DIR);

@@ -192,13 +192,32 @@ export class AgentRunner extends EventEmitter {
 
                 this.turnCount++;
 
+                // The local model server (MLX/llama.cpp) can crash mid-run — e.g. a
+                // Metal OOM — and is auto-respawned by launchd within a few seconds.
+                // Treat connection/gateway errors as transient: wait for it to come back
+                // and retry the LLM call rather than failing the whole phase. Only a
+                // persistent failure (retries exhausted, or a non-transient error like a
+                // bad request) ends the phase.
                 let response;
-                try {
-                    response = await this.provider.complete(this.messages, AGENT_TOOLS);
-                } catch (e) {
-                    this._emit('error', { message: e instanceof Error ? e.message : String(e), turn: this.turnCount });
-                    break;
+                const LLM_MAX_ATTEMPTS = 6;
+                for (let llmAttempt = 1; ; llmAttempt++) {
+                    try {
+                        response = await this.provider.complete(this.messages, AGENT_TOOLS);
+                        break;
+                    } catch (e) {
+                        const emsg = e instanceof Error ? e.message : String(e);
+                        const transient = /\b50[234]\b|socket hang up|ECONNREFUSED|ECONNRESET|fetch failed|terminated|ETIMEDOUT|network|timeout|proxy error/i.test(emsg);
+                        if (transient && llmAttempt < LLM_MAX_ATTEMPTS && this._running && !this._aborted) {
+                            const waitMs = Math.min(llmAttempt * 4000, 15_000);
+                            this._emit('message', { content: `[provider-retry] LLM call failed (${emsg.slice(0, 80)}); waiting ${Math.round(waitMs / 1000)}s for the model server to recover (attempt ${llmAttempt}/${LLM_MAX_ATTEMPTS - 1})`, turn: this.turnCount });
+                            await new Promise((r) => setTimeout(r, waitMs));
+                            continue;
+                        }
+                        this._emit('error', { message: emsg, turn: this.turnCount });
+                        break;
+                    }
                 }
+                if (!response) break;
 
                 if (response.usage) {
                     this.usageInput += response.usage.inputTokens;

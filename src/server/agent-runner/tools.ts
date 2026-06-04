@@ -533,7 +533,7 @@ function toolRunCommand(
     // from inside a worktree interprets the relative path as nested inside the
     // worktree, creating a broken nested structure.
     if (!/\bgit\s+worktree\s+add\b/.test(command)) {
-        const activeWt = findActiveWorktree(workspaceDir, frameworkDir, agentId);
+        const activeWt = activeOrCreatedWorktree(workspaceDir, frameworkDir, agentId);
         if (activeWt) cwd = activeWt;
     }
     if (args.cwd) {
@@ -781,41 +781,83 @@ export function findStoryWorktree(workspaceDir: string, agentId: string, storyNu
     const dirs = readdirSync(base)
         .map((d) => resolve(base, d))
         .filter((d) => { try { return statSync(d).isDirectory(); } catch { return false; } });
+    // Only consider worktrees that actually belong to this story — never fall back to
+    // ALL dirs, which would return a sibling story's worktree and misdirect commits.
     const byStory = dirs.filter((d) => d.includes(storyNumber));
-    const candidates = byStory.length ? byStory : dirs;
     const dirty = (d: string): boolean => {
         try { return execFileSync('git', ['-C', d, 'status', '--porcelain'], { encoding: 'utf8' }).trimEnd().length > 0; }
         catch { return false; }
     };
-    return candidates.find(dirty) ?? byStory[0] ?? null;
+    return byStory.find(dirty) ?? byStory[0] ?? null;
+}
+
+/** Read the agent's current storyNumber from its status file (null if unknown). */
+function readAgentStoryNumber(frameworkDir: string, agentId: string): string | null {
+    try {
+        const status = parseJsonUtf8File(resolve(frameworkDir, `.${agentId}-status.json`)) as Record<string, unknown>;
+        return typeof status.storyNumber === 'string' && status.storyNumber ? status.storyNumber : null;
+    } catch { return null; }
 }
 
 /**
- * Find the most recently created worktree for this agent by scanning
- * `.claude/worktrees/` for directories matching `{agentId}-*`.
- * Reads the status file first for an exact story-number match; falls back
- * to the newest matching directory so the agent can write files to its
- * worktree without guessing the absolute path.
+ * Deterministically ensure the story's isolated worktree exists, creating it (with a
+ * fresh `fix/<story>` branch off HEAD) if missing. The framework — not the model —
+ * owns worktree creation so the committing / creating-pr gates always have a worktree
+ * to commit into and writes never leak into the main checkout. Idempotent.
+ */
+export function ensureStoryWorktree(workspaceDir: string, agentId: string, storyNumber: string): string | null {
+    const existing = findStoryWorktree(workspaceDir, agentId, storyNumber);
+    if (existing) return existing;
+    const wtPath = resolve(workspaceDir, '.claude', 'worktrees', `${agentId}-${storyNumber}`);
+    const branch = `fix/${storyNumber}`;
+    const git = (gargs: string[]): { ok: boolean; out: string } => {
+        try { return { ok: true, out: execFileSync('git', ['-C', workspaceDir, ...gargs], { encoding: 'utf8', timeout: 30_000 }).trim() }; }
+        catch (e) { const err = e as { stdout?: string; stderr?: string; message?: string }; return { ok: false, out: `${err.stdout ?? ''}${err.stderr ?? err.message ?? ''}`.trim() }; }
+    };
+    if (!git(['rev-parse', '--is-inside-work-tree']).ok) return null; // not a git repo (e.g. self-dev sandbox)
+    mkdirSync(resolve(workspaceDir, '.claude', 'worktrees'), { recursive: true });
+    git(['worktree', 'prune']); // drop stale registrations first
+    // Base selection matters: if the story branch already exists (a reopened PR being
+    // reworked), we must continue THAT branch so new commits stack onto the open PR and
+    // the push fast-forwards. Creating it fresh off main would diverge → push rejected →
+    // the fix never reaches the PR. Preference: existing local branch → remote branch →
+    // fresh off HEAD.
+    git(['fetch', 'origin', branch]); // best-effort; populates origin/<branch> if the PR exists
+    const hasLocal = git(['rev-parse', '--verify', `refs/heads/${branch}`]).ok;
+    const hasRemote = git(['rev-parse', '--verify', `refs/remotes/origin/${branch}`]).ok;
+    let r: { ok: boolean; out: string };
+    if (hasLocal) {
+        r = git(['worktree', 'add', wtPath, branch]);                          // continue existing local branch
+    } else if (hasRemote) {
+        r = git(['worktree', 'add', '-b', branch, wtPath, `origin/${branch}`]); // continue the open PR's branch
+    } else {
+        r = git(['worktree', 'add', '-b', branch, wtPath, 'HEAD']);            // brand-new branch off main
+    }
+    return r.ok && existsSync(wtPath) ? wtPath : null;
+}
+
+/**
+ * Locate the story's worktree (exact `<agent>-<story>` match only). Does NOT fall back
+ * to a sibling story's worktree — that would misdirect writes/commits onto the wrong
+ * branch (observed: a fresh story's edits aimed at a stale story's worktree).
  */
 function findActiveWorktree(workspaceDir: string, frameworkDir: string, agentId: string): string | null {
-    const statusFile = resolve(frameworkDir, `.${agentId}-status.json`);
-    try {
-        const status = parseJsonUtf8File(statusFile) as Record<string, unknown>;
-        const storyNumber = status.storyNumber;
-        if (typeof storyNumber === 'string' && storyNumber) {
-            const exact = findStoryWorktree(workspaceDir, agentId, storyNumber);
-            if (exact) return exact;
-        }
-    } catch { /* fall through to scan */ }
-    const base = resolve(workspaceDir, '.claude', 'worktrees');
-    if (!existsSync(base)) return null;
-    const dirs = readdirSync(base)
-        .filter((d) => d.startsWith(`${agentId}-`))
-        .map((d) => resolve(base, d))
-        .filter((d) => { try { return statSync(d).isDirectory(); } catch { return false; } });
-    if (dirs.length === 0) return null;
-    dirs.sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs);
-    return dirs[0];
+    const storyNumber = readAgentStoryNumber(frameworkDir, agentId);
+    return storyNumber ? findStoryWorktree(workspaceDir, agentId, storyNumber) : null;
+}
+
+/**
+ * Worktree that writes/commands should target. For a real target codebase, create the
+ * story worktree on demand (deterministic). For framework self-development
+ * (workspaceDir === frameworkDir) stay locate-only so the framework's own repo is not
+ * carved into worktrees.
+ */
+function activeOrCreatedWorktree(workspaceDir: string, frameworkDir: string, agentId: string): string | null {
+    if (workspaceDir !== frameworkDir) {
+        const storyNumber = readAgentStoryNumber(frameworkDir, agentId);
+        if (storyNumber) return ensureStoryWorktree(workspaceDir, agentId, storyNumber);
+    }
+    return findActiveWorktree(workspaceDir, frameworkDir, agentId);
 }
 
 /**
@@ -833,7 +875,7 @@ function maybeRedirectToWorktree(
 ): string {
     const rel = relative(workspaceDir, resolvedPath);
     if (rel.startsWith('..')) return resolvedPath;
-    const wt = findActiveWorktree(workspaceDir, frameworkDir, agentId);
+    const wt = activeOrCreatedWorktree(workspaceDir, frameworkDir, agentId);
     if (!wt) return resolvedPath;
     // If the resolved path is already inside the worktree, don't redirect again.
     if (resolvedPath.startsWith(wt + '/') || resolvedPath === wt) return resolvedPath;
@@ -846,7 +888,7 @@ function maybeRedirectToWorktree(
  * `git add -A` once committed a vitest cache file as if it were the work. The commit
  * gate stages only source changes and ignores these.
  */
-const COMMIT_JUNK_RE = /(^|\/)(node_modules|dist|build|out|coverage|\.vite|\.cache|\.next|\.turbo|\.nyc_output)(\/|$)|(^|\/)\.DS_Store$|\.(log|tmp)$/i;
+const COMMIT_JUNK_RE = /(^|\/)(node_modules|dist|build|out|coverage|\.vite|\.cache|\.next|\.turbo|\.nyc_output|\.claude)(\/|$)|(^|\/)\.DS_Store$|\.(log|tmp)$/i;
 
 /** Parse `git status --porcelain` into changed paths (handles quoting and renames). */
 function parsePorcelainPaths(porcelain: string): string[] {
@@ -1040,6 +1082,24 @@ async function toolCompletePhase(
     let autoPr: AutoPrResult | undefined;
     if (currentPhase === 'creating-pr') {
         autoPr = autoCreatePr(workspaceDir, agentId, storyNumber, changeTitle, prBody, configPath);
+        // Dev→reviewer handoff: put the PR on the reviewer's desk (which also spawns the
+        // reviewer). The framework does this deterministically — the model used to be
+        // relied on to call /api/pr/created itself and routinely skipped it, so the PR
+        // sat unreviewed. Non-blocking; failure is logged but does not fail the phase.
+        const prMeta = (autoPr.ok ? (autoPr.pr ?? autoPr.mockPr) : undefined) as { number?: number; url?: string; title?: string; branch?: string } | undefined;
+        if (prMeta && typeof prMeta.number === 'number' && prMeta.number > 0) {
+            const serverUrl = process.env.SDLC_SERVER_URL || 'http://localhost:3001';
+            try {
+                await fetch(`${serverUrl}/api/pr/created`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ agentId, prId: prMeta.number, prTitle: prMeta.title || changeTitle, prUrl: prMeta.url, storyNumber, branch: prMeta.branch }),
+                    signal: AbortSignal.timeout(20_000),
+                });
+            } catch (e) {
+                console.warn('[creating-pr] reviewer handoff (/api/pr/created) failed:', e instanceof Error ? e.message : String(e));
+            }
+        }
     }
 
     const outputs: Record<string, unknown> = {
