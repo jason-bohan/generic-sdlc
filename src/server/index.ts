@@ -33,7 +33,6 @@ import { existsSync } from 'fs';
 import { deriveApiPort, persistDevPort } from './worktree-port';
 import { parseJsonUtf8File } from './json-file';
 import { setOnAgentStop } from './spawn-agent';
-import { resolveAgentDriverConfig } from './agent-drivers';
 
 const PORT = deriveApiPort(ROOT_DIR);
 persistDevPort(ROOT_DIR, PORT);
@@ -147,36 +146,17 @@ server.listen(PORT, () => {
                 // route it back (changes → dev rework, approved → devops build).
                 try { maybeHandoffReviewVerdict(PORT, ev); }
                 catch (e) { log.warn(`[review-handoff] ${e instanceof Error ? e.message : String(e)}`); }
-                try { maybeAutoContinueAgent(ROOT_DIR, PORT, CONFIG_FILE, ev); }
+                try { maybeAutoContinueAgent(ROOT_DIR, PORT, CONFIG_FILE, ev.agentId); }
                 catch (e) { log.warn(`[auto-continue] ${e instanceof Error ? e.message : String(e)}`); }
             },
         });
-        // When a spawn-based agent process exits, auto-continue to the next phase.
-        // This complements the file-watcher-based hook-runner: the file watcher may
-        // miss rapid phase transitions that happen before the process exits, but here
-        // we fire unconditionally when the process is gone.
+        // When a spawn-based agent process exits, run the same guarded auto-continue
+        // path. This complements the file-watcher-based hook-runner (which may miss
+        // rapid phase transitions before the process exits); the shared function
+        // honors step mode, driver type, and the active-agent guards either way.
         setOnAgentStop((agentId) => {
-            try {
-                const statusFile = resolve(ROOT_DIR, `.${agentId}-status.json`);
-                if (!existsSync(statusFile)) return;
-                const status = parseJsonUtf8File(statusFile) as Record<string, unknown>;
-                const phase = String(status.currentPhase ?? '');
-                // Skip terminal / irrelevant phases.
-                if (['idle', 'complete', 'error', 'approved', 'changes-requested'].includes(phase)) return;
-                if (!status.storyNumber) return;
-                // Only auto-continue spawn-based drivers (loop drivers auto-resume internally).
-                const driver = resolveAgentDriverConfig(agentId, CONFIG_FILE);
-                if (driver.type === 'loop') return;
-                log.info(`[agent-stop] ${agentId} exited on phase "${phase}" — auto-continuing`);
-                void fetch(`http://localhost:${PORT}/api/agent/continue`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ agentId }),
-                    signal: AbortSignal.timeout(30_000),
-                })
-                    .then((r) => log.info(`[agent-stop] ${agentId} continue → HTTP ${r.status}`))
-                    .catch((e) => log.warn(`[agent-stop] ${agentId} continue failed: ${e instanceof Error ? e.message : String(e)}`));
-            } catch (e) { log.warn(`[agent-stop] ${agentId}: ${e instanceof Error ? e.message : String(e)}`); }
+            try { maybeAutoContinueAgent(ROOT_DIR, PORT, CONFIG_FILE, agentId); }
+            catch (e) { log.warn(`[agent-stop] ${agentId}: ${e instanceof Error ? e.message : String(e)}`); }
         });
         startAutoFinetune(ROOT_DIR);
     }

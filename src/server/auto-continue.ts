@@ -12,7 +12,6 @@
  * endpoint setting handoffDispatched) are caught by the dedup check.
  */
 
-import type { StatusChangeEvent } from './status-events';
 import { getActiveAgents } from './spawn-agent';
 import { isRunnerActive } from './agent-runner';
 import { resolveAgentDriverConfig } from './agent-drivers';
@@ -26,9 +25,26 @@ const NEVER_AUTO_CONTINUE_PHASES = new Set([
     'approved', 'changes-requested',
 ]);
 
-export function maybeAutoContinueAgent(rootDir: string, port: number, configFile: string, ev: StatusChangeEvent): void {
-    const { agentId } = ev;
-    if (NEVER_AUTO_CONTINUE_PHASES.has(ev.status?.currentPhase as string)) return;
+/**
+ * Single guarded auto-continue path, shared by the status-bus handler and the
+ * process-exit hook. Reads the agent's current phase from its status file (the
+ * source of truth both callers agree on) and only fires for spawn-based drivers
+ * that are idle, not in step mode, and have a story to continue.
+ */
+export function maybeAutoContinueAgent(rootDir: string, port: number, configFile: string, agentId: string): void {
+    // Safety check: make sure the agent actually has a story to continue.
+    const statusFile = `${rootDir}/.${agentId}-status.json`;
+    if (!existsSync(statusFile)) return;
+    let status: Record<string, unknown>;
+    try {
+        status = parseJsonUtf8File(statusFile) as Record<string, unknown>;
+    } catch {
+        return;
+    }
+
+    const phase = String(status.currentPhase ?? '');
+    if (NEVER_AUTO_CONTINUE_PHASES.has(phase)) return;
+    if (!status.storyNumber) return;
 
     // Only auto-continue spawn-based drivers (opencode, aider, goose, generic).
     // Loop drivers auto-resume internally via registry events.
@@ -43,17 +59,7 @@ export function maybeAutoContinueAgent(rootDir: string, port: number, configFile
     // Step mode: user wants to review before proceeding.
     if (isAgentStepMode(agentId, configFile)) return;
 
-    // Safety check: make sure the agent actually has a story to continue.
-    const statusFile = `${rootDir}/.${agentId}-status.json`;
-    if (!existsSync(statusFile)) return;
-    try {
-        const status = parseJsonUtf8File(statusFile) as Record<string, unknown>;
-        if (!status.storyNumber) return;
-    } catch {
-        return;
-    }
-
-    log.info(`[auto-continue] ${agentId} completed phase "${ev.status?.currentPhase}" — auto-continuing`);
+    log.info(`[auto-continue] ${agentId} idle on phase "${phase}" — auto-continuing`);
     void fetch(`http://localhost:${port}/api/agent/continue`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

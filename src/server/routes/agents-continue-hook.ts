@@ -8,7 +8,7 @@ import { getSchedulerWorkflowMode } from '../schedulerMode';
 import { findStoryOwnerByPrId, wrapUpDeskRequestId } from '../handoff';
 import { phaseAllowsContinueTaskScope } from '../../shared/agentPhases';
 import { skillSubdirForAgentId } from '../../shared/agentSkillDirs';
-import { spawnAgent } from '../spawn-agent';
+import { spawnAgent, getActiveAgents } from '../spawn-agent';
 import { isAgentStepModePhase, isGlobalStepMode } from '../stepMode';
 import { readBody, json, cors } from '../router';
 import {
@@ -58,6 +58,13 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                 return;
             }
             const agentIdStr = agentId.trim();
+            // Guard against double-spawn: the status-bus and process-exit auto-continue
+            // paths can both fire for the same transition. If a process is already
+            // running for this agent, skip rather than start a second one.
+            if (agentIdStr in getActiveAgents() || isRunnerActive(agentIdStr)) {
+                json(res, { ok: true, skipped: 'already-running' }, 200);
+                return;
+            }
             const statusFile = resolve(rootDir, `.${agentIdStr}-status.json`);
             let phase = 'idle', storyNum = '';
             let statusSnapshot: Record<string, unknown> | null = null;
