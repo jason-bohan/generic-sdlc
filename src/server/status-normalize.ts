@@ -1,15 +1,12 @@
-import type { SdlcAgentId, SdlcPhaseId } from '../shared/sdlcContracts';
+import { SDLC_PHASE_CONTRACTS, type SdlcAgentId, type SdlcPhaseId } from '../shared/sdlcContracts';
 import { normalizeReviewerWorkCardPrs } from './reviewer-work-card';
 
 export const SDLC_AGENT_IDS = new Set(['frontend', 'backend', 'qa', 'ux', 'reviewer', 'devops', 'orchestrator', 'aiqa']);
-export const SDLC_PHASE_IDS = new Set([
-    'story-intake', 'pre-planning', 'reading-story', 'analyzing', 'generating-code',
-    'validating', 'creating-pr', 'watching-reviews', 'addressing-feedback',
-    'researching', 'designing', 'spec-ready', 'collaborating', 'reviewing',
-    'commenting', 'approved', 'changes-requested', 'pending-build',
-    'monitoring-build', 'build-passed', 'build-failed', 'running-cypress',
-    'complete', 'error',
-]);
+// Derived from the canonical phase contract so the route validator can never drift
+// from the orchestrator's vocabulary. (Previously this was a hand-maintained list
+// that omitted 'committing', so complete-phase rejected a phase the orchestrator
+// actively routes into — trapping the workflow with no forward path.)
+export const SDLC_PHASE_IDS = new Set<string>(Object.keys(SDLC_PHASE_CONTRACTS));
 
 const TASKS_DONE_PHASES = new Set([
     'complete',

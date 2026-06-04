@@ -26,6 +26,7 @@ import {
 import type { UseFn } from './types';
 import { parseJsonUtf8File } from '../json-file';
 import { isLocalStoryNumber, createLocalTask, loadLocalTasksForStory, updateLocalStoryStatus } from '../local-planning';
+import { cleanupStoryWorktrees, resolveWorktreeRepoRoots } from '../worktree-cleanup';
 
 const AGENT_TASK_CATEGORY: Record<string, string> = {
     frontend: 'TaskCategory:111',
@@ -122,15 +123,21 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                         if (dupIdx >= 0) {
                             const reconciliation = loaded.taskReconciliation as { status?: string } | undefined;
                             if (reconciliation?.status !== 'reuse-confirmed') {
-                                const matchingTasks = existing.map((t: RawTask) => ({ id: String(t.id ?? t.number ?? ''), name: String(t.name ?? ''), status: String(t.status ?? 'pending'), category: t.category, hours: t.hours, priority: (t as RawTask & { priority?: unknown }).priority })).filter(t => t.id || t.name);
-                                loaded.currentPhase = 'analyzing'; loaded.handoffDispatched = false;
-                                loaded.taskReconciliation = { status: 'pending', storyNumber, reason: `Task "${name}" already exists for story ${storyNumber}.`, detectedAt: new Date().toISOString(), matchingTaskIds: matchingTasks.map(t => t.id).filter(Boolean), matchingTasks };
-                                const evs = Array.isArray(loaded.events) ? loaded.events as Array<{ timestamp: string; type: string; message: string }> : [];
-                                evs.push({ timestamp: new Date().toISOString(), type: 'warning', message: `Existing tasks detected for story ${storyNumber}. Waiting for reuse or recreate decision.` });
-                                loaded.events = evs;
-                                writeFileSync(localStatusFile, JSON.stringify(loaded, null, 2));
-                                json(res, { ok: false, reconciliationRequired: true, existingTask: matchingTasks[dupIdx], matchingTasks }, 409);
-                                return;
+                                const mode = getSchedulerWorkflowMode(getSchedulerConfig(rootDir));
+                                if (mode === 'autonomous') {
+                                    loaded.taskReconciliation = { ...(loaded.taskReconciliation as Record<string, unknown> || {}), status: 'reuse-confirmed', resolvedAt: new Date().toISOString() };
+                                    writeFileSync(localStatusFile, JSON.stringify(loaded, null, 2));
+                                } else {
+                                    const matchingTasks = existing.map((t: RawTask) => ({ id: String(t.id ?? t.number ?? ''), name: String(t.name ?? ''), status: String(t.status ?? 'pending'), category: t.category, hours: t.hours, priority: (t as RawTask & { priority?: unknown }).priority })).filter(t => t.id || t.name);
+                                    loaded.currentPhase = 'analyzing'; loaded.handoffDispatched = false;
+                                    loaded.taskReconciliation = { status: 'pending', storyNumber, reason: `Task "${name}" already exists for story ${storyNumber}.`, detectedAt: new Date().toISOString(), matchingTaskIds: matchingTasks.map(t => t.id).filter(Boolean), matchingTasks };
+                                    const evs = Array.isArray(loaded.events) ? loaded.events as Array<{ timestamp: string; type: string; message: string }> : [];
+                                    evs.push({ timestamp: new Date().toISOString(), type: 'warning', message: `Existing tasks detected for story ${storyNumber}. Waiting for reuse or recreate decision.` });
+                                    loaded.events = evs;
+                                    writeFileSync(localStatusFile, JSON.stringify(loaded, null, 2));
+                                    json(res, { ok: false, reconciliationRequired: true, existingTask: matchingTasks[dupIdx], matchingTasks }, 409);
+                                    return;
+                                }
                             }
                             const prev = existing[dupIdx];
                             const reusedNumber = String(prev.number ?? prev.id ?? '');
@@ -176,15 +183,21 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                         if (dupIdx >= 0) {
                             const reconciliation = loaded.taskReconciliation as { status?: string } | undefined;
                             if (reconciliation?.status !== 'reuse-confirmed') {
-                                const matchingTasks = existing.map((t: RawTask) => ({ id: String(t.id ?? t.number ?? ''), name: String(t.name ?? ''), status: String(t.status ?? 'pending'), category: t.category, hours: t.hours, priority: (t as RawTask & { priority?: unknown }).priority })).filter(t => t.id || t.name);
-                                loaded.currentPhase = 'analyzing'; loaded.handoffDispatched = false;
-                                loaded.taskReconciliation = { status: 'pending', storyNumber, reason: `Task "${name}" already exists for story ${storyNumber}.`, detectedAt: new Date().toISOString(), matchingTaskIds: matchingTasks.map(t => t.id).filter(Boolean), matchingTasks };
-                                const evs = Array.isArray(loaded.events) ? loaded.events as Array<{ timestamp: string; type: string; message: string }> : [];
-                                evs.push({ timestamp: new Date().toISOString(), type: 'warning', message: `Existing tasks detected for story ${storyNumber}. Waiting for reuse or recreate decision.` });
-                                loaded.events = evs;
-                                writeFileSync(mockStatusFile, JSON.stringify(loaded, null, 2));
-                                json(res, { ok: false, reconciliationRequired: true, existingTask: matchingTasks[dupIdx], matchingTasks }, 409);
-                                return;
+                                const mode = getSchedulerWorkflowMode(getSchedulerConfig(rootDir));
+                                if (mode === 'autonomous') {
+                                    loaded.taskReconciliation = { ...(loaded.taskReconciliation as Record<string, unknown> || {}), status: 'reuse-confirmed', resolvedAt: new Date().toISOString() };
+                                    writeFileSync(mockStatusFile, JSON.stringify(loaded, null, 2));
+                                } else {
+                                    const matchingTasks = existing.map((t: RawTask) => ({ id: String(t.id ?? t.number ?? ''), name: String(t.name ?? ''), status: String(t.status ?? 'pending'), category: t.category, hours: t.hours, priority: (t as RawTask & { priority?: unknown }).priority })).filter(t => t.id || t.name);
+                                    loaded.currentPhase = 'analyzing'; loaded.handoffDispatched = false;
+                                    loaded.taskReconciliation = { status: 'pending', storyNumber, reason: `Task "${name}" already exists for story ${storyNumber}.`, detectedAt: new Date().toISOString(), matchingTaskIds: matchingTasks.map(t => t.id).filter(Boolean), matchingTasks };
+                                    const evs = Array.isArray(loaded.events) ? loaded.events as Array<{ timestamp: string; type: string; message: string }> : [];
+                                    evs.push({ timestamp: new Date().toISOString(), type: 'warning', message: `Existing tasks detected for story ${storyNumber}. Waiting for reuse or recreate decision.` });
+                                    loaded.events = evs;
+                                    writeFileSync(mockStatusFile, JSON.stringify(loaded, null, 2));
+                                    json(res, { ok: false, reconciliationRequired: true, existingTask: matchingTasks[dupIdx], matchingTasks }, 409);
+                                    return;
+                                }
                             }
                             const prev = existing[dupIdx];
                             const reusedNumber = String(prev.number ?? prev.id ?? '');
@@ -270,41 +283,53 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                     if (existingTaskIndex >= 0) {
                         const reconciliation = loadedStatus.taskReconciliation as { status?: string } | undefined;
                         if (reconciliation?.status !== 'reuse-confirmed') {
-                            const matchingTasks = existingTasks.map((t: RawTask) => ({
-                                id: String(t.id ?? t.number ?? ''),
-                                name: String(t.name ?? ''),
-                                status: String(t.status ?? 'pending'),
-                                category: t.category,
-                                hours: t.hours,
-                                priority: (t as RawTask & { priority?: unknown }).priority,
-                            })).filter(t => t.id || t.name);
-                            loadedStatus.currentPhase = 'analyzing';
-                            loadedStatus.handoffDispatched = false;
-                            loadedStatus.taskReconciliation = {
-                                status: 'pending',
-                                storyNumber,
-                                reason: `Task "${name}" already exists for story ${storyNumber}.`,
-                                detectedAt: new Date().toISOString(),
-                                matchingTaskIds: matchingTasks.map(t => t.id).filter(Boolean),
-                                matchingTasks,
-                            };
-                            const events = Array.isArray(loadedStatus.events)
-                                ? loadedStatus.events as Array<{ timestamp: string; type: string; message: string }>
-                                : [];
-                            events.push({
-                                timestamp: new Date().toISOString(),
-                                type: 'warning',
-                                message: `Existing tasks detected for story ${storyNumber}. Waiting for reuse or recreate decision.`,
-                            });
-                            loadedStatus.events = events;
-                            writeFileSync(statusFile, JSON.stringify(loadedStatus, null, 2));
-                            json(res, {
-                                ok: false,
-                                reconciliationRequired: true,
-                                existingTask: matchingTasks[existingTaskIndex],
-                                matchingTasks,
-                            }, 409);
-                            return;
+                            // Autonomous mode: auto-reuse the existing task instead of blocking.
+                            const mode = getSchedulerWorkflowMode(getSchedulerConfig(rootDir));
+                            if (mode === 'autonomous') {
+                                loadedStatus.taskReconciliation = {
+                                    ...(loadedStatus.taskReconciliation as Record<string, unknown> || {}),
+                                    status: 'reuse-confirmed',
+                                    resolvedAt: new Date().toISOString(),
+                                };
+                                writeFileSync(statusFile, JSON.stringify(loadedStatus, null, 2));
+                                // Fall through to reuse logic below.
+                            } else {
+                                const matchingTasks = existingTasks.map((t: RawTask) => ({
+                                    id: String(t.id ?? t.number ?? ''),
+                                    name: String(t.name ?? ''),
+                                    status: String(t.status ?? 'pending'),
+                                    category: t.category,
+                                    hours: t.hours,
+                                    priority: (t as RawTask & { priority?: unknown }).priority,
+                                })).filter(t => t.id || t.name);
+                                loadedStatus.currentPhase = 'analyzing';
+                                loadedStatus.handoffDispatched = false;
+                                loadedStatus.taskReconciliation = {
+                                    status: 'pending',
+                                    storyNumber,
+                                    reason: `Task "${name}" already exists for story ${storyNumber}.`,
+                                    detectedAt: new Date().toISOString(),
+                                    matchingTaskIds: matchingTasks.map(t => t.id).filter(Boolean),
+                                    matchingTasks,
+                                };
+                                const events = Array.isArray(loadedStatus.events)
+                                    ? loadedStatus.events as Array<{ timestamp: string; type: string; message: string }>
+                                    : [];
+                                events.push({
+                                    timestamp: new Date().toISOString(),
+                                    type: 'warning',
+                                    message: `Existing tasks detected for story ${storyNumber}. Waiting for reuse or recreate decision.`,
+                                });
+                                loadedStatus.events = events;
+                                writeFileSync(statusFile, JSON.stringify(loadedStatus, null, 2));
+                                json(res, {
+                                    ok: false,
+                                    reconciliationRequired: true,
+                                    existingTask: matchingTasks[existingTaskIndex],
+                                    matchingTasks,
+                                }, 409);
+                                return;
+                            }
                         }
                         const prev = existingTasks[existingTaskIndex];
                         const taskNumber = String(prev.number ?? prev.id ?? '');
@@ -398,8 +423,26 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
         if (req.method !== 'POST') { res.statusCode = 405; res.end('Method not allowed'); return; }
         const body = await readBody(req);
         try {
-            const { agentId: requestedAgentId, storyNumber, storyName, storyDescription, frontend, backend, qa, teamId, environment } = JSON.parse(body);
+            const { agentId: requestedAgentId, storyNumber: rawStoryNumber, storyName: rawStoryName, storyDescription: rawStoryDesc, frontend, backend, qa, teamId, environment } = JSON.parse(body);
+            const storyNumber = String(rawStoryNumber).trim();
             if (!requestedAgentId || !storyNumber) { json(res, { error: 'agentId and storyNumber required' }, 400); return; }
+            // Clean up any stale worktree branches from previous runs for this story.
+            for (const repoRoot of resolveWorktreeRepoRoots(rootDir, configFile)) {
+                try { cleanupStoryWorktrees(repoRoot, storyNumber); } catch { /* non-fatal */ }
+            }
+            // Auto-populate story name/description from local planning state if not provided.
+            let storyName = rawStoryName ? String(rawStoryName).trim() : null;
+            let storyDescription = rawStoryDesc ? String(rawStoryDesc).trim() : null;
+            if (!storyName && isLocalStoryNumber(storyNumber)) {
+                try {
+                    const planningState = parseJsonUtf8File(resolve(rootDir, '.sdlc-framework', 'local-planning', 'state.json')) as { stories?: Array<{ number: string; name?: string; description?: string }> };
+                    const match = planningState.stories?.find((s: { number: string }) => s.number === storyNumber);
+                    if (match) {
+                        if (!storyName) storyName = match.name?.replace(/<[^>]*>/g, '').trim() || null;
+                        if (!storyDescription) storyDescription = match.description?.replace(/<[^>]*>/g, '').trim() || null;
+                    }
+                } catch { /* non-fatal — proceed with null metadata */ }
+            }
             // The orchestrator owns routing: honour a valid specialist if the caller
             // named one, otherwise classify the story (heuristic → LLM triage) so an
             // invalid/generic agentId (e.g. "developer") routes to the right specialist
@@ -477,7 +520,7 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                             workflowItemId: wf.id,
                             serverBaseUrl: `http://${req.headers.host || 'localhost:3001'}`,
                             statusFile: hasTargetCodebase ? resolve(rootDir, `.${agentId}-status.json`) : `.${agentId}-status.json`,
-                            skillFile: null,
+                            skillFile: resolve(rootDir, `skills/${skillSubdirForAgentId(agentId)}/SKILL.md`),
                             targetCodebase: activeProfile?.workspacePath ?? null,
                         });
                         if (phasePlan.ok && phasePlan.value) prompt = phasePlan.value.prompt;

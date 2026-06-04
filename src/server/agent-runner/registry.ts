@@ -78,7 +78,20 @@ export function getActiveRunners(): string[] {
     return [...runners.keys()];
 }
 
-function buildSystemPrompt(agentId: string, _frameworkDir: string): string {
+/**
+ * Capable models (cloud-hosted or large local) get prompt *latitude* — the phase
+ * steps are framed as guidance they may improve on. Small quantized local models
+ * (e.g. Qwen2.5-Coder-14B via MLX) get strict rails because they can't infer the
+ * happy path. Heuristic: any openrouter-served model, or a known capable family /
+ * large size, is "capable"; everything else (the 14B etc.) is kept strict.
+ */
+const CAPABLE_MODEL_RE = /(claude|gpt-?4|gpt-5|o[13]-|gemini|deepseek|grok|mistral-large|command-r-plus|llama[-\w.]*?70b|qwen[-\w.]*?(?:32|72)b)/i;
+export function isCapablePromptModel(model: string, baseUrl: string): boolean {
+    if (detectLoopProvider(baseUrl) === 'openrouter') return true;
+    return CAPABLE_MODEL_RE.test(model);
+}
+
+function buildSystemPrompt(agentId: string, _frameworkDir: string, promptLatitude: boolean): string {
     const phaseOrder = (AGENT_STEP_MODE_PHASES[agentId] ?? GENERIC_PHASE_ORDER).join(' → ');
     return [
         `You are the ${agentId} agent in the SDLC Framework automation platform.`,
@@ -92,11 +105,13 @@ function buildSystemPrompt(agentId: string, _frameworkDir: string): string {
         '- If a tool result shows the action already succeeded, move on — never repeat an identical successful call.',
         '- If a file is not found at a relative path, retry with the absolute path shown in the prompt.',
         '',
-        '## Tools',
+        '## Tools (call by exact name — no other names are valid)',
         '- read_file{path}, write_file{path,content}, list_directory{path}',
+        '- edit_file{path,old_string,new_string} — PREFER THIS to change an existing file. Send only the snippet that changes (old_string must match the file exactly and be unique). Do NOT re-send the whole file via write_file for a small change.',
         '- search_in_files{query,path} — locate code before you edit it',
         '- run_command{command} — run builds, tests, git',
-        '- create_task{name,estimate} — register work items',
+        '- create_task{name,estimate} — register work items (do NOT use http_request for this)',
+        '- http_request{url,method?,body?,headers?} — call external APIs',
         '- update_status{phase} — refresh the dashboard; call after each phase',
         '- complete_phase{next_phase,summary,...} — REQUIRED to end every phase',
         '',
@@ -110,8 +125,19 @@ function buildSystemPrompt(agentId: string, _frameworkDir: string): string {
         '- Report only results you actually produced — never fabricate test, review, or build evidence.',
         '- Call complete_phase exactly once per phase. The runner stops automatically when it succeeds and resumes at the next phase.',
         '',
+        '## The framework handles commit & PR — so you can focus',
+        '- You do not need to run git add/commit/push or `gh pr create`. In the committing and creating-pr phases, just call complete_phase and the framework stages, commits, pushes, and opens/updates the PR (idempotently) for you.',
+        '- This is here to take the git/PR boilerplate off your plate so you can spend your effort where it matters — the implementation, the tests, the review. Doing it by hand only races the framework and creates duplicate/orphan PRs, so let it carry that part.',
+        '',
+        ...(promptLatitude ? [
+            '## Latitude (you are a capable model)',
+            '- The per-phase steps are guidance, not a rigid script. On the reasoning phases (analyzing, generating-code, addressing-feedback), back your own judgment on the approach whenever it produces a better result — that is exactly where your effort is most valuable, so aim high.',
+            '- The framework owning commit/PR (above) is what frees you to focus there. Pour your effort into the work itself; let the framework handle the plumbing.',
+            '',
+        ] : []),
         '## Start & interrupts',
         '- Begin by reading your skill guide (path is in the first user message) with read_file, then work the phases.',
+        '- IMMEDIATELY read the project package.json (or equivalent) to discover the tech stack, framework, and test runner — never assume.',
         '- When you receive a [/btw] message, address it at the next logical break point.',
     ].join('\n');
 }
@@ -312,7 +338,8 @@ export function startRunner(
 
     runners.set(agentId, runner);
 
-    const systemPrompt = buildSystemPrompt(agentId, frameworkDir);
+    const promptLatitude = isCapablePromptModel(providerConfig.model, providerConfig.baseUrl);
+    const systemPrompt = buildSystemPrompt(agentId, frameworkDir, promptLatitude);
     const fullPrompt = `Workspace: ${workspaceDir}\n\n${prompt}`;
 
     runner.run(systemPrompt, fullPrompt).catch((e: unknown) => {

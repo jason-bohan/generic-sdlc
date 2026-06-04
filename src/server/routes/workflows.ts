@@ -18,6 +18,7 @@ import {
     asSdlcPhaseId,
 } from '../status-normalize';
 import { getAgentModel } from '../route-shared';
+import { getSchedulerWorkflowMode } from '../schedulerMode';
 import type { UseFn } from './types';
 
 export function mount(use: UseFn, rootDir: string, configFile: string): void {
@@ -47,7 +48,7 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                     statusFile: hasTarget
                         ? resolve(rootDir, `.${agentIdForPlan}-status.json`)
                         : undefined,
-                    skillFile: null,
+                    skillFile: resolve(rootDir, `skills/${agentIdForPlan}/SKILL.md`),
                     targetCodebase: activeProf?.workspacePath ?? null,
                 });
                 if (!plan.ok || !plan.value) {
@@ -150,6 +151,38 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                 if (!result.ok) {
                     json(res, { error: result.error, missing: result.missing }, 409);
                     return;
+                }
+                // Autonomous mode: auto-spawn agent for the next phase
+                if (result.value) {
+                    const nextItem = result.value;
+                    if (nextItem.active_phase && nextItem.active_phase !== 'complete' && nextItem.active_phase !== 'idle') {
+                        try {
+                            const mode = getSchedulerWorkflowMode(configFile);
+                            if (mode === 'autonomous' && nextItem.active_agent_id) {
+                                const activeProf = getActiveProject(configFile);
+                                const serverBaseUrl = `http://${req.headers.host || 'localhost:3001'}`;
+                                const hasTarget = !!activeProf?.workspacePath && activeProf.workspacePath !== rootDir;
+                                const agentId = nextItem.active_agent_id;
+                                const phasePlan = startPhaseRun({
+                                    workflowItemId: nextItem.id,
+                                    serverBaseUrl,
+                                    statusFile: hasTarget
+                                        ? resolve(rootDir, `.${agentId}-status.json`)
+                                        : undefined,
+                                    skillFile: resolve(rootDir, `skills/${agentId}/SKILL.md`),
+                                    targetCodebase: activeProf?.workspacePath ?? null,
+                                });
+                                if (phasePlan.ok && phasePlan.value) {
+                                    spawnAgent(
+                                        phasePlan.value.item.active_agent_id,
+                                        phasePlan.value.prompt,
+                                        rootDir,
+                                        getAgentModel(phasePlan.value.item.active_agent_id, rootDir),
+                                    );
+                                }
+                            }
+                        } catch { /* non-critical — next phase will be picked up on next assignment */ }
+                    }
                 }
                 json(res, { ok: true, workflow: result.value });
             } catch (e: unknown) {

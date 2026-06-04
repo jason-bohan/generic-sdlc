@@ -25,14 +25,44 @@ const MAX_PREMATURE_COMPLETE_BLOCKS = 2;
  * Parse and promote to a proper tool call object.
  */
 export function _extractTextToolCall(content: string): import('./types').ToolCall | null {
-    // Try MLX-style <tools>{ ... }</tools> block first
-    const xmlMatch = content.match(/<tools>\s*(\{[\s\S]*?\})\s*<\/tools>/);
+    // Try MLX-style <tools>{ ... }</tools> or <function>{ ... }</function> block first
+    const xmlMatch = content.match(/<(?:tools|function|tool_call)>\s*(\{[\s\S]*?\})\s*<\/(?:tools|function|tool_call)>/);
+    if (xmlMatch) {
+        const tc = _parseToolCallJson(xmlMatch[1]);
+        if (tc) return tc;
+    }
     // Try markdown code block: ```json { ... } ```
-    const blockMatch = !xmlMatch ? content.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/) : null;
-    // Fall back to bare JSON object anywhere in the content
-    const bareMatch = !xmlMatch && !blockMatch ? content.match(/(\{[\s\S]*\})/) : null;
-    const jsonStr = xmlMatch ? xmlMatch[1] : (blockMatch ? blockMatch[1] : (bareMatch ? bareMatch[1] : null));
-    if (!jsonStr) return null;
+    const blockMatch = content.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
+    if (blockMatch) {
+        const tc = _parseToolCallJson(blockMatch[1]);
+        if (tc) return tc;
+    }
+    // Fall back: find the first complete, valid JSON object with a "name" field
+    // Handles bare JSON (no XML wrapping) and multiple objects separated by
+    // chat template tokens (<|im_start|>, <|im_end|>) or whitespace.
+    let start = content.indexOf('{');
+    while (start !== -1) {
+        let depth = 0;
+        let i = start;
+        while (i < content.length) {
+            if (content[i] === '{') depth++;
+            else if (content[i] === '}') {
+                depth--;
+                if (depth === 0) {
+                    const candidate = content.slice(start, i + 1);
+                    const tc = _parseToolCallJson(candidate);
+                    if (tc) return tc;
+                    break;
+                }
+            }
+            i++;
+        }
+        start = content.indexOf('{', start + 1);
+    }
+    return null;
+}
+
+function _parseToolCallJson(jsonStr: string): import('./types').ToolCall | null {
     try {
         const parsed = JSON.parse(jsonStr) as Record<string, unknown>;
         const name = typeof parsed.name === 'string' ? parsed.name : null;
@@ -71,6 +101,7 @@ export class AgentRunner extends EventEmitter {
     private turnCount = 0;
     private consecutiveNudges = 0;
     private _phaseCompleted = false;
+    private _completePhaseAttempted = false;
     private mutationCount = 0;
     private prematureCompleteBlocks = 0;
     private phaseName = '';
@@ -207,6 +238,13 @@ export class AgentRunner extends EventEmitter {
                             // the work — that just makes it escalate to next_phase="error".
                             this._emit('message', { content: `[nudge] No files changed yet in ${this.phaseName} (nudge ${this.consecutiveNudges}/2)`, turn: this.turnCount });
                             this.messages.push({ role: 'user', content: 'You have not changed any files yet. This phase requires implementing the code: call write_file with the actual file contents now. Do NOT call complete_phase until at least one file has been written.' });
+                        } else if (this._completePhaseAttempted) {
+                            // The model already called complete_phase but it was rejected
+                            // (missing required outputs, server error, etc.). Don't tell it
+                            // to "call complete_phase" — it tried that. Tell it to fix the
+                            // error instead.
+                            this._emit('message', { content: `[nudge] complete_phase was rejected (nudge ${this.consecutiveNudges}/2)`, turn: this.turnCount });
+                            this.messages.push({ role: 'user', content: 'Your last complete_phase call was rejected by the server. Read the error above, fix the outputs (ensure all required fields are present), then call complete_phase again.' });
                         } else {
                             this._emit('message', { content: `[nudge] Stopped without complete_phase (nudge ${this.consecutiveNudges}/2)`, turn: this.turnCount });
                             this.messages.push({ role: 'user', content: 'You have not called complete_phase yet. You MUST call complete_phase now to advance the workflow. Do not output text — call the tool directly.' });
@@ -230,6 +268,7 @@ export class AgentRunner extends EventEmitter {
                     if (toolCall.function.name === 'complete_phase' && this._mutationRequired
                         && this.prematureCompleteBlocks < MAX_PREMATURE_COMPLETE_BLOCKS) {
                         this.prematureCompleteBlocks++;
+                        this._completePhaseAttempted = true;
                         this._emit('message', { content: `[guard] Blocked premature complete_phase in ${this.phaseName}: no files changed (${this.prematureCompleteBlocks}/${MAX_PREMATURE_COMPLETE_BLOCKS})`, turn: this.turnCount });
                         this.messages.push({
                             role: 'tool',
@@ -265,10 +304,17 @@ export class AgentRunner extends EventEmitter {
                         content: output,
                     });
 
-                    // Track successful file writes so mutation-required phases can complete.
-                    // toolWriteFile returns "Written <n> bytes to ..." on success.
-                    if (toolCall.function.name === 'write_file' && output.startsWith('Written ')) {
+                    // Track successful file mutations so mutation-required phases can complete.
+                    // toolWriteFile returns "Written <n> bytes…"; toolEditFile returns "Edited …".
+                    if ((toolCall.function.name === 'write_file' && output.startsWith('Written '))
+                        || (toolCall.function.name === 'edit_file' && output.startsWith('Edited '))) {
                         this.mutationCount++;
+                    }
+
+                    // Track whether complete_phase was attempted but rejected —
+                    // the nudge system uses this to avoid lying to the model.
+                    if (toolCall.function.name === 'complete_phase' && !output.startsWith(PHASE_COMPLETE_SENTINEL)) {
+                        this._completePhaseAttempted = true;
                     }
 
                     // Phase completed — stop the loop so the next phase starts with

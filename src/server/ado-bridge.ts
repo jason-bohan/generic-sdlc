@@ -569,11 +569,11 @@ function watchAgent(agentId: string) {
 export function startAdoBridge(config: AdoBridgeConfig) {
     const configPath = resolve(config.workspaceDir, '.sdlc-framework.config.json');
     if (!config.pat && !isMockExternalMode(configPath)) {
-        log('No PAT configured — bridge disabled. Set AZURE_DEVOPS_PAT in .env for full automation.');
+        log('No external platform PAT configured — bridge disabled (requires .env PAT for full automation).');
         return;
     }
     bridgeConfig = config;
-    log(`Starting ADO Bridge (mode=${isMockExternalMode(configPath) ? 'mock' : 'live'}, org=${config.organization}, repo=${config.repositoryId || '(missing)'})`);
+    log(`Starting External Platform Bridge (mode=${isMockExternalMode(configPath) ? 'mock' : 'live'}, org=${config.organization}, repo=${config.repositoryId || '(missing)'})`);
     if (!String(config.repositoryId || '').trim()) {
         log('Warning: project.repositoryId is empty — PR creation and repo-scoped ADO calls will fail until configured.');
     }

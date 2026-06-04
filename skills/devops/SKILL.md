@@ -22,6 +22,19 @@ You are the **DevOps** agent (`devops`). The dashboard default display name is *
 - **Tools**: Code review provider MCP (pipelines, wiki, code search), Goose (codebase analysis)
 - **Standards**: Read `.cursor/rules/YourProject-research.mdc` for YourProject infrastructure docs and wiki access
 
+## First Step on Every Story
+
+Before running pipelines or writing ANY code, ALWAYS:
+
+1. Read `.sdlc-framework.config.json` — find `activeProject` and its `workspacePath`
+2. Read the project's build config files to discover:
+   - CI platform: check for `azure-pipelines.yml`, `.github/workflows/`, `Jenkinsfile`, `.gitlab-ci.yml`, etc.
+   - Build toolchain: read `package.json` (npm/pnpm/yarn), `Cargo.toml`, `pyproject.toml`, `Gemfile`, etc.
+   - Build/test/lint commands: read scripts section of project config files
+3. Read the project's existing CI config to understand current pipeline structure
+
+**Never assume a CI platform or build toolchain. Read the project files to learn it.**
+
 ## Project Configuration
 
 All project-specific values (org, team, owners, etc.) live in `.sdlc-framework.config.json` under the `project` key. **Read this file at startup** and use its values everywhere — do NOT hardcode org names, owner names, or URLs.
@@ -98,12 +111,11 @@ Update these fields as you work:
 
 ## Pipeline Details
 
-- **Project**: `<config.project.azureProject>`
-- **Organization**: `<config.project.organization>`
-- **Repository**: `<config.project.repositoryId>`
-- **Pipeline YAML**: `azure-pipelines.yml` (in repo root)
-- **Pipeline Definition ID**: `646`
-- **Pipeline steps**: `npm ci` → `tsc --noEmit` → `vitest run` → `vite build`
+Discover the project's CI platform from its config files:
+
+- **CI platform**: Check for `azure-pipelines.yml`, `.github/workflows/`, `Jenkinsfile`, `.gitlab-ci.yml`
+- **Pipeline config**: Read the config file and derive pipeline ID from the platform API or config
+- **Build steps**: Read the project's build/test/lint commands from `package.json` (or equivalent) to understand the toolchain
 
 ## DevOps Story Workflow (Mode A)
 
@@ -190,37 +202,29 @@ If external mode is `mock`, do not push or create a real pull request. Record a 
 Read `.devops-status.json` to get the PR branch name from `assignedPR.branch`.
 
 1. Update status: `currentPhase` → `"monitoring-build"`
-2. Trigger the pipeline on the PR's source branch (use the **`self`** repository resource so the run uses that branch, not `main`):
+2. Trigger the pipeline using the discovered CI platform's API:
    ```
-   CallMcpTool: user-Azure DevOps / pipelines_run_pipeline
+   # Azure DevOps example — adjust tool name for other CI platforms
+   CallMcpTool: <ci-platform-mcp> / <trigger-pipeline-action>
    {
-     "pipelineId": <pipelineId from status or discover via pipelines_get_build_definitions>,
-     "project": "<config.project.azureProject>",
-     "resources": {
-       "pipelines": {},
-       "repositories": {
-         "self": { "refName": "refs/heads/<assignedPR.branch>" }
-       }
-     }
+     "pipelineId": <pipelineId>,
+     "branch": "<assignedPR.branch>"
    }
    ```
 3. Record the returned `buildId` in `.devops-status.json`
 4. Append event: "Build #<buildId> triggered for PR #<prId>"
 
-If the pipeline doesn't exist yet:
-- Use `pipelines_create_pipeline` to create it from `azure-pipelines.yml`
-- Record the `pipelineId` in `.devops-status.json` for future runs
+If the pipeline doesn't exist yet, create it from the project's CI config file (e.g. `azure-pipelines.yml`, `.github/workflows/`, `.gitlab-ci.yml`).
 
 ### Step 2: Monitor Build
 
 Poll the build status until it completes:
 
 ```
-CallMcpTool: user-Azure DevOps / pipelines_get_build_status
+# Use the CI platform's status-check tool (adjust for your platform)
+CallMcpTool: <ci-platform-mcp> / <get-build-status-action>
 {
-  "buildId": <buildId>,
-  "project": "<config.project.azureProject>",
-  "organization": "<config.project.organization>"
+  "buildId": <buildId>
 }
 ```
 
@@ -235,13 +239,12 @@ Poll interval: wait ~30 seconds between checks. Append events for key state chan
 
 1. **Enable auto-complete on the PR** (reviewer already approved, build is green):
    ```
-   CallMcpTool: user-Azure DevOps / repo_update_pull_request
+   # Use the CI platform's merge/enable-autocomplete action
+   CallMcpTool: <ci-platform-mcp> / <complete-pull-request-action>
    {
      "pullRequestId": <assignedPR.id>,
-     "repositoryId": "<config.project.repositoryId>",
-     "project": "<config.project.azureProject>",
-     "autoCompleteSetBy": "0acc1f11-b193-6a95-a29d-c7445dbbf69a",
-     "completionOptions": { "mergeStrategy": "squash", "deleteSourceBranch": true }
+     "mergeStrategy": "squash",
+     "deleteSourceBranch": true
    }
    ```
 2. **Register the handoff** — call the build-complete API (updates story-owner's PR status, DevOps phase, and Teams in one call):
@@ -252,22 +255,8 @@ Poll interval: wait ~30 seconds between checks. Append events for key state chan
 
 ### Step 4: Build Failed
 
-1. **Read the build logs** to identify the failure:
-   ```
-   CallMcpTool: user-Azure DevOps / pipelines_get_build_log
-   { "buildId": <buildId>, "project": "<config.project.azureProject>", "organization": "<config.project.organization>" }
-   ```
-2. **Post a failure summary as a PR comment**:
-   ```
-   CallMcpTool: user-Azure DevOps / repo_create_pull_request_thread
-   {
-     "pullRequestId": <assignedPR.id>,
-     "project": "<config.project.azureProject>",
-     "organization": "<config.project.organization>",
-     "comments": [{ "content": "**Build Failed** (#<buildId>)\n\n<failure summary from logs>" }],
-     "status": "active"
-   }
-   ```
+1. **Read the build logs** to identify the failure (use the CI platform's log retrieval action)
+2. **Post a failure summary as a PR comment** (use the platform's PR comment action)
 3. **Register the handoff** — call the build-complete API (updates story-owner's PR status, DevOps phase, and Teams in one call):
    ```
    POST $api/api/handoff/build-complete

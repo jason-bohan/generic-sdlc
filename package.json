@@ -22,6 +22,7 @@
         "btw": "tsx scripts/btw.ts",
         "chatllm": "tsx scripts/chatllm.ts",
         "ollama": "tsx scripts/ollama-delegate.ts",
+        "mlx:proxy": "tsx scripts/mlx-proxy.ts",
         "test": "vitest run",
         "test:watch": "vitest",
         "reset:agents": "powershell -NoProfile -ExecutionPolicy Bypass -File ./bin/reset-agents.ps1",
