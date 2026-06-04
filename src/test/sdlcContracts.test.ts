@@ -59,6 +59,27 @@ describe('SDLC phase contracts', () => {
         expect(result.missing).toEqual(expect.arrayContaining(['staticAnalysis', 'testResults', 'risks', 'auditEvent']));
     });
 
+    it('accepts creating-pr with either pr (live) or mockPr (mock), not both', () => {
+        const base = { handoff: { to: 'reviewer' }, auditEvent: { type: 'phase-complete' } };
+
+        // Live mode: real PR metadata only.
+        expect(validateSdlcPhaseOutput('creating-pr', { ...base, pr: { number: 42 } }))
+            .toEqual({ ok: true, missing: [] });
+        // Mock mode: simulated PR only.
+        expect(validateSdlcPhaseOutput('creating-pr', { ...base, mockPr: { number: 'mock-1' } }))
+            .toEqual({ ok: true, missing: [] });
+
+        // Neither alternative present → the whole group is reported as missing.
+        const neither = validateSdlcPhaseOutput('creating-pr', base);
+        expect(neither.ok).toBe(false);
+        expect(neither.missing).toEqual(expect.arrayContaining(['pr', 'mockPr']));
+
+        // Still enforces the non-alternative keys.
+        const noHandoff = validateSdlcPhaseOutput('creating-pr', { pr: { number: 42 }, auditEvent: {} });
+        expect(noHandoff.ok).toBe(false);
+        expect(noHandoff.missing).toEqual(['handoff']);
+    });
+
     it('separates implementer, reviewer, devops, qa, and ux workflows', () => {
         expect(isAllowedSdlcTransition('frontend', 'creating-pr', 'watching-reviews')).toBe(true);
         expect(isAllowedSdlcTransition('frontend', 'creating-pr', 'pending-build')).toBe(false);
