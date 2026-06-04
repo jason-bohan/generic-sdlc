@@ -275,7 +275,24 @@ function buildOutputsSkeleton(contract: SdlcPhaseContract): Record<string, strin
     }));
 }
 
-function phaseSpecificInstructions(item: WorkflowItemRow, serverBaseUrl: string, priorValidationFailure?: string): string {
+function phaseSpecificInstructions(item: WorkflowItemRow, serverBaseUrl: string, priorValidationFailure?: string, reviewFeedback?: string): string {
+    if (item.active_phase === 'addressing-feedback') {
+        return [
+            ...(reviewFeedback ? [
+                '⚠️ THE REVIEWER REQUESTED CHANGES. Address EXACTLY these comments:',
+                '```',
+                reviewFeedback.trim(),
+                '```',
+                '',
+            ] : ['The reviewer requested changes — read your status file `requests` for the comments.', '']),
+            'Addressing-feedback phase:',
+            '- Make the MINIMAL change to resolve each comment above (usually a wrong',
+            '  route/name/value or a missing piece) — do NOT rewrite working code.',
+            '- Edit files in your worktree with edit_file, then call run_validation.',
+            '- When validation passes, call complete_phase so the fix flows back through review.',
+        ].join('\n');
+    }
+
     if (item.active_phase === 'reading-story') {
         return [
             'Phase 1 tasking requirements:',
@@ -436,6 +453,25 @@ export function buildPhaseRunPrompt(input: BuildPhasePromptInput): OrchestratorR
             }
         } catch { /* no prior failure recorded — first attempt */ }
     }
+    // On a rework after the reviewer requested changes, surface the open review
+    // comments (applyReviewComplete stored them in status.requests) so the dev fixes
+    // exactly what the reviewer flagged instead of guessing.
+    let reviewFeedback: string | undefined;
+    if (phase === 'addressing-feedback') {
+        try {
+            const sfPath = isAbsolute(statusFile) ? statusFile : resolve(process.cwd(), statusFile);
+            const s = parseJsonUtf8File(sfPath) as Record<string, unknown>;
+            const reqs = Array.isArray(s.requests) ? s.requests as Array<Record<string, unknown>> : [];
+            const open = reqs.filter(r => r.type === 'review' && r.status === 'open');
+            if (open.length > 0) {
+                reviewFeedback = open.map((r, i) => {
+                    const loc = r.file ? ` (${r.file}${r.line ? `:${r.line}` : ''})` : '';
+                    const sev = r.severity ? `[${String(r.severity).toUpperCase()}] ` : '';
+                    return `${i + 1}. ${sev}${String(r.summary ?? '').trim()}${loc}`;
+                }).join('\n');
+            }
+        } catch { /* no review feedback recorded */ }
+    }
     const prompt = [
         `You are ${agentId}. Run SDLC phase "${phase}" for story ${item.story_number}.`,
         '',
@@ -467,7 +503,7 @@ export function buildPhaseRunPrompt(input: BuildPhasePromptInput): OrchestratorR
         'Gates before completing the phase:',
         formatKeyList(contract.gates),
         '',
-        phaseSpecificInstructions(item, serverBaseUrl, priorValidationFailure),
+        phaseSpecificInstructions(item, serverBaseUrl, priorValidationFailure, reviewFeedback),
         '',
         'When the phase is complete, POST this contract payload:',
         `${serverBaseUrl}/api/workflows/complete-phase`,
