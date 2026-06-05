@@ -5,6 +5,7 @@ import { isMockExternalMode } from './external-mode';
 import { setMockPullRequestStatus } from './mock-external';
 import { isAgentStepMode } from './stepMode';
 import { parseJsonUtf8File } from './json-file';
+import { dbGetWorkflowItemByStory } from './db';
 
 interface RequestEntry {
     id: string;
@@ -94,7 +95,18 @@ export interface ReviewCompleteResult {
     ok: boolean;
     target: string;
     targetPhase: string;
+    /**
+     * True when devops already owns this PR (the approval was processed before and devops
+     * is mid-build). The caller must NOT re-transition the workflow item or re-spawn devops —
+     * the review-verdict handoff re-fires on every reviewer status write, and re-transitioning
+     * drags an already-advanced devops back to pending-build (409 churn). See bug #6.
+     */
+    alreadyDispatched?: boolean;
 }
+
+// Devops build phases that mean "this PR is already in flight on the devops desk" — any
+// of these (for the same PR) makes a repeat review-complete a no-op rather than a reset.
+const DEVOPS_INFLIGHT_PHASES = new Set(['pending-build', 'monitoring-build', 'build-passed', 'build-failed']);
 
 export function applyReviewComplete(baseDir: string, input: ReviewCompleteInput): ReviewCompleteResult {
     const now = new Date().toISOString();
@@ -117,16 +129,19 @@ export function applyReviewComplete(baseDir: string, input: ReviewCompleteInput)
         }
 
         const devopsFile = resolve(baseDir, '.devops-status.json');
-        let alreadyPending = false;
+        let alreadyDispatched = false;
         if (existsSync(devopsFile)) {
             try {
                 const existing = parseJsonUtf8File(devopsFile);
-                if (existing.currentPhase === 'pending-build' && existing.assignedPR?.id === input.prId) {
-                    alreadyPending = true;
+                // Idempotency: if devops already holds this PR in any in-flight build phase,
+                // a re-fired review-complete must leave its desk alone (don't reset to
+                // pending-build). Only the first approval writes/advances the devops desk.
+                if (existing.assignedPR?.id === input.prId && DEVOPS_INFLIGHT_PHASES.has(existing.currentPhase)) {
+                    alreadyDispatched = true;
                 }
             } catch { /* overwrite */ }
         }
-        if (!alreadyPending) {
+        if (!alreadyDispatched) {
             const reviewerFile = resolve(baseDir, '.reviewer-status.json');
             let prTitle = `PR #${input.prId}`;
             let prUrl = `${input.prUrlBase || ''}/${input.prId}`;
@@ -145,10 +160,25 @@ export function applyReviewComplete(baseDir: string, input: ReviewCompleteInput)
                 || isAgentStepMode('devops', configPath)
             );
             const buildTask = { id: `PR-BUILD-${input.prId}`, number: `PR-BUILD-${input.prId}`, name: `Monitor build for PR #${input.prId}: ${prTitle}`, status: 'pending', hours: 1, category: 'DevOps' };
+            // Register the story's workflow item id on the devops desk (bug #6). The
+            // review handoff also transitions that item to devops/pending-build, but
+            // complete_phase reads workflowItemId from THIS file — without it every
+            // devops complete_phase is rejected ("workflow must be registered") and the
+            // agent dies after the auto-resume cap, never reaching build → merge. The id
+            // is stable regardless of which agent is currently active, so writing it here
+            // (before devops is spawned) is race-free.
+            let devopsWorkflowItemId: number | undefined;
+            if (input.storyNumber) {
+                try {
+                    const wf = dbGetWorkflowItemByStory(input.storyNumber);
+                    if (typeof wf?.id === 'number') devopsWorkflowItemId = wf.id;
+                } catch { /* db not initialized (some unit tests) — non-fatal */ }
+            }
             const devopsStatus = {
                 currentPhase: 'pending-build',
                 manualStartRequired,
                 projectKey: input.projectKey || null,
+                ...(devopsWorkflowItemId !== undefined ? { workflowItemId: devopsWorkflowItemId } : {}),
                 assignedPR: { id: input.prId, title: prTitle, url: prUrl, storyNumber: input.storyNumber || null, branch: input.branch || null, projectKey: input.projectKey || null },
                 tasks: [buildTask],
                 events: [{ timestamp: now, type: 'info', message: `PR #${input.prId} approved by reviewer agent, queued for CI` }] };
@@ -156,7 +186,7 @@ export function applyReviewComplete(baseDir: string, input: ReviewCompleteInput)
 
             clearReviewerAfterApproval(baseDir, input.prId, now);
         }
-        return { ok: true, target: 'devops', targetPhase: 'pending-build' };
+        return { ok: true, target: 'devops', targetPhase: 'pending-build', alreadyDispatched };
     } else {
         const owner = findStoryOwnerByPrId(baseDir, input.prId);
         if (owner) {
