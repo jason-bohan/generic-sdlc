@@ -185,6 +185,8 @@ curl -s -X POST "$api/api/handoff/review-complete" -H 'Content-Type: application
 Do **not** try to write `.reviewer-status.json` yourself — that write is intentionally blocked.
 A `changes-requested` verdict routes the PR back to the implementing agent; `approved` routes it to devops.
 
+**The verdict is the single source of truth — the phase is set to match it automatically.** Do not try to encode the decision in a phase: never set a "waiting-for-fixes"/monitoring phase to mean "approved with nits". Non-blocking nits are **not** changes — if you have only `nit:`-level suggestions, the verdict is **`approved`** (the PR still proceeds to devops). Reserve `changes-requested` for actual blocking issues (`bug:`/story mismatch/missing behavior).
+
 Comment guidelines:
 - Be specific - reference file names, line numbers, suggest fixes
 - Be constructive - explain *why* something is an issue
