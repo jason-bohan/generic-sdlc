@@ -12,6 +12,7 @@ import { isMockExternalMode } from '../external-mode';
 import { ensureMockShims } from '../mock-mode-guard';
 import { emitStatusChange } from '../status-events';
 import { buildStatusBroadcast } from '../status-broadcast';
+import { normalizeReviewerVerdict, reviewerPhaseForVerdict } from '../reviewer-verdict';
 import type { ToolDefinition } from './types';
 import { parseJsonUtf8File } from '../json-file';
 
@@ -270,6 +271,7 @@ export const AGENT_TOOLS: ToolDefinition[] = [
                     storyNumber: { type: 'string', description: 'Story number being worked on' },
                     currentTask: { type: 'string', description: 'Short description of what is being done right now' },
                     message: { type: 'string', description: 'Human-readable status message' },
+                    verdict: { type: 'string', description: 'Review verdict (reviewer only): "approved" or "changes-requested". Set this on your FINAL review update — it routes the PR (approved → devops; changes-requested → back to the author) and the phase is set to match automatically. Non-blocking nits do NOT block: nits-only → "approved".' },
                     tasks: {
                         type: 'array',
                         items: {
@@ -1297,16 +1299,32 @@ function toolUpdateStatus(
         if (args.currentTask !== undefined) updated.currentTask = args.currentTask;
         if (args.tasks !== undefined) updated.tasks = args.tasks;
 
+        // Reviewer verdict (bug #10): when the reviewer supplies a recognizable verdict,
+        // store it canonically and force the phase to match — the model otherwise lands on
+        // a phase (e.g. waiting-for-fixes) that contradicts an approve-with-nits verdict and
+        // the handoff bounces an approved PR back to the author. Phase follows verdict so
+        // the two can never disagree. Unrecognized verdicts from other agents pass through.
+        const canonicalVerdict = agentId === 'reviewer' ? normalizeReviewerVerdict(args.verdict) : null;
+        if (canonicalVerdict) {
+            updated.verdict = canonicalVerdict;
+            updated.currentPhase = reviewerPhaseForVerdict(canonicalVerdict);
+        } else if (args.verdict !== undefined) {
+            updated.verdict = args.verdict;
+        }
+
+        const resolvedPhase = updated.currentPhase;
         if (!Array.isArray(updated.events)) updated.events = [];
         (updated.events as unknown[]).push({
             timestamp: new Date().toISOString(),
             type: 'phase',
-            message: args.message ?? `Phase: ${args.phase}`,
+            message: args.message ?? `Phase: ${resolvedPhase}`,
         });
 
         writeFileSync(statusFile, JSON.stringify(updated, null, 2));
         emitStatusChange(agentId, buildStatusBroadcast(updated, agentId, true, frameworkDir));
-        return `Status updated: phase=${args.phase}`;
+        const v = canonicalVerdict ? ` verdict=${canonicalVerdict}` : (args.verdict ? ` verdict=${args.verdict}` : '');
+        const coerced = canonicalVerdict && resolvedPhase !== args.phase ? ` (phase set from verdict; requested ${args.phase})` : '';
+        return `Status updated: phase=${resolvedPhase}${v}${coerced}`;
     } catch (e) {
         return `Error updating status: ${e instanceof Error ? e.message : String(e)}`;
     }

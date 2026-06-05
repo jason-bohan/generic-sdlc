@@ -2,10 +2,10 @@
  * Autonomous reviewer→dev handoff.
  *
  * When the reviewer finishes a review it writes a verdict to `.reviewer-status.json`
- * (`currentPhase` = `changes-requested` or `approved`). The handoff endpoint
- * `/api/handoff/review-complete` routes that verdict back to the dev (changes) or on
- * to devops (approved) and spawns the next agent — but nothing was *calling* it: the
- * loop driver doesn't, and the opencode/cloud reviewer doesn't either, so the PR sat
+ * (via the explicit `verdict` field or inferred from `currentPhase`). The handoff
+ * endpoint `/api/handoff/review-complete` routes that verdict back to the dev (changes)
+ * or on to devops (approved) and spawns the next agent — but nothing was *calling* it:
+ * the loop driver doesn't, and the opencode/cloud reviewer doesn't either, so the PR sat
  * with a verdict but no one picked it up.
  *
  * This closes the gap deterministically. The hook-runner already fires once per
@@ -16,6 +16,7 @@
 
 import type { StatusChangeEvent } from './status-events';
 import { serverLog as log } from './logger';
+import { normalizeReviewerVerdict } from './reviewer-verdict';
 
 // Reviewer terminal phases → the verdict the /api/handoff/review-complete endpoint
 // understands ('approved' | 'changes-requested'). Models don't reliably land on the
@@ -33,8 +34,15 @@ const VERDICT_BY_REVIEWER_PHASE: Record<string, 'approved' | 'changes-requested'
 export function maybeHandoffReviewVerdict(port: number, ev: StatusChangeEvent): void {
     if (ev.agentId !== 'reviewer') return;
     const status = ev.status as Record<string, unknown>;
+
+    // Prefer an explicit verdict field — the model calls update_status with
+    // verdict:"approved"|"changes-requested" instead of encoding the decision
+    // in a phase string. Normalize the many spellings it emits (e.g. "request-changes")
+    // so a real verdict isn't missed and silently demoted to phase inference (bug #10).
+    // Fall back to phase-based inference for backwards compat.
+    const explicitVerdict = normalizeReviewerVerdict(status.verdict);
     const phase = String(status.currentPhase ?? '');
-    const verdict = VERDICT_BY_REVIEWER_PHASE[phase];
+    const verdict = explicitVerdict ?? (VERDICT_BY_REVIEWER_PHASE[phase] ?? null);
     if (!verdict) return;
     const pr = status.assignedPR as { id?: number; storyNumber?: string; branch?: string; projectKey?: string } | undefined;
     if (!pr?.id) return;
