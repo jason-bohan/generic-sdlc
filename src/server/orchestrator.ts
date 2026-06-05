@@ -765,6 +765,20 @@ export function startWorkflow(input: StartWorkflowInput): OrchestratorResult<{ i
 const REWORK_PHASES = new Set<SdlcPhaseId>(['generating-code', 'analyzing', 'reading-story']);
 
 /**
+ * Anti-error-escape guard (dev-side 14B flakiness). When the local 14B can't satisfy a
+ * phase contract it tends to bail by routing next_phase="error", which permanently kills
+ * a story over a single confused turn (observed: a backend agent that couldn't produce
+ * the reading-story tasking contract completed the phase to "error" instead of advancing
+ * to "analyzing"). An implementation agent has no business self-terminating an early dev
+ * phase: "error" is for genuinely unrecoverable states, and a real failure still resurfaces
+ * when the coerced-forward phase re-attempts and re-fails. So we refuse a spurious "error"
+ * from these phases and coerce to the phase's canonical forward transition. Deterministic
+ * and server-side, like the forward-progress guard.
+ */
+const ERROR_ESCAPE_GUARDED_PHASES = new Set<SdlcPhaseId>(['reading-story', 'analyzing', 'generating-code']);
+const IMPLEMENTATION_AGENTS = new Set<SdlcAgentId>(['frontend', 'backend', 'qa', 'ux']);
+
+/**
  * True only when the validating-phase evidence positively reports PASSED with no
  * FAILED signal. Conservative: if the evidence is absent or ambiguous we return
  * false so a genuine FAILED → generating-code rework route is never overridden.
@@ -797,10 +811,27 @@ export function completePhase(input: CompletePhaseInput): OrchestratorResult<Wor
     // Forward-progress guard: a validating phase that passed may not route backward.
     let effectiveNextPhase = input.nextPhase;
     let guardNote: string | null = null;
+    let guardLabel: string | null = null;
     if (input.phase === 'validating' && REWORK_PHASES.has(input.nextPhase) && validationEvidencePassed(input.outputs)) {
         effectiveNextPhase = 'committing';
+        guardLabel = 'forward-progress guard';
         guardNote = `Forward-progress guard: validation reported PASSED, so '${input.phase}' was not allowed to return to '${input.nextPhase}'. Advanced to '${effectiveNextPhase}'.`;
         console.warn(`[forward-progress] ${input.agentId}: validating PASSED but next_phase='${input.nextPhase}' — coerced to '${effectiveNextPhase}'`);
+    }
+
+    // Anti-error-escape guard: an implementation agent may not self-terminate an early
+    // dev phase to 'error'. Coerce to that phase's canonical forward transition (the first
+    // non-error allowedNext) so a single confused turn can't kill the story.
+    if (input.nextPhase === 'error'
+        && IMPLEMENTATION_AGENTS.has(input.agentId)
+        && ERROR_ESCAPE_GUARDED_PHASES.has(input.phase)) {
+        const forward = getSdlcPhaseContract(input.phase).allowedNext.find((p) => p !== 'error');
+        if (forward) {
+            effectiveNextPhase = forward;
+            guardLabel = 'anti-error guard';
+            guardNote = `Anti-error guard: '${input.agentId}' tried to fail '${input.phase}' to 'error'; coerced forward to '${forward}'.`;
+            console.warn(`[anti-error] ${input.agentId}: next_phase='error' from '${input.phase}' — coerced to '${forward}'`);
+        }
     }
 
     if (!isAllowedSdlcTransition(input.agentId, input.phase, effectiveNextPhase)) {
@@ -834,8 +865,8 @@ export function completePhase(input: CompletePhaseInput): OrchestratorResult<Wor
             workflowItemId: item.id,
             agentId: input.agentId,
             nextPhase: effectiveNextPhase,
-            outputs: { auditEvent: { from: input.phase, to: effectiveNextPhase, ...(guardNote ? { forwardProgressGuard: true } : {}) } },
-            message: `Transitioned ${input.phase} -> ${effectiveNextPhase}${guardNote ? ' (forward-progress guard)' : ''}`,
+            outputs: { auditEvent: { from: input.phase, to: effectiveNextPhase, ...(guardLabel ? { guardCoerced: guardLabel } : {}) } },
+            message: `Transitioned ${input.phase} -> ${effectiveNextPhase}${guardLabel ? ` (${guardLabel})` : ''}`,
         });
     })();
 
