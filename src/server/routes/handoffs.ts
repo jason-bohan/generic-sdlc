@@ -1,6 +1,8 @@
 import { writeFileSync, existsSync } from 'fs';
+import { execFileSync } from 'child_process';
 import { resolve } from 'path';
 import { findStoryOwnerByPrId, applyReviewComplete, applyBuildComplete, applyDesignReady, applyDesignReviewComplete, loadReviewerCommentsAsReviewComments, wrapUpDeskRequestId } from '../handoff';
+import type { ReviewComment } from '../handoff';
 import { tryClaimBuildCompleteNotification } from '../build-complete-dedup';
 import { voteOnPr } from '../ado-bridge';
 import { getProjectProfile } from '../project-config';
@@ -24,6 +26,34 @@ import {
     storyNumberFromOwnerStatus } from '../route-shared';
 import type { UseFn } from './types';
 import { parseJsonUtf8File } from '../json-file';
+
+/**
+ * Fallback feedback source for a changes-requested handoff. The loop-driver reviewer
+ * posts its comments to the PR host via `gh pr comment` but does NOT write them to
+ * `.reviewer-comments.json` — so the dev would otherwise be sent to addressing-feedback
+ * with an empty request list and nothing to act on (bug #9). Pull the reviewer's actual
+ * PR comments from the host so the feedback reaches the dev. GitHub only; no-ops otherwise.
+ */
+function fetchPrReviewCommentsFromHost(configFile: string, prId: number, projectKey?: string | null): ReviewComment[] | undefined {
+    const ws = getProjectProfile(configFile, projectKey ?? undefined).workspacePath;
+    if (!ws || !existsSync(ws)) return undefined;
+    let repo: string | undefined;
+    try {
+        const remote = execFileSync('git', ['-C', ws, 'remote', 'get-url', 'origin'], { encoding: 'utf8', timeout: 5_000 }).trim();
+        repo = remote.match(/github\.com[:/]+([^/]+\/[^/]+?)(?:\.git)?$/i)?.[1];
+    } catch { return undefined; }
+    if (!repo) return undefined;
+    try {
+        const out = execFileSync('gh', ['pr', 'view', String(prId), '-R', repo, '--json', 'comments'], { encoding: 'utf8', timeout: 15_000 });
+        const data = JSON.parse(out) as { comments?: Array<{ body?: string }> };
+        const comments: ReviewComment[] = [];
+        (data.comments ?? []).forEach((c, i) => {
+            const body = (c.body ?? '').trim();
+            if (body) comments.push({ id: `R-${prId}-host-${i + 1}`, summary: body.slice(0, 2000) });
+        });
+        return comments.length ? comments : undefined;
+    } catch { return undefined; }
+}
 
 export function mount(use: UseFn, rootDir: string, configFile: string): void {
     // ── /api/handoff/review-complete ─────────────────────────────────────────
@@ -50,6 +80,12 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
             if (verdict === 'changes-requested' && (!effectiveComments || effectiveComments.length === 0)) {
                 const fromFile = loadReviewerCommentsAsReviewComments(rootDir, prIdNum);
                 if (fromFile?.length) effectiveComments = fromFile;
+                else {
+                    // Local file stale/missing — pull the reviewer's comments from the PR host so
+                    // the dev gets actionable feedback instead of an empty request list (bug #9).
+                    const fromHost = fetchPrReviewCommentsFromHost(configFile, prIdNum, statusProjectKey);
+                    if (fromHost?.length) effectiveComments = fromHost;
+                }
             }
             const resolvedCommentCount = effectiveComments?.length
                 ? effectiveComments.length
@@ -74,7 +110,21 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                 }
             } else if (!targetInStepMode) {
                 await notify(rootDir, { title: `Changes Requested: PR #${prId}`, body: `**${resolveAgentDisplayName('reviewer', rootDir)}** requested changes on ${prLink}${storyNumber ? ` (story ${storyNumber})` : ''}.${resolvedCommentCount ? ` ${resolvedCommentCount} comment(s).` : ''}`, color: 'ef4444' });
-                if (targetAgent) { try { agentSpawned = spawnAgent(targetAgent, `Changes requested on PR #${prId}. Read your skill and status file, then address the review feedback.`, rootDir, getAgentModel(targetAgent, rootDir)).spawned; } catch (e) { console.error('[handoff] spawn failed:', e); } }
+                if (targetAgent) {
+                    // Surface the reviewer's feedback INLINE in the re-spawn prompt for ANY dev-role
+                    // agent (backend/frontend/qa/etc.) — relying on the agent to find+parse status
+                    // `requests[]` itself fails on smaller models, which then ask for "the feedback"
+                    // that's already on their desk (bug #9). Also rail it to edit, not plan.
+                    const fbLines = (effectiveComments ?? []).map((c, i) => {
+                        const loc = c.file ? ` (${c.file}${c.line ? `:${c.line}` : ''})` : '';
+                        return `${i + 1}. ${c.severity ? `[${String(c.severity).toUpperCase()}] ` : ''}${String(c.summary ?? '').trim()}${loc}`;
+                    }).filter((l) => l.trim());
+                    const feedbackBlock = fbLines.length
+                        ? `\n\nThe reviewer requested these changes — address EACH by editing the code (call edit_file; do NOT just write a plan), then re-validate and complete the phase:\n${fbLines.join('\n')}`
+                        : '';
+                    const reworkPrompt = `Changes requested on PR #${prId}. Read your skill and status file (the open items are in \`requests\`), then fix the code to address the feedback below.${feedbackBlock}`;
+                    try { agentSpawned = spawnAgent(targetAgent, reworkPrompt, rootDir, getAgentModel(targetAgent, rootDir)).spawned; } catch (e) { console.error('[handoff] spawn failed:', e); }
+                }
             }
             try {
                 const owner = findStoryOwnerByPrId(rootDir, prId);

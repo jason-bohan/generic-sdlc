@@ -21,6 +21,36 @@ import {
 import type { UseFn } from './types';
 import { parseJsonUtf8File } from '../json-file';
 
+/**
+ * Pre-compute the authoritative PR diff for the reviewer and write it to
+ * `.reviewer-diff.patch`. Uses a committed-ref diff (`<target>...<branch>`), which is
+ * immune to uncommitted changes in the project working tree — so the reviewer judges
+ * exactly what the PR changes and never wanders into stray local edits (e.g. an
+ * unrelated half-finished file left in the checkout). Returns the relative path the
+ * reviewer can read, or null if it can't be produced (reviewer then falls back to gh).
+ */
+function writeReviewerDiff(rootDir: string, configFile: string, projectKey: string | null | undefined, branch: string | null): string | null {
+    if (!branch) return null;
+    const profile = getProjectProfile(configFile, projectKey ?? undefined);
+    const ws = profile.workspacePath;
+    if (!ws || !existsSync(ws)) return null;
+    const target = profile.targetBranch || 'main';
+    const range = `${target}...${branch}`;
+    try {
+        const stat = execFileSync('git', ['-C', ws, 'diff', '--stat', '-M', range], { encoding: 'utf8', maxBuffer: 1024 * 1024, timeout: 30_000 });
+        const diff = execFileSync('git', ['-C', ws, 'diff', '-M', range], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024, timeout: 30_000 });
+        const capped = diff.length > 200_000 ? `${diff.slice(0, 200_000)}\n... [diff truncated at 200KB — review the files above; fetch more with \`git -C <ws> show <branch>:<path>\`]\n` : diff;
+        const body = `# Authoritative PR diff — committed changes for this PR only (${range}).\n`
+            + `# This is the COMPLETE change set. Review ONLY what appears below.\n`
+            + `# Do NOT inspect the project working tree: uncommitted files there are NOT part of this PR.\n\n`
+            + `## Files changed\n${stat}\n## Diff\n${capped}`;
+        writeFileSync(resolve(rootDir, '.reviewer-diff.patch'), body);
+        return '.reviewer-diff.patch';
+    } catch {
+        return null;
+    }
+}
+
 export function mount(use: UseFn, rootDir: string, configFile: string): void {
     // ── /api/pr/created ──────────────────────────────────────────────────────
     use('/api/pr/created', async (req, res) => {
@@ -124,9 +154,12 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
             } catch { /* ok */ }
             if (!alreadyReviewerDeskDup) {
                 const reviewTask = { id: `PR-REVIEW-${prId}`, number: `PR-REVIEW-${prId}`, name: `Review PR #${prId}: ${prTitle || 'Code review'}`, status: 'pending', hours: 1, category: 'Review' };
+                // Pre-compute the clean committed diff so the reviewer judges from it, not the
+                // (possibly dirty) project working tree — see writeReviewerDiff / bug #8.
+                const diffPath = writeReviewerDiff(rootDir, configFile, statusProjectKey, branch);
                 writeFileSync(reviewerStatusFile, JSON.stringify({
                     projectKey: statusProjectKey,
-                    assignedPR: { id: prId, title: prTitle || `PR #${prId}`, url: prUrlFull, storyNumber: storyNumber || null, branch: branch || null, projectKey: statusProjectKey },
+                    assignedPR: { id: prId, title: prTitle || `PR #${prId}`, url: prUrlFull, storyNumber: storyNumber || null, branch: branch || null, projectKey: statusProjectKey, ...(diffPath ? { diffPath } : {}) },
                     currentPhase: 'pending-review',
                     requestedAt: now,
                     handoffDispatched: false,
