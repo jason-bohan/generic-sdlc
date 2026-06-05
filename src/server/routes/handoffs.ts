@@ -55,6 +55,33 @@ function fetchPrReviewCommentsFromHost(configFile: string, prId: number, project
     } catch { return undefined; }
 }
 
+/**
+ * Last-resort feedback source: the reviewer's own status events. The deepseek loop-driver
+ * reviewer routinely neither posts a `gh pr comment` (its write tools are disabled, and it
+ * doesn't shell out to `gh`) nor writes `.reviewer-comments.json` — it records the finding
+ * ONLY as a `.reviewer-status.json` event. Without this, a changes-requested handoff reaches
+ * the dev with an empty request list; the dev reworks BLIND and reproduces the same defect,
+ * looping forever (observed: deepseek correctly flagged a route placed inside the wrong block,
+ * but the finding never reached the 8B backend). Harvest the reviewer's recent finding text so
+ * the dev at least gets the reviewer's actual words to act on.
+ */
+export function harvestReviewerFindingFromStatus(rootDir: string, prId: number): ReviewComment[] | undefined {
+    try {
+        const s = parseJsonUtf8File(resolve(rootDir, '.reviewer-status.json')) as { assignedPR?: { id?: unknown }; events?: Array<{ type?: string; message?: unknown }> };
+        const deskId = Number(s.assignedPR?.id);
+        if (Number.isFinite(deskId) && deskId !== prId) return undefined; // status is about a different PR
+        const msgs = (s.events ?? [])
+            .filter(e => (e.type === 'phase' || e.type === 'info') && typeof e.message === 'string')
+            .map(e => String((e as { message: string }).message).trim())
+            .filter(Boolean)
+            // Drop content-free boilerplate; keep the substantive findings.
+            .filter(m => !/^(pr #\d+ assigned|assigned for review|reset to idle|starting review)/i.test(m));
+        const uniq = [...new Set(msgs)].slice(-4);
+        if (!uniq.length) return undefined;
+        return [{ id: `R-${prId}-status-1`, summary: uniq.join('; ').slice(0, 2000) }];
+    } catch { return undefined; }
+}
+
 export function mount(use: UseFn, rootDir: string, configFile: string): void {
     // ── /api/handoff/review-complete ─────────────────────────────────────────
     use('/api/handoff/review-complete', async (req, res) => {
@@ -85,6 +112,12 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                     // the dev gets actionable feedback instead of an empty request list (bug #9).
                     const fromHost = fetchPrReviewCommentsFromHost(configFile, prIdNum, statusProjectKey);
                     if (fromHost?.length) effectiveComments = fromHost;
+                    else {
+                        // Nothing on the host either — fall back to the reviewer's own status
+                        // events so the dev doesn't rework BLIND and loop forever.
+                        const fromStatus = harvestReviewerFindingFromStatus(rootDir, prIdNum);
+                        if (fromStatus?.length) effectiveComments = fromStatus;
+                    }
                 }
             }
             const resolvedCommentCount = effectiveComments?.length
