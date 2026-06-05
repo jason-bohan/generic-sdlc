@@ -59,3 +59,6 @@ aider_dataset.jsonl
 
 # Generated GitHub ↔ Linear issue mapping
 .github-linear-map.json
+
+# Generated per-review diff handed to the reviewer
+.reviewer-diff.patch
