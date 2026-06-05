@@ -201,6 +201,10 @@ export function buildOpenCodeSpawnSpec(
     // tools disabled in opencode.json) so it physically cannot edit the framework repo or
     // "implement instead of review". Tool removal is not bypassed by --dangerously-skip-permissions.
     const agentArgs = agentId === 'reviewer' ? ['--agent', 'reviewer'] : [];
+    // The reviewer's cwd is the framework repo (so it can read skills/), but it reviews
+    // the PROJECT repo's PR. Pin gh to that repo via GH_REPO so a bare `gh pr view <id>`
+    // can't resolve to the framework's own PR #<id> (the cross-repo PR-number collision).
+    const reviewerGhRepo = agentId === 'reviewer' ? resolveProjectGhRepo(workspaceDir) : undefined;
     return {
         cmd: opencodeExe,
         args: [
@@ -212,7 +216,27 @@ export function buildOpenCodeSpawnSpec(
             ...modelArgs,
             'Follow the instructions in the attached prompt file.',
         ],
+        ...(reviewerGhRepo ? { env: { GH_REPO: reviewerGhRepo } } : {}),
     };
+}
+
+/**
+ * Resolve the GitHub `owner/repo` of the project under review. The reviewer runs with
+ * cwd = the framework repo, so its gh commands must be pinned to the project repo (via
+ * GH_REPO) or a bare `gh pr view <id>` resolves to the framework's own PR #<id>.
+ * Prefer the assigned PR's URL (multi-project safe), then fall back to config.github.repo.
+ */
+function resolveProjectGhRepo(workspaceDir: string): string | undefined {
+    try {
+        const status = parseJsonUtf8File(resolve(workspaceDir, '.reviewer-status.json')) as { assignedPR?: { url?: string } };
+        const m = status.assignedPR?.url?.match(/github\.com\/([^/]+\/[^/]+)\/pull\//i);
+        if (m) return m[1];
+    } catch { /* fall through to config */ }
+    try {
+        const cfg = parseJsonUtf8File(resolve(workspaceDir, '.sdlc-framework.config.json')) as { github?: { repo?: string } };
+        if (cfg.github?.repo) return cfg.github.repo;
+    } catch { /* none */ }
+    return undefined;
 }
 
 export function findOpenCodeCli(): string | null {
@@ -253,10 +277,14 @@ export function buildClaudeCodeSpawnSpec(
             return { error: 'bin/run-agent-claude.sh not found.' };
         }
         const effectiveModel = model && model !== 'auto' ? model : 'auto';
+        // Same cross-repo guard as the opencode reviewer: pin gh to the project repo so a
+        // bare `gh pr view <id>` can't resolve to the framework's own PR #<id>.
+        const reviewerGhRepo = agentId === 'reviewer' ? resolveProjectGhRepo(workspaceDir) : undefined;
         return {
             cmd: '/bin/bash',
             args: [shScript, agentId, promptFilePath, workspaceDir, effectiveModel],
             ignoreStdio: true,
+            ...(reviewerGhRepo ? { env: { GH_REPO: reviewerGhRepo } } : {}),
         };
     }
 

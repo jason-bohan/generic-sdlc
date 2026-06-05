@@ -99,6 +99,18 @@ fi
 PROMPT="$(cat "$PROMPT_FILE")"
 
 echo "[run-agent-claude] Spawning Claude Code for agent: $AGENT_ID"
+# The reviewer is READ-ONLY: deny file-mutation tools at the harness level (mirrors the
+# opencode reviewer agent's disabled write/edit tools) so it cannot "implement instead of
+# review". --disallowedTools is a hard deny enforced even under --dangerously-skip-permissions;
+# the reviewer keeps Bash (gh/git) and Read (SKILL.md/status). Branch separately to avoid
+# bash 3.2's empty-array error under `set -u`.
+if [ "$AGENT_ID" = "reviewer" ]; then
+    if [ "$MODEL" != "auto" ] && [ -n "$MODEL" ]; then
+        exec "$CLAUDE_EXE" --dangerously-skip-permissions --disallowedTools "Write Edit MultiEdit NotebookEdit" -p "$PROMPT" --model "$MODEL"
+    else
+        exec "$CLAUDE_EXE" --dangerously-skip-permissions --disallowedTools "Write Edit MultiEdit NotebookEdit" -p "$PROMPT"
+    fi
+fi
 # Branch instead of expanding a maybe-empty array — macOS bash 3.2 errors on
 # "${arr[@]}" when empty under `set -u`.
 if [ "$MODEL" != "auto" ] && [ -n "$MODEL" ]; then

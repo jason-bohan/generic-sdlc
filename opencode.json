@@ -22,6 +22,7 @@
       },
       "models": {
         "mlx-community/Qwen2.5-Coder-14B-Instruct-4bit": { "name": "Qwen 2.5 Coder 14B Q4" },
+        "mlx-community/Qwen2.5-Coder-14B-Instruct-8bit": { "name": "Qwen 2.5 Coder 14B Q8" },
         "mlx-community/Qwen2.5-Coder-32B-Instruct-4bit": { "name": "Qwen 2.5 Coder 32B Q4" }
       }
     }
