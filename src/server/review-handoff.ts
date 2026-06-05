@@ -17,13 +17,25 @@
 import type { StatusChangeEvent } from './status-events';
 import { serverLog as log } from './logger';
 
-const TERMINAL_VERDICTS = new Set(['changes-requested', 'approved']);
+// Reviewer terminal phases → the verdict the /api/handoff/review-complete endpoint
+// understands ('approved' | 'changes-requested'). Models don't reliably land on the
+// bare 'changes-requested' string: 'waiting-for-fixes' (the post-changes-requested
+// monitoring state) and 'rejected' carry the same routing (back to the author), so we
+// normalize all of them. Without this, a reviewer that lands on 'waiting-for-fixes'
+// leaves the verdict stranded — the handoff never fires and the loop never closes.
+const VERDICT_BY_REVIEWER_PHASE: Record<string, 'approved' | 'changes-requested'> = {
+    'approved': 'approved',
+    'changes-requested': 'changes-requested',
+    'waiting-for-fixes': 'changes-requested',
+    'rejected': 'changes-requested',
+};
 
 export function maybeHandoffReviewVerdict(port: number, ev: StatusChangeEvent): void {
     if (ev.agentId !== 'reviewer') return;
     const status = ev.status as Record<string, unknown>;
-    const verdict = String(status.currentPhase ?? '');
-    if (!TERMINAL_VERDICTS.has(verdict)) return;
+    const phase = String(status.currentPhase ?? '');
+    const verdict = VERDICT_BY_REVIEWER_PHASE[phase];
+    if (!verdict) return;
     const pr = status.assignedPR as { id?: number; storyNumber?: string; branch?: string; projectKey?: string } | undefined;
     if (!pr?.id) return;
 
@@ -40,6 +52,6 @@ export function maybeHandoffReviewVerdict(port: number, ev: StatusChangeEvent): 
         body,
         signal: AbortSignal.timeout(20_000),
     })
-        .then((r) => log.info(`[review-handoff] reviewer ${verdict} on PR #${pr.id} → routed to dev (HTTP ${r.status})`))
-        .catch((e) => log.warn(`[review-handoff] PR #${pr.id} ${verdict} handoff failed: ${e instanceof Error ? e.message : String(e)}`));
+        .then((r) => log.info(`[review-handoff] reviewer ${phase} → ${verdict} on PR #${pr.id} → routed (HTTP ${r.status})`))
+        .catch((e) => log.warn(`[review-handoff] PR #${pr.id} ${phase} handoff failed: ${e instanceof Error ? e.message : String(e)}`));
 }

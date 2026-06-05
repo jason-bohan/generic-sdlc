@@ -4,6 +4,7 @@ import { spawn } from 'child_process';
 import { EventEmitter } from 'events';
 import { AgentRunner } from './AgentRunner';
 import { OpenAICompatibleProvider, readLoopProviderConfig, detectLoopProvider } from './provider';
+import { resolveSmartModel } from '../brainModel';
 import { updateTokens } from '../tokens';
 import type { TokenSource } from '../tokens';
 import {
@@ -196,7 +197,14 @@ export function startRunner(
     stopRunner(agentId);
 
     const modelOverride = model && model !== 'auto' && model !== 'local' ? model : undefined;
-    const providerConfig = readLoopProviderConfig(configPath, modelOverride);
+    // The reviewer is a "brain" role (see brainModel.ts): review is judgment-heavy and the
+    // local 14B can't drive it, so escalate to the cloud brain (OpenRouter, e.g. deepseek-v3.2)
+    // via resolveSmartModel — a direct OpenAI-compatible call, no opencode subprocess. Falls
+    // back to the local loop provider automatically when no cloud key is set. Every other agent
+    // stays on the local loopProvider.
+    const providerConfig = agentId === 'reviewer'
+        ? (() => { const sm = resolveSmartModel(configPath); return { baseUrl: sm.baseUrl, model: sm.model, apiKey: sm.apiKey, maxTokens: 4096 }; })()
+        : readLoopProviderConfig(configPath, modelOverride);
     const statusFile = resolve(frameworkDir, `.${agentId}-status.json`);
     const storyNumber = readStoryNumber(statusFile);
     const currentPhase = readCurrentPhase(statusFile);
