@@ -7,7 +7,7 @@ import { getActiveProjectName, getProjectProfile } from '../project-config';
 import { spawnAgent } from '../spawn-agent';
 import { isGlobalStepMode } from '../stepMode';
 import { notify } from '../providers';
-import { skillSubdirForAgentId } from '../../shared/agentSkillDirs';
+import { buildReviewerPrompt } from '../reviewer-prompt';
 import { resolveAgentDisplayName } from '../agent-display-names';
 import { readBody, json, cors } from '../router';
 import {
@@ -218,7 +218,7 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
             let agentSpawned = false;
             if (!globalStepModeOn && !reviewerStepModeOn) {
                 try {
-                    agentSpawned = spawnAgent('reviewer', `Review PR #${prId}. Read skills/${skillSubdirForAgentId('reviewer')}/SKILL.md and .reviewer-status.json, then perform a code review.`, rootDir, getAgentModel('reviewer', rootDir)).spawned;
+                    agentSpawned = spawnAgent('reviewer', buildReviewerPrompt(rootDir, prId), rootDir, getAgentModel('reviewer', rootDir)).spawned;
                 } catch (e) { console.error('[reviewer/pick-pr] reviewer spawn failed:', e); }
             }
 

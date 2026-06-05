@@ -4,7 +4,7 @@ import { resetAllAgentsToIdle } from '../reset-agents';
 import { isGlobalStepMode } from '../stepMode';
 import { spawnAgent } from '../spawn-agent';
 import { AGENT_RESET_CONFIRM_PHRASE } from '../../shared/agentResetConfirm';
-import { skillSubdirForAgentId } from '../../shared/agentSkillDirs';
+import { buildReviewerPrompt } from '../reviewer-prompt';
 import { readBody, json, cors } from '../router';
 import { getSchedulerConfig, getAgentModel, isAgentStepMode } from '../route-shared';
 import type { UseFn } from './types';
@@ -205,7 +205,7 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                 return;
             }
             const prId = Number(st.assignedPR.id);
-            const prompt = `Review PR #${prId}. Read skills/${skillSubdirForAgentId('reviewer')}/SKILL.md and .reviewer-status.json, then perform a code review.`;
+            const prompt = buildReviewerPrompt(rootDir, prId);
             const result = spawnAgent('reviewer', prompt, rootDir, getAgentModel('reviewer', rootDir));
             json(res, { ok: true, prId, ...result });
         } catch (e: unknown) { json(res, { error: e instanceof Error ? e.message : String(e) }, 500); }
