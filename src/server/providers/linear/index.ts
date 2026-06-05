@@ -94,17 +94,22 @@ export class LinearProjectTracker implements IProjectTracker {
 
     async getWorkItem(numberOrId: string): Promise<WorkItem | null> {
         // numberOrId may be: "5", "FLO-5", or a UUID
-        // Try by identifier first (covers "FLO-5" and plain "5" after fallback)
         const isUuid = /^[0-9a-f-]{36}$/i.test(numberOrId);
 
         if (isUuid) {
             return this.getById(numberOrId);
         }
 
-        // Search by identifier (exact) or number
-        const filter = numberOrId.includes('-')
-            ? { identifier: { eq: numberOrId } }
-            : { number: { eq: parseInt(numberOrId, 10) } };
+        // Linear's IssueFilter does not support filtering by `identifier`.
+        // Parse the identifier to get the numeric part (e.g. "UNW-90" → 90)
+        // and use `or` to search by number only.
+        // For identifiers like "FLO-5", we search by number and rely on the
+        // team context if available.
+        const numberOnly = numberOrId.replace(/^[A-Za-z]+-/, '');
+        const parsed = parseInt(numberOnly, 10);
+        if (isNaN(parsed)) return null;
+
+        const filter: Record<string, unknown> = { number: { eq: parsed } };
 
         const data = await this.gql<{
             issues: {
