@@ -208,6 +208,17 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
             }
             if (req.method !== 'GET') { res.statusCode = 405; res.end('Method not allowed'); return; }
             if (!number && !oidParam) { json(res, { error: 'number or oid query param required' }, 400); return; }
+            if (number && isLocalStoryNumber(number)) {
+                const story = findLocalStory(rootDir, number);
+                if (!story) { json(res, { error: `Local story ${number} not found` }, 404); return; }
+                json(res, {
+                    ...story,
+                    project: story.scope,
+                    url: `local-planning://${story.number}`,
+                    source: 'local',
+                });
+                return;
+            }
             if (usesExternalTracker()) {
                 const { resolveProjectTracker } = await import('../providers/index.js');
                 const tracker = await resolveProjectTracker(rootDir, configFile);
@@ -225,17 +236,6 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                     url: item.url,
                     acceptanceCriteria: '',
                     source: providerName,
-                });
-                return;
-            }
-            if (number && isLocalStoryNumber(number)) {
-                const story = findLocalStory(rootDir, number);
-                if (!story) { json(res, { error: `Local story ${number} not found` }, 404); return; }
-                json(res, {
-                    ...story,
-                    project: story.scope,
-                    url: `local-planning://${story.number}`,
-                    source: 'local',
                 });
                 return;
             }
