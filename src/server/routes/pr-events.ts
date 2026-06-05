@@ -5,13 +5,13 @@ import { getProjectProfile } from '../project-config';
 import { spawnAgent } from '../spawn-agent';
 import { isGlobalStepMode } from '../stepMode';
 import { notify } from '../providers';
-import { skillSubdirForAgentId } from '../../shared/agentSkillDirs';
 import { resolveAgentDisplayName } from '../agent-display-names';
 import { dbUpsertWorkflowArtifact } from '../db';
 import { readBody, json } from '../router';
 import { isAzureDevOpsUrl } from '../test-safety';
 import { getExternalMode, isMockExternalMode } from '../external-mode';
 import { upsertMockPullRequest } from '../mock-external';
+import { buildReviewerPrompt } from '../reviewer-prompt';
 import {
     getSchedulerConfig,
     getAgentModel,
@@ -170,7 +170,7 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                 teamsNotified = true;
                 // Only auto-spawn reviewer when step mode is off for both the creator workflow and reviewer desk.
                 if (!globalStepModeOn && !creatorStepMode && !isAgentStepMode('reviewer', rootDir)) {
-                    try { agentSpawned = spawnAgent('reviewer', `Review PR #${prId}. Read skills/${skillSubdirForAgentId('reviewer')}/SKILL.md and .reviewer-status.json, then perform a code review.`, rootDir, getAgentModel('reviewer', rootDir)).spawned; } catch (e) { console.error('[handoff] reviewer spawn failed:', e); }
+                    try { agentSpawned = spawnAgent('reviewer', buildReviewerPrompt(rootDir, prId), rootDir, getAgentModel('reviewer', rootDir)).spawned; } catch (e) { console.error('[handoff] reviewer spawn failed:', e); }
                 }
             }
             // Notify UX agent for design review if story has collaborators: ['ux']
