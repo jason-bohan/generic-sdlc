@@ -116,11 +116,15 @@ CallMcpTool: user-Azure DevOps / repo_get_pull_request_by_id
 
 ### Step 3: Review Changes
 
-1. Get the PR diff — **this framework is provider-agnostic; use the project's actual code-review host.** You MUST read the real diff before judging; never approve or request changes without seeing the code.
+1. Get the PR diff. You MUST read the real diff before judging; never approve or request changes without seeing the code.
 
-   ⚠️ **Your working directory is the FRAMEWORK repo, not the repo under review.** The code lives in `config.project.workspacePath` (a *different* repo). So **every** git/gh command MUST target that path/repo explicitly. **NEVER run a bare `gh pr diff <id>`** — with no `-R` it resolves to the framework's *own* PR #<id> (the wrong repository) and you will review the wrong code.
+   ✅ **PREFERRED — the framework already prepared a clean diff for you.** If `.reviewer-status.json` → `assignedPR.diffPath` is set (it points to `.reviewer-diff.patch`), **read that file and review from it.** It is the authoritative, committed-only change set for this PR (`<target>...<branch>`), pre-computed by the framework — it contains the COMPLETE set of changes and **excludes any uncommitted edits in the project checkout**.
 
-   - **Primary (host-agnostic, always correct):** diff the branch against its target with an explicit `-C`:
+   🚫 **NEVER review the project working tree.** Do **not** `git status`, do **not** browse/Read project source files by path, do **not** review any change that is not in the diff above. The project checkout may hold unrelated, half-finished, uncommitted files left over from other runs (e.g. a stray `TaskSideSheet.tsx` when the PR only touches `ping.ts`); reviewing those is a review error. Judge **only** what the diff shows.
+
+   ⚠️ If `diffPath` is missing, fetch the diff yourself — but it MUST be a **committed-ref** diff (immune to working-tree state), and **every** git/gh command MUST target the project repo explicitly (your cwd is the FRAMEWORK repo). **NEVER run a bare `gh pr diff <id>`** — with no `-R` it resolves to the framework's *own* PR #<id> (the wrong repository).
+
+   - **Host-agnostic (always correct):** diff the branch against its target with an explicit `-C`:
      ```
      git -C <config.project.workspacePath> diff <targetBranch>...<branch>
      git -C <config.project.workspacePath> diff --name-only <targetBranch>...<branch>
