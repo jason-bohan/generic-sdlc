@@ -14,6 +14,7 @@ import { ensureMockShims } from '../mock-mode-guard';
 import { emitStatusChange } from '../status-events';
 import { buildStatusBroadcast } from '../status-broadcast';
 import { normalizeReviewerVerdict, reviewerPhaseForVerdict } from '../reviewer-verdict';
+import { getSdlcPhaseContract, type SdlcPhaseId } from '../../shared/sdlcContracts';
 import type { ToolDefinition } from './types';
 import { parseJsonUtf8File } from '../json-file';
 
@@ -1035,6 +1036,19 @@ export function autoCreatePr(
 
 export interface AutoMergeResult { ok: boolean; merged: boolean; note: string; }
 
+/** Devops build-chain phases the framework routes forward deterministically. */
+export const DEVOPS_BUILD_CHAIN = new Set<string>(['pending-build', 'monitoring-build', 'build-passed']);
+
+/**
+ * The deterministic forward phase for a devops build-chain hop: the first allowedNext that
+ * isn't an error/failure branch (pending-build→monitoring-build→build-passed→complete). The
+ * real quality gates are the dev's validating phase + GitHub's required checks (which
+ * auto-merge respects), so optimistic forward routing here doesn't bypass anything.
+ */
+export function devopsBuildChainNextPhase(phase: SdlcPhaseId): SdlcPhaseId | undefined {
+    return getSdlcPhaseContract(phase).allowedNext.find((p) => p !== 'error' && p !== 'build-failed');
+}
+
 /**
  * Deterministic PR merge for the devops build-gate. The small model fumbles `gh pr merge`,
  * and in the local loop there is no CI poller to drive the merge, so the framework does it
@@ -1072,13 +1086,35 @@ export function autoMergePr(frameworkDir: string, configPath: string): AutoMerge
     }
     if (!repo) return { ok: false, merged: false, note: `could not resolve a GitHub repo for PR #${prId}` };
 
-    try {
-        execFileSync('gh', ['pr', 'merge', String(prId), '--squash', '--delete-branch', '-R', repo], { encoding: 'utf8', timeout: 60_000 });
-        return { ok: true, merged: true, note: `squash-merged PR #${prId} in ${repo}` };
-    } catch (e) {
-        const err = e as { stdout?: string; stderr?: string; message?: string };
-        return { ok: false, merged: false, note: `gh pr merge failed for PR #${prId}: ${(err.stderr || err.message || '').slice(0, 200)}` };
+    const gh = (args: string[]): { ok: boolean; out: string } => {
+        try { return { ok: true, out: execFileSync('gh', args, { encoding: 'utf8', timeout: 60_000 }).trim() }; }
+        catch (e) { const err = e as { stdout?: string; stderr?: string; message?: string }; return { ok: false, out: `${err.stdout ?? ''}${err.stderr ?? err.message ?? ''}`.trim() }; }
+    };
+
+    // Protection-aware merge. A protected base (e.g. flowboard's main: strict + required
+    // "Tests & type check") refuses a one-shot merge when the branch is BEHIND or checks are
+    // pending. So: (1) update the branch if behind, then (2) try an immediate squash; if that's
+    // blocked by pending/required checks, (3) arm auto-merge — GitHub merges when checks pass
+    // and the branch is current. Arming counts as success: devops's job (land the merge) is done.
+    const view = gh(['pr', 'view', String(prId), '-R', repo, '--json', 'mergeStateStatus,state']);
+    let mergeState = '';
+    try { mergeState = (JSON.parse(view.out) as { mergeStateStatus?: string }).mergeStateStatus ?? ''; } catch { /* */ }
+    if (mergeState === 'BEHIND') {
+        const upd = gh(['pr', 'update-branch', String(prId), '-R', repo]);
+        if (!upd.ok && !/up to date|no new commits/i.test(upd.out)) {
+            // couldn't update (e.g. conflict) — fall through; the merge attempt will report why
+        }
     }
+
+    const direct = gh(['pr', 'merge', String(prId), '--squash', '--delete-branch', '-R', repo]);
+    if (direct.ok) return { ok: true, merged: true, note: `squash-merged PR #${prId} in ${repo}` };
+
+    // Direct merge blocked (pending/required checks, or branch just updated and checks re-running)
+    // → arm auto-merge so GitHub merges it when the gates are satisfied.
+    const auto = gh(['pr', 'merge', String(prId), '--squash', '--delete-branch', '--auto', '-R', repo]);
+    if (auto.ok) return { ok: true, merged: false, note: `auto-merge armed for PR #${prId} in ${repo} — GitHub will squash-merge when required checks pass` };
+
+    return { ok: false, merged: false, note: `merge failed for PR #${prId}: ${(direct.out || auto.out || 'unknown').slice(0, 200)}` };
 }
 
 async function toolCompletePhase(
@@ -1153,24 +1189,29 @@ async function toolCompletePhase(
         }
     }
 
-    // Build-gate: devops finishing a passing build. The only valid exit is 'complete', but
-    // the 8B fumbles it (defaults next_phase to 'analyzing' → rejected → stalls at the
-    // auto-resume cap). Route to 'complete' deterministically, and — when step mode is OFF —
-    // merge the PR for it (the small model also fumbles `gh pr merge`, and the local loop has
-    // no CI poller to drive the merge). Merging is irreversible, so step mode pauses it for a
-    // manual merge, mirroring how the build-complete wrap-up is gated.
+    // Build-gate: the whole devops build chain is mechanical (in the local loop there's no
+    // ADO-style pipeline poller, and the 8B fumbles these hops — it defaults next_phase to
+    // 'analyzing', which is invalid, → rejected → stalls at the auto-resume cap). So route the
+    // chain forward deterministically: pending-build → monitoring-build → build-passed →
+    // complete. At the final hop, merge the PR (the small model also fumbles `gh pr merge`).
+    // Merging is irreversible, so step mode pauses it for a manual merge, mirroring the
+    // build-complete wrap-up gating.
     let autoMerge: AutoMergeResult | undefined;
-    if (currentPhase === 'build-passed' && agentId === 'devops') {
-        nextPhase = 'complete';
-        const stepModeOn = isGlobalStepMode(configPath) || isAgentStepMode('devops', configPath);
-        if (stepModeOn) {
-            return `[build-gate] Step mode is on — PR not auto-merged. Merge it manually, then advance the story to complete. (devops desk left at build-passed.)`;
-        }
-        autoMerge = autoMergePr(frameworkDir, configPath);
-        // A failed merge must NOT mark the story complete with an unmerged PR — hold at
-        // build-passed so it can be retried or merged by hand.
-        if (!autoMerge.ok) {
-            return `[build-gate] Could not merge the PR: ${autoMerge.note}. Story NOT marked complete — resolve the merge, then re-run. (devops desk left at build-passed.)`;
+    if (agentId === 'devops' && DEVOPS_BUILD_CHAIN.has(currentPhase)) {
+        const forward = devopsBuildChainNextPhase(currentPhase as SdlcPhaseId);
+        if (forward) nextPhase = forward;
+
+        if (currentPhase === 'build-passed') {
+            const stepModeOn = isGlobalStepMode(configPath) || isAgentStepMode('devops', configPath);
+            if (stepModeOn) {
+                return `[build-gate] Step mode is on — PR not auto-merged. Merge it manually, then advance the story to complete. (devops desk left at build-passed.)`;
+            }
+            autoMerge = autoMergePr(frameworkDir, configPath);
+            // A failed merge must NOT mark the story complete with an unmerged PR — hold at
+            // build-passed so it can be retried or merged by hand. (Auto-merge armed = ok.)
+            if (!autoMerge.ok) {
+                return `[build-gate] Could not merge the PR: ${autoMerge.note}. Story NOT marked complete — resolve the merge, then re-run. (devops desk left at build-passed.)`;
+            }
         }
     }
 

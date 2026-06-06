@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdirSync, rmSync, writeFileSync } from 'fs';
 import { resolve } from 'path';
-import { autoMergePr, executeToolCall } from '../server/agent-runner/tools';
+import { autoMergePr, executeToolCall, devopsBuildChainNextPhase, DEVOPS_BUILD_CHAIN } from '../server/agent-runner/tools';
 
 const TMP = resolve(__dirname, '.devops-build-gate-tmp');
 const CONFIG = () => resolve(TMP, '.sdlc-framework.config.json');
@@ -40,6 +40,18 @@ describe('autoMergePr — host-agnostic, GitHub-positive', () => {
         const r = autoMergePr(TMP, CONFIG());
         expect(r.ok).toBe(false);
         expect(r.note).toMatch(/no assigned PR/i);
+    });
+});
+
+describe('devopsBuildChainNextPhase — deterministic build-chain forward routing', () => {
+    it('routes each build-chain hop forward, skipping error/failure branches', () => {
+        expect(devopsBuildChainNextPhase('pending-build')).toBe('monitoring-build');
+        expect(devopsBuildChainNextPhase('monitoring-build')).toBe('build-passed');
+        expect(devopsBuildChainNextPhase('build-passed')).toBe('complete');
+    });
+
+    it('covers exactly the three build-chain phases', () => {
+        expect([...DEVOPS_BUILD_CHAIN].sort()).toEqual(['build-passed', 'monitoring-build', 'pending-build']);
     });
 });
 
