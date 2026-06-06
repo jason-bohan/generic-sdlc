@@ -196,13 +196,15 @@ export function startRunner(
 ): AgentRunner {
     stopRunner(agentId);
 
-    const modelOverride = model && model !== 'auto' && model !== 'local' ? model : undefined;
+    const modelOverride = model && model !== 'auto' && model !== 'local' && model !== 'cloud' ? model : undefined;
     // The reviewer is a "brain" role (see brainModel.ts): review is judgment-heavy and the
     // local 14B can't drive it, so escalate to the cloud brain (OpenRouter, e.g. deepseek-v3.2)
     // via resolveSmartModel — a direct OpenAI-compatible call, no opencode subprocess. Falls
     // back to the local loop provider automatically when no cloud key is set. Every other agent
-    // stays on the local loopProvider.
-    const providerConfig = agentId === 'reviewer'
+    // stays on the local loopProvider — UNLESS spawned with model='cloud' (the rework-cap
+    // escalation: a dev that has looped against the reviewer gets one cloud-brain attempt).
+    const useBrain = agentId === 'reviewer' || model === 'cloud';
+    const providerConfig = useBrain
         ? (() => { const sm = resolveSmartModel(configPath); return { baseUrl: sm.baseUrl, model: sm.model, apiKey: sm.apiKey, maxTokens: 4096 }; })()
         : readLoopProviderConfig(configPath, modelOverride);
     const statusFile = resolve(frameworkDir, `.${agentId}-status.json`);

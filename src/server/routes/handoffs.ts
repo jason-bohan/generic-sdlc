@@ -26,6 +26,7 @@ import {
     storyNumberFromOwnerStatus } from '../route-shared';
 import type { UseFn } from './types';
 import { parseJsonUtf8File } from '../json-file';
+import { bumpReworkRound, resetReworkRound, reworkAction, markReworkStuck } from '../rework-cap';
 
 /**
  * Fallback feedback source for a changes-requested handoff. The loop-driver reviewer
@@ -133,6 +134,7 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
             const storyOwnerInStepMode = !!(storyOwnerForStep && isAgentStepMode(storyOwnerForStep.agentId, rootDir));
             let agentSpawned = false;
             if (verdict === 'approved') {
+                resetReworkRound(rootDir, prIdNum); // approved → clear the rework counter for this PR
                 if (!isMockExternalMode(configFile)) {
                     voteOnPr(prId, 'Approved', undefined, statusProjectKey).catch(e => console.error('[handoff] ADO vote failed:', e));
                 }
@@ -156,7 +158,21 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                         ? `\n\nThe reviewer requested these changes — address EACH by editing the code (call edit_file; do NOT just write a plan), then re-validate and complete the phase:\n${fbLines.join('\n')}`
                         : '';
                     const reworkPrompt = `Changes requested on PR #${prId}. Read your skill and status file (the open items are in \`requests\`), then fix the code to address the feedback below.${feedbackBlock}`;
-                    try { agentSpawned = spawnAgent(targetAgent, reworkPrompt, rootDir, getAgentModel(targetAgent, rootDir)).spawned; } catch (e) { console.error('[handoff] spawn failed:', e); }
+
+                    // Rework cap: the local 14B can loop forever against the reviewer. After
+                    // REWORK_CAP rounds, escalate this dev to the cloud brain for one attempt;
+                    // if that round is also rejected, pause for a human instead of spinning.
+                    const round = bumpReworkRound(rootDir, prIdNum);
+                    const action = reworkAction(round);
+                    if (action === 'pause-human') {
+                        markReworkStuck(rootDir, prIdNum, targetAgent, round);
+                        await notify(rootDir, { title: `🚧 PR #${prId} stuck in rework`, body: `**${resolveAgentDisplayName(targetAgent, rootDir)}** has been rejected ${round - 1} times (incl. a cloud-brain attempt) on ${prLink}. Paused for human review — the loop is not auto-retrying.`, color: 'b91c1c' });
+                    } else if (action === 'escalate-cloud') {
+                        const escalatedPrompt = `${reworkPrompt}\n\n[NOTE: previous attempts were rejected by the reviewer. You are running on a stronger model this round — read the feedback carefully and fix it correctly.]`;
+                        try { agentSpawned = spawnAgent(targetAgent, escalatedPrompt, rootDir, 'cloud').spawned; } catch (e) { console.error('[handoff] escalated spawn failed:', e); }
+                    } else {
+                        try { agentSpawned = spawnAgent(targetAgent, reworkPrompt, rootDir, getAgentModel(targetAgent, rootDir)).spawned; } catch (e) { console.error('[handoff] spawn failed:', e); }
+                    }
                 }
             }
             try {
