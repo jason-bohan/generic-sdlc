@@ -103,7 +103,7 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                 if (!isMockExternalMode(configFile)) {
                     voteOnPr(prId, 'Approved', undefined, statusProjectKey).catch(e => console.error('[handoff] ADO vote failed:', e));
                 }
-                if (result.target === 'devops' && !storyOwnerInStepMode && !isAgentStepMode('devops', rootDir)) {
+                if (result.target === 'devops' && !result.alreadyDispatched && !storyOwnerInStepMode && !isAgentStepMode('devops', rootDir)) {
                     await notify(rootDir, { title: `PR #${prId} Approved`, body: `**${resolveAgentDisplayName('reviewer', rootDir)}** approved ${prLink}${storyNumber ? ` (story ${storyNumber})` : ''}. Handing off to **${resolveAgentDisplayName('devops', rootDir)}** for CI build.`, color: '22c55e' });
                     await notify(rootDir, { title: `${resolveAgentDisplayName('devops', rootDir)}: build gate — PR #${prId}`, body: `**${resolveAgentDisplayName('devops', rootDir)}** — \`.devops-status.json\` is **pending-build**. Run Pipeline Workflow Mode B.`, color: '06b6d4' });
                     try { agentSpawned = spawnAgent('devops', `Build gate for PR #${prId}. Read skills/${skillSubdirForAgentId('devops')}/SKILL.md Mode B and .devops-status.json.`, rootDir, getAgentModel('devops', rootDir)).spawned; } catch (e) { console.error('[handoff] devops spawn failed:', e); }
@@ -133,6 +133,10 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                     : storyNumberFromOwnerStatus(owner?.status);
                 const nextAgent = verdict === 'approved' ? 'devops' : result.target;
                 const nextPhase = verdict === 'approved' ? 'pending-build' : result.targetPhase;
+                // Idempotency (bug #6): once devops owns this PR and is mid-build, a re-fired
+                // approval must NOT re-transition the workflow item — doing so drags an
+                // advanced devops (e.g. build-passed) back to pending-build and it 409s in a loop.
+                const skipTransition = verdict === 'approved' && result.alreadyDispatched;
                 const workflow = recordWorkflowMilestone({
                     storyNumber: workflowStoryNumber,
                     agentId: 'reviewer',
@@ -144,7 +148,7 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                         handoff: { target: result.target, targetPhase: result.targetPhase },
                         auditEvent: { route: '/api/handoff/review-complete', externalMode: getExternalMode(configFile) } },
                     message: `Review ${verdict} for PR #${prId}`,
-                    transition: nextAgent && nextAgent !== 'unknown' ? {
+                    transition: (nextAgent && nextAgent !== 'unknown' && !skipTransition) ? {
                         agentId: nextAgent,
                         nextPhase,
                         outputs: { auditEvent: { route: '/api/handoff/review-complete' } },
