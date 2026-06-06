@@ -9,6 +9,7 @@
 import { resolve, dirname, relative, sep, basename } from 'path';
 import { execFile, execFileSync } from 'child_process';
 import { isMockExternalMode } from '../external-mode';
+import { isGlobalStepMode, isAgentStepMode } from '../stepMode';
 import { ensureMockShims } from '../mock-mode-guard';
 import { emitStatusChange } from '../status-events';
 import { buildStatusBroadcast } from '../status-broadcast';
@@ -1032,6 +1033,54 @@ export function autoCreatePr(
     };
 }
 
+export interface AutoMergeResult { ok: boolean; merged: boolean; note: string; }
+
+/**
+ * Deterministic PR merge for the devops build-gate. The small model fumbles `gh pr merge`,
+ * and in the local loop there is no CI poller to drive the merge, so the framework does it
+ * (squash + delete branch) when devops finishes a passing build. Gated by the caller on
+ * step mode — never call this when a manual merge is wanted.
+ *
+ * Host-agnostic by omission: it acts ONLY when the PR is positively a GitHub PR (the merge
+ * verb is `gh`, which is GitHub-specific). Any other host — ADO, mock, etc. — is left to
+ * finalize through its own path (e.g. ADO pipeline auto-complete) and `merged:false, ok:true`
+ * lets the story still advance to complete.
+ */
+export function autoMergePr(frameworkDir: string, configPath: string): AutoMergeResult {
+    const devopsFile = resolve(frameworkDir, '.devops-status.json');
+    let pr: { id?: number; url?: string } | undefined;
+    try {
+        const s = parseJsonUtf8File(devopsFile) as { assignedPR?: { id?: number; url?: string } };
+        pr = s.assignedPR;
+    } catch { /* no desk */ }
+    const prId = typeof pr?.id === 'number' ? pr.id : Number(pr?.id);
+    if (!Number.isFinite(prId) || prId <= 0) return { ok: false, merged: false, note: 'no assigned PR id on the devops desk — cannot merge' };
+    const prUrl = typeof pr?.url === 'string' ? pr.url : '';
+
+    if (isMockExternalMode(configPath)) return { ok: true, merged: false, note: `mock mode — PR #${prId} not merged` };
+
+    // Positively identify a GitHub PR: owner/repo from a github.com PR URL, or — only when
+    // there's no URL to read the host from — a configured github.repo. A non-GitHub URL is
+    // another host's PR and is intentionally left for that host to finalize.
+    let repo = '';
+    if (prUrl) {
+        const m = prUrl.match(/github\.com\/([^/]+\/[^/]+?)(?:\.git)?\/pull\//i);
+        if (m) repo = m[1];
+        else return { ok: true, merged: false, note: `PR #${prId} is not a GitHub PR — left for its own host to finalize` };
+    } else {
+        try { repo = (parseJsonUtf8File(configPath) as { github?: { repo?: string } }).github?.repo || ''; } catch { /* */ }
+    }
+    if (!repo) return { ok: false, merged: false, note: `could not resolve a GitHub repo for PR #${prId}` };
+
+    try {
+        execFileSync('gh', ['pr', 'merge', String(prId), '--squash', '--delete-branch', '-R', repo], { encoding: 'utf8', timeout: 60_000 });
+        return { ok: true, merged: true, note: `squash-merged PR #${prId} in ${repo}` };
+    } catch (e) {
+        const err = e as { stdout?: string; stderr?: string; message?: string };
+        return { ok: false, merged: false, note: `gh pr merge failed for PR #${prId}: ${(err.stderr || err.message || '').slice(0, 200)}` };
+    }
+}
+
 async function toolCompletePhase(
     args: Record<string, unknown>,
     workspaceDir: string,
@@ -1039,7 +1088,7 @@ async function toolCompletePhase(
     agentId: string,
     configPath: string,
 ): Promise<string> {
-    const nextPhase = String(args.next_phase ?? 'analyzing');
+    let nextPhase = String(args.next_phase ?? 'analyzing');
     const summary = String(args.summary ?? '');
 
     const statusFile = resolve(frameworkDir, `.${agentId}-status.json`);
@@ -1101,6 +1150,27 @@ async function toolCompletePhase(
             } catch (e) {
                 console.warn('[creating-pr] reviewer handoff (/api/pr/created) failed:', e instanceof Error ? e.message : String(e));
             }
+        }
+    }
+
+    // Build-gate: devops finishing a passing build. The only valid exit is 'complete', but
+    // the 8B fumbles it (defaults next_phase to 'analyzing' → rejected → stalls at the
+    // auto-resume cap). Route to 'complete' deterministically, and — when step mode is OFF —
+    // merge the PR for it (the small model also fumbles `gh pr merge`, and the local loop has
+    // no CI poller to drive the merge). Merging is irreversible, so step mode pauses it for a
+    // manual merge, mirroring how the build-complete wrap-up is gated.
+    let autoMerge: AutoMergeResult | undefined;
+    if (currentPhase === 'build-passed' && agentId === 'devops') {
+        nextPhase = 'complete';
+        const stepModeOn = isGlobalStepMode(configPath) || isAgentStepMode('devops', configPath);
+        if (stepModeOn) {
+            return `[build-gate] Step mode is on — PR not auto-merged. Merge it manually, then advance the story to complete. (devops desk left at build-passed.)`;
+        }
+        autoMerge = autoMergePr(frameworkDir, configPath);
+        // A failed merge must NOT mark the story complete with an unmerged PR — hold at
+        // build-passed so it can be retried or merged by hand.
+        if (!autoMerge.ok) {
+            return `[build-gate] Could not merge the PR: ${autoMerge.note}. Story NOT marked complete — resolve the merge, then re-run. (devops desk left at build-passed.)`;
         }
     }
 
@@ -1193,7 +1263,8 @@ async function toolCompletePhase(
                 // the next phase starts with a fresh conversation context.
                 const commitLine = autoCommit ? `\n[commit-gate] ${autoCommit.note}` : '';
                 const prLine = autoPr ? `\n[pr-gate] ${autoPr.note}` : '';
-                return `PHASE_COMPLETE::${recordedPhase}\nHTTP ${res.status}${commitLine}${prLine}\n${text.slice(0, 500)}`;
+                const mergeLine = autoMerge ? `\n[build-gate] ${autoMerge.note}` : '';
+                return `PHASE_COMPLETE::${recordedPhase}\nHTTP ${res.status}${commitLine}${prLine}${mergeLine}\n${text.slice(0, 500)}`;
             }
             return `HTTP ${res.status}\n${text.slice(0, 1000)}`;
         } catch (e) {
