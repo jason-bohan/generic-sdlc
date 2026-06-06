@@ -73,21 +73,44 @@ export function reworkAction(round: number): 'local' | 'escalate-cloud' | 'pause
 }
 
 /**
- * Flag the dev's desk as stuck (cloud-brain rework also rejected) so the loop stops
- * auto-retrying and a human can pick it up. Sets `reworkStuck` and appends an event.
+ * Flag a dev's desk as stuck so the loop stops auto-retrying and a human can pick it up.
+ * Sets `reworkStuck` and appends a warning event with the supplied reason.
  */
-export function markReworkStuck(baseDir: string, prId: number, agentId: string, round: number): void {
+function markStuck(baseDir: string, agentId: string, message: string): void {
     const file = resolve(baseDir, `.${agentId}-status.json`);
     if (!existsSync(file)) return;
     try {
         const s = parseJsonUtf8File(file) as Record<string, unknown>;
         s.reworkStuck = true;
         if (!Array.isArray(s.events)) s.events = [];
-        (s.events as unknown[]).push({
-            timestamp: new Date().toISOString(),
-            type: 'warning',
-            message: `Rework cap reached for PR #${prId} (round ${round}, incl. a cloud-brain attempt). Paused for human review — not auto-retrying.`,
-        });
+        (s.events as unknown[]).push({ timestamp: new Date().toISOString(), type: 'warning', message });
         writeFileSync(file, JSON.stringify(s, null, 2));
     } catch { /* non-fatal */ }
+}
+
+/** Reviewer-rework cap exhausted (cloud-brain attempt also rejected). */
+export function markReworkStuck(baseDir: string, prId: number, agentId: string, round: number): void {
+    markStuck(baseDir, agentId, `Rework cap reached for PR #${prId} (round ${round}, incl. a cloud-brain attempt). Paused for human review — not auto-retrying.`);
+}
+
+/**
+ * Dev-side validating-loop escalation. The local 14B can grind generating-code↔validating
+ * forever (validation keeps failing; the per-phase auto-resume cap never trips because the
+ * bounce alternates phases). We count dev-loop phase entries for the story: past
+ * VALIDATION_ESCALATE_AT, escalate the dev to the cloud brain (one shot); past
+ * VALIDATION_PAUSE_AT, pause for a human. Thresholds assume a clean first pass is
+ * ~3 phase entries (analyzing→generating-code→validating) and each failed rework adds ~2.
+ */
+export const VALIDATION_ESCALATE_AT = 6;
+export const VALIDATION_PAUSE_AT = 9;
+
+export function devLoopAction(devLoopStarts: number): 'local' | 'escalate-cloud' | 'pause-human' {
+    if (devLoopStarts >= VALIDATION_PAUSE_AT) return 'pause-human';
+    if (devLoopStarts >= VALIDATION_ESCALATE_AT) return 'escalate-cloud';
+    return 'local';
+}
+
+/** Validating-loop escalation exhausted (cloud-brain dev attempt still can't pass validation). */
+export function markDevLoopStuck(baseDir: string, agentId: string, storyNumber: string, starts: number): void {
+    markStuck(baseDir, agentId, `Validating loop stuck for ${storyNumber} (${starts} dev-loop attempts, incl. a cloud-brain attempt that still failed validation). Paused for human review — not auto-retrying.`);
 }
