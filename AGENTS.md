@@ -38,3 +38,52 @@ It forwards all traffic to the upstream MLX server (`MLX_HOST`, default
 To use with opencode, the `opencode.json` mlx provider points at
 `http://localhost:8084/v1`. To use with the SDLC framework loop
 provider, set `MLX_HOST=http://localhost:8084`.
+
+## Worker Pool (1-bit models)
+
+The `WorkerPool` (`src/server/workerPool.ts`) runs 1-bit models (e.g.
+`prism-ml/Bonsai-8B-mlx-1bit`) in parallel for cheap reading/summarization
+tasks so the 8-bit main model saves context for actual code generation.
+
+Agents can call two delegation tools:
+- `summarize_file{path}` — reads a file and returns a 1-3 sentence summary
+  plus key exports/symbols. Use instead of `read_file` when you only need
+  to understand what a file does, not its full contents.
+- `summarize_search{pattern,directory?,include?}` — searches the codebase
+  and returns a grouped per-file summary. Use instead of `search_in_files`
+  or `grep` when you have a broad pattern.
+
+The pool runs up to 2 concurrent workers (Apple Silicon memory ceiling).
+Configured via `scheduler.workerPool` in `.sdlc-framework.config.json`.
+Falls back to stubs when MLX is unavailable (dev/test).
+
+The Bonsai 8B 1-bit (`prism-ml/Bonsai-8B-mlx-1bit`) has native MLX
+kernels and runs efficiently on Apple Silicon. Its coding ability is
+~3-4B FP equivalent, which is sufficient for summarization and search
+grouping — the 8-bit Qwen 14B Q8 handles the actual coding decisions.
+
+### Bonsai model setup
+
+The Bonsai 1-bit model requires the [PrismML fork of MLX](https://github.com/PrismML-Eng/mlx/tree/prism)
+with 1-bit GPU kernel support (upstream PR pending). This fork needs the
+`metal` shader compiler, which requires **full Xcode** (not just Command
+Line Tools):
+
+1. Install Xcode from the Mac App Store and open it once to accept the license.
+2. Set the active developer directory: `sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer`
+3. Create a separate Python venv and build the fork:
+   ```bash
+   python3 -m venv ~/bonsai-env
+   source ~/bonsai-env/bin/activate
+   pip install "mlx-lm==0.30.7" setuptools
+   CMAKE_ARGS="-DMLX_BUILD_METAL=ON" pip install git+https://github.com/PrismML-Eng/mlx.git@prism --no-build-isolation
+   ```
+4. Start the worker server on a dedicated port:
+   ```bash
+   mlx_lm server --model prism-ml/Bonsai-8B-mlx-1bit --host 127.0.0.1 --port 8083
+   ```
+5. Set `WORKER_MODEL=prism-ml/Bonsai-8B-mlx-1bit` and `WORKER_BASE_URL=http://localhost:8083/v1`
+   (or update `.sdlc-framework.config.json`).
+
+Without this setup, the pool falls back to stub summaries (empty strings).
+The code path is identical regardless of which MLX model serves requests.

@@ -17,6 +17,7 @@ import { normalizeReviewerVerdict, reviewerPhaseForVerdict } from '../reviewer-v
 import { getSdlcPhaseContract, type SdlcPhaseId } from '../../shared/sdlcContracts';
 import type { ToolDefinition } from './types';
 import { parseJsonUtf8File } from '../json-file';
+import { createWorkerPool } from '../workerPool';
 
 // ---------------------------------------------------------------------------
 // Tool definitions (sent to the LLM)
@@ -196,6 +197,36 @@ export const AGENT_TOOLS: ToolDefinition[] = [
                 properties: {
                     pattern: { type: 'string', description: 'Glob pattern, e.g. "**/*.ts", "src/**/*.test.*"' },
                     directory: { type: 'string', description: 'Directory to search in (defaults to workspace root)' },
+                },
+                required: ['pattern'],
+            },
+        },
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'summarize_file',
+            description: 'Read a file and return a concise summary using a cheap 1-bit worker model. Use this instead of read_file when you only need to know what a file does, not its full contents — saves context for the main model.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    path: { type: 'string', description: 'File path to summarize' },
+                },
+                required: ['path'],
+            },
+        },
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'summarize_search',
+            description: 'Search for a pattern across the codebase and return a grouped summary using a cheap 1-bit worker model. Use this instead of search_in_files or grep when you have a broad pattern and want a concise per-file summary rather than raw line matches.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    pattern: { type: 'string', description: 'Text pattern or regex to search for' },
+                    directory: { type: 'string', description: 'Directory to search in (defaults to workspace root)' },
+                    include: { type: 'string', description: 'Glob pattern for file names to include, e.g. "*.ts", "*.{ts,tsx}"' },
                 },
                 required: ['pattern'],
             },
@@ -1573,6 +1604,84 @@ function toolGlob(args: Record<string, unknown>, workspaceDir: string, framework
 }
 
 // ---------------------------------------------------------------------------
+// Worker pool tools (delegated to 1-bit model)
+// ---------------------------------------------------------------------------
+
+let _workerPool: ReturnType<typeof createWorkerPool> | null = null;
+
+function getOrCreateWorkerPool(configPath: string): ReturnType<typeof createWorkerPool> {
+  if (!_workerPool) _workerPool = createWorkerPool(configPath);
+  return _workerPool;
+}
+
+async function toolSummarizeFile(args: Record<string, unknown>, workspaceDir: string, frameworkDir: string, configPath: string): Promise<string> {
+    const check = safePath(String(args.path ?? ''), workspaceDir, [workspaceDir, frameworkDir]);
+    if (!check.ok) return `Error: ${check.error}`;
+    if (!existsSync(check.resolved)) return `Error: file not found: ${check.resolved}`;
+    try {
+        const content = readFileSync(check.resolved, 'utf-8');
+        const pool = getOrCreateWorkerPool(configPath);
+        const summary = await pool.summarizeFile(check.resolved, content);
+        return summary || '(worker returned empty summary)';
+    } catch (e) {
+        return `Error summarizing file: ${e instanceof Error ? e.message : String(e)}`;
+    }
+}
+
+async function toolSummarizeSearch(args: Record<string, unknown>, workspaceDir: string, frameworkDir: string, configPath: string): Promise<string> {
+    const pattern = String(args.pattern ?? '');
+    if (!pattern) return 'Error: pattern is required';
+    let dir = workspaceDir;
+    if (args.directory) {
+        const dirCheck = safePath(String(args.directory), workspaceDir, [workspaceDir, frameworkDir]);
+        if (!dirCheck.ok) return `Error: ${dirCheck.error}`;
+        dir = dirCheck.resolved;
+    }
+    const includeGlob = args.include ? String(args.include) : null;
+    const includeRe = includeGlob ? globToRegex(includeGlob) : null;
+    const maxResults = 80;
+    let re: RegExp;
+    try { re = new RegExp(pattern, 'i'); } catch (e) { return `Error: invalid regex "${pattern}": ${e instanceof Error ? e.message : String(e)}`; }
+
+    const matches: string[] = [];
+    const walk = (d: string, depth: number) => {
+        if (depth > 8 || matches.length >= maxResults) return;
+        let entries: string[];
+        try { entries = readdirSync(d); } catch { return; }
+        for (const entry of entries) {
+            if (entry === 'node_modules' || entry === '.git' || entry === 'dist' || entry === 'bin' || entry === 'obj') continue;
+            const full = resolve(d, entry);
+            let stat;
+            try { stat = statSync(full); } catch { continue; }
+            if (stat.isDirectory()) {
+                walk(full, depth + 1);
+            } else if (!includeRe || includeRe.test(entry)) {
+                try {
+                    const content = readFileSync(full, 'utf-8');
+                    const lines = content.split('\n');
+                    for (let i = 0; i < lines.length && matches.length < maxResults; i++) {
+                        if (re.test(lines[i])) {
+                            matches.push(`${relative(workspaceDir, full)}:${i + 1}: ${lines[i].trim().slice(0, 300)}`);
+                        }
+                    }
+                } catch { /* skip unreadable */ }
+            }
+        }
+    };
+    if (!existsSync(dir)) return `Error: directory not found: ${dir}`;
+    walk(dir, 0);
+
+    try {
+        const pool = getOrCreateWorkerPool(configPath);
+        const summary = await pool.searchAndSummarize(pattern, matches);
+        const raw = matches.length > 0 ? `\n\nRaw matches:\n${matches.join('\n').slice(0, 2000)}` : '';
+        return (summary ? `Worker summary:\n${summary}${raw}` : `No matches for "${pattern}"`) || '(no results)';
+    } catch (e) {
+        return matches.length > 0 ? matches.join('\n') : `No matches for "${pattern}"`;
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Dispatcher
 // ---------------------------------------------------------------------------
 
@@ -1600,6 +1709,8 @@ export async function executeToolCall(
         case 'grep':            return toolGrep(a, workspaceDir, frameworkDir);
         case 'read':            return toolRead(a, workspaceDir, frameworkDir);
         case 'glob':            return toolGlob(a, workspaceDir, frameworkDir);
+        case 'summarize_file':  return toolSummarizeFile(a, workspaceDir, frameworkDir, configPath);
+        case 'summarize_search': return toolSummarizeSearch(a, workspaceDir, frameworkDir, configPath);
         case 'update_status':   return toolUpdateStatus(a, workspaceDir, frameworkDir, agentId);
         default: {
             // Local 14B models often emit the task *description* as the tool name
@@ -1608,7 +1719,7 @@ export async function executeToolCall(
             if (name.includes(' ') || name.length > 40) {
                 return toolCreateTask({ ...a, name }, frameworkDir, agentId);
             }
-            return `Unknown tool: "${name}". Valid tools: read_file, write_file, edit_file, list_directory, search_in_files, grep, read, glob, run_command, create_task, update_status, http_request, complete_phase.`;
+            return `Unknown tool: "${name}". Valid tools: read_file, write_file, edit_file, list_directory, search_in_files, grep, read, glob, summarize_file, summarize_search, run_command, create_task, update_status, http_request, complete_phase.`;
         }
     }
 }

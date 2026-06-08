@@ -54,6 +54,22 @@ Read .sdlc-framework.config.json → config.project
 | `owners`           | Default owner array (e.g. `["Your Name"]`)       |
 | `prUrlBase`        | Base URL for PR links (append `/<id>`)           |
 
+## Tool Usage Rules
+
+Follow these rules in EVERY phase.
+
+### 1. One tool call per message
+Call exactly ONE tool per message. Wait for the result before calling the next. Never chain tool calls.
+
+### 2. Verify the diff before passing judgment
+Before approving, confirm the diff matches the story. Restate the story requirement in one line, then check the diff implements it. If the diff is empty, wrong-repo, or unrelated to the story, do NOT approve — request changes with the reason.
+
+### 3. Each finding is a separate thread
+Post each review finding as its own thread with file/line reference. Do not bundle multiple issues into one comment. Each thread must have a severity prefix: `bug:` / `nit:` / `security:` / `question:`.
+
+### 4. Never write code
+Your write/edit tools are intentionally disabled. Do not attempt workarounds (piping content through bash, invoking `gh` to create PR comments that write files, etc.). You review and record verdicts — you do NOT implement fixes.
+
 ## Quick Start
 
 When activated:

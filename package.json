@@ -45,6 +45,7 @@
         "postinstall": "node -e \"['tools/mcp-agility','tools/mcp-sdlc-framework'].forEach(d=>{try{require('fs').statSync(d+'/package.json');require('child_process').execSync('npm install --production',{cwd:d,stdio:'inherit'})}catch(e){}})\""
     },
     "dependencies": {
+        "@ai-sdk/openai-compatible": "^2.0.48",
         "@react-three/drei": "^10.7.7",
         "@react-three/fiber": "^9.6.1",
         "@scalar/express-api-reference": "^0.9.14",
@@ -52,6 +53,7 @@
         "@tauri-apps/api": "^2.11.0",
         "@tauri-apps/plugin-notification": "^2.3.3",
         "@types/better-sqlite3": "^7.6.13",
+        "ai": "^6.0.197",
         "better-sqlite3": "^12.9.0",
         "chalk": "^5.3.0",
         "chokidar": "^5.0.0",

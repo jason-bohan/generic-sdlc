@@ -113,6 +113,8 @@ function buildSystemPrompt(agentId: string, _frameworkDir: string, promptLatitud
         '- run_command{command} — run builds, tests, git',
         '- create_task{name,estimate} — register work items (do NOT use http_request for this)',
         '- http_request{url,method?,body?,headers?} — call external APIs',
+        '- summarize_file{path} — cheap 1-bit worker reads & summarises a file (saves context)',
+        '- summarize_search{pattern,directory?,include?} — 1-bit worker searches & groups results',
         '- update_status{phase} — refresh the dashboard; call after each phase',
         '- complete_phase{next_phase,summary,...} — REQUIRED to end every phase',
         '',

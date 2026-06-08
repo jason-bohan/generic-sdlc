@@ -13,7 +13,6 @@ import { notify } from '../providers';
 import { skillSubdirForAgentId } from '../../shared/agentSkillDirs';
 import { resolveAgentDisplayName } from '../agent-display-names';
 import { dbUpsertWorkflowArtifact } from '../db';
-import { saveReviewPending, completeReviewTrainingData } from '../reviewTrainingData';
 import { readBody, json, cors } from '../router';
 import { getExternalMode, isMockExternalMode } from '../external-mode';
 import { setMockPullRequestStatus } from '../mock-external';
@@ -28,6 +27,7 @@ import {
 import type { UseFn } from './types';
 import { parseJsonUtf8File } from '../json-file';
 import { bumpReworkRound, resetReworkRound, reworkAction, markReworkStuck, markEscalated } from '../rework-cap';
+import { saveReviewPending, completeReviewTrainingData } from '../reviewTrainingData';
 
 /**
  * Fallback feedback source for a changes-requested handoff. The loop-driver reviewer
@@ -144,6 +144,10 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
             let agentSpawned = false;
             if (verdict === 'approved') {
                 resetReworkRound(rootDir, prIdNum); // approved → clear the rework counter for this PR
+                // Learning flywheel: if this PR was rejected earlier and is now approved,
+                // finalize the (rejected → fix) training example captured at changes-requested
+                // time — the high-value contrastive pair for fine-tuning the local model.
+                try { completeReviewTrainingData(rootDir, configFile, prIdNum, typeof branch === 'string' ? branch : undefined); } catch (e) { console.warn('[handoff] completeReviewTrainingData failed:', e); }
                 if (!isMockExternalMode(configFile)) {
                     voteOnPr(prId, 'Approved', undefined, statusProjectKey).catch(e => console.error('[handoff] ADO vote failed:', e));
                 }
@@ -154,6 +158,12 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                 }
             } else if (!targetInStepMode) {
                 await notify(rootDir, { title: `Changes Requested: PR #${prId}`, body: `**${resolveAgentDisplayName('reviewer', rootDir)}** requested changes on ${prLink}${storyNumber ? ` (story ${storyNumber})` : ''}.${resolvedCommentCount ? ` ${resolvedCommentCount} comment(s).` : ''}`, color: 'ef4444' });
+                // Learning flywheel: snapshot the rejected diff + reviewer feedback + base-file
+                // context now. On later approval, completeReviewTrainingData computes the fix
+                // diff and writes the training example.
+                if (typeof branch === 'string' && branch) {
+                    try { saveReviewPending(rootDir, configFile, prIdNum, branch, effectiveComments ?? []); } catch (e) { console.warn('[handoff] saveReviewPending failed:', e); }
+                }
                 if (targetAgent) {
                     // Surface the reviewer's feedback INLINE in the re-spawn prompt for ANY dev-role
                     // agent (backend/frontend/qa/etc.) — relying on the agent to find+parse status
