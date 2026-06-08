@@ -65,3 +65,6 @@ aider_dataset.jsonl
 
 # Generated per-review diff handed to the reviewer
 .reviewer-diff.patch
+
+# Orchestrator limit-retry queue (runtime state)
+.orchestrator-retries.json
