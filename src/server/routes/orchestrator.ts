@@ -3,6 +3,7 @@ import type { UseFn } from './types';
 import { runOrchestratorTick, type AssignmentPlanItem } from '../orchestrator-tick';
 import { authorStories, type AuthoredStory, type ModelCall } from '../orchestrator-author';
 import { claudePrint } from '../claude-print';
+import { computeRetryDelayMs, scheduleRetry } from '../orchestrator-retry';
 import { smartChat } from '../brainModel';
 import { createLocalStory } from '../local-planning';
 import { getActiveProjectName } from '../project-config';
@@ -98,7 +99,22 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
         createStory,
       });
       if (!result.ok) {
-        json(res, result, result.limited ? 429 : 400);
+        // Usage limit: schedule the retry for exactly when the quota refreshes
+        // (the time the CLI reported), re-firing the same authoring request.
+        if (result.limited) {
+          const host = req.headers.host || 'localhost:3001';
+          const delayMs = computeRetryDelayMs(result.retryAt);
+          scheduleRetry(`author:${goal}`, delayMs, () => {
+            fetch(`http://${host}/api/orchestrator/author`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ goal, autoAssign: body.autoAssign === true }),
+            }).catch(() => { /* next scheduled retry (if still limited) will re-arm */ });
+          });
+          json(res, { ...result, retryScheduled: { atIso: result.retryAt ?? null, inMs: delayMs } }, 429);
+          return;
+        }
+        json(res, result, 400);
         return;
       }
       // Optional: immediately route+assign the freshly authored backlog.

@@ -18,6 +18,8 @@ export interface ModelCall {
   ok: boolean;
   text?: string;
   limited?: boolean;
+  /** ISO time the quota refreshes (when the model reported it). */
+  retryAt?: string;
   error?: string;
 }
 
@@ -26,6 +28,8 @@ export interface AuthorResult {
   reason?: string;
   /** True when the model hit a usage limit — pause and retry after refresh. */
   limited?: boolean;
+  /** ISO time the quota refreshes, for scheduling the retry. */
+  retryAt?: string;
   authored: Array<{ number: string; name: string }>;
 }
 
@@ -97,7 +101,7 @@ export async function authorStories(opts: {
 
   const res = await opts.callModel(buildAuthoringPrompt(goal, opts.projectKey));
   if (res.limited) {
-    return { ok: false, limited: true, reason: 'model usage limit reached — pause and retry after refresh', authored: [] };
+    return { ok: false, limited: true, retryAt: res.retryAt, reason: 'model usage limit reached — pause and retry after refresh', authored: [] };
   }
   if (!res.ok || !res.text) {
     return { ok: false, reason: res.error || 'model returned no output', authored: [] };
