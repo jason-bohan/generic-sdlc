@@ -30,6 +30,8 @@ scripts/__pycache__/
 .agent-spawns.log
 .build-complete-notify.json
 .rework-counts.json
+.review-training-pending
+review_training_data.jsonl
 .agent-output/
 .watcher-errors.log
 .vite/
