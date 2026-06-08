@@ -29,7 +29,12 @@ interface QueueItem<T> {
 }
 
 const DEFAULT_BASE_URL = 'http://localhost:8084/v1';
-const DEFAULT_WORKER_MODEL = 'prism-ml/Bonsai-8B-mlx-1bit';
+// A small model the local mlx_lm runtime can actually serve. The original
+// Bonsai-8B-mlx-1bit is a 1-bit model and mlx_lm cannot serve 1-bit (it errors
+// "requested number of bits 1 is not supported"), so summaries silently stubbed to ''.
+// A 1.5B-4bit reads/summarizes code accurately (~2s) and runs on its own MLX port
+// concurrently with the 8-bit main model. Override via config or WORKER_MODEL env.
+const DEFAULT_WORKER_MODEL = 'mlx-community/Qwen2.5-Coder-1.5B-Instruct-4bit';
 
 export class WorkerPool {
   private workerModel: string;
@@ -97,7 +102,8 @@ export class WorkerPool {
         if (!resp.ok) return this.fallback('summarize', `HTTP ${resp.status}`);
 
         const data = (await resp.json()) as { choices?: Array<{ message?: { content?: string } }> };
-        const text = data.choices?.[0]?.message?.content?.trim();
+        // Strip chat-template stop tokens that some MLX models leak into content.
+        const text = data.choices?.[0]?.message?.content?.replace(/<\|im_end\|>|<\|endoftext\|>|<\|eot_id\|>/g, '').trim();
         return text && text.length > 0 ? text : this.fallback('summarize', 'empty response');
       } catch (err) {
         return this.fallback('summarize', String(err));
