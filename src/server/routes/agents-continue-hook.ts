@@ -19,6 +19,8 @@ import {
 import { buildContextPreamble } from '../contextLoader';
 import { startPhaseRun } from '../orchestrator';
 import { dbGetWorkflowItemByStory, dbGetPhaseEvents } from '../db';
+import { devLoopAction, markDevLoopStuck } from '../rework-cap';
+import { notify } from '../providers';
 import { getActiveProject } from '../project-config';
 import { resolve as pathResolve } from 'path';
 import type { UseFn } from './types';
@@ -423,7 +425,37 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                 return;
             }
 
+            // Validating-loop escalation (dev side): the local 14B can grind
+            // generating-code↔validating forever — the per-phase cap below never trips because
+            // the bounce alternates phases. Count the story's dev-loop phase entries; past a
+            // threshold escalate the dev to the cloud brain for one attempt, then pause for a
+            // human. The reviewer-rework loop is capped separately (review-complete handler).
+            const DEV_LOOP_PHASES = new Set(['analyzing', 'generating-code', 'validating']);
+            const IMPLEMENTATION_AGENTS = new Set(['frontend', 'backend', 'qa', 'ux']);
+            let devLoopModel: string | undefined;
+            if (IMPLEMENTATION_AGENTS.has(agentId) && DEV_LOOP_PHASES.has(phase) && storyNum) {
+                try {
+                    const workflow = dbGetWorkflowItemByStory(storyNum, agentId);
+                    if (workflow) {
+                        const devLoopStarts = dbGetPhaseEvents(workflow.id)
+                            .filter(e => e.event_type === 'phase-started' && DEV_LOOP_PHASES.has(e.phase)).length;
+                        const action = devLoopAction(devLoopStarts);
+                        if (action === 'pause-human') {
+                            markDevLoopStuck(rootDir, agentId, storyNum, devLoopStarts);
+                            void notify(rootDir, { title: `🚧 ${storyNum} stuck in validation`, body: `**${agentId}** can't pass validation after ${devLoopStarts} dev-loop attempts (incl. a cloud-brain attempt). Paused for human review.`, color: 'b91c1c' });
+                            console.warn(`[validating-loop] ${agentId} on ${storyNum}: ${devLoopStarts} dev-loop starts — pausing for human`);
+                            return;
+                        }
+                        if (action === 'escalate-cloud') {
+                            devLoopModel = 'cloud';
+                            console.warn(`[validating-loop] ${agentId} on ${storyNum}: ${devLoopStarts} dev-loop starts — escalating to cloud brain`);
+                        }
+                    }
+                } catch { /* proceed with local */ }
+            }
+
             // Prevent infinite loops: stop auto-resuming after 3 attempts in the same phase.
+            // (Bypassed when escalating to cloud — that's the deliberate "one stronger attempt".)
             const MAX_AUTO_RESUMES = 3;
             let resumeCount = 0;
             if (storyNum) {
@@ -443,15 +475,15 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                 // GC stale entries after 10 minutes
                 setTimeout(() => memoryResumeCounts.delete(key), 600_000);
             }
-            if (resumeCount >= MAX_AUTO_RESUMES) {
+            if (!devLoopModel && resumeCount >= MAX_AUTO_RESUMES) {
                 console.warn(`[auto-resume] ${agentId} hit max auto-resumes (${MAX_AUTO_RESUMES}) in '${phase}' — stopping`);
                 return;
             }
 
             const prompt = buildContinuePrompt(agentId, phase, storyNum, rootDir, configFile, '', '');
             try {
-                spawnAgent(agentId, prompt, rootDir, getAgentModel(agentId, rootDir));
-                console.log(`[auto-resume] ${agentId} re-spawned after stopping in '${phase}'`);
+                spawnAgent(agentId, prompt, rootDir, devLoopModel ?? getAgentModel(agentId, rootDir));
+                console.log(`[auto-resume] ${agentId} re-spawned after stopping in '${phase}'${devLoopModel ? ' (escalated to cloud brain)' : ''}`);
             } catch (e) { console.error(`[auto-resume] failed to resume ${agentId}:`, e); }
         }, 2_000);
     });

@@ -29,6 +29,7 @@ scripts/__pycache__/
 **/test/.token-ledger.json
 .agent-spawns.log
 .build-complete-notify.json
+.rework-counts.json
 .agent-output/
 .watcher-errors.log
 .vite/
