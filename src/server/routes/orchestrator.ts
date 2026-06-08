@@ -1,7 +1,11 @@
+import type { IncomingMessage, ServerResponse } from 'http';
 import { readBody, json } from '../router';
 import type { UseFn } from './types';
 import { runOrchestratorTick, type AssignmentPlanItem } from '../orchestrator-tick';
-import { authorStories, type AuthoredStory, type ModelCall } from '../orchestrator-author';
+import {
+  authorStories, buildGoalFromFindings,
+  type AuthoredStory, type ModelCall, type AuthorResult, type FindingSummary,
+} from '../orchestrator-author';
 import { claudePrint } from '../claude-print';
 import { computeRetryDelayMs, scheduleRetry, executeRetryAction } from '../orchestrator-retry';
 import { smartChat } from '../brainModel';
@@ -10,10 +14,81 @@ import { getActiveProjectName } from '../project-config';
 
 const ROUTING_HINT_FIELDS = new Set(['backend', 'frontend', 'qa']);
 
+/** Author on the Claude sub via `claude -p`, falling back to the brain only when
+ *  the CLI is unavailable (NOT on a usage limit — that pauses & retries). */
+function makeAuthoringDeps(rootDir: string, configFile: string) {
+  const callModel = async (prompt: string): Promise<ModelCall> => {
+    const c = await claudePrint(prompt, { timeoutMs: 120_000 });
+    if (c.ok || c.limited) return c;
+    const text = await smartChat(prompt, configFile, { maxTokens: 1500, timeoutMs: 60_000 });
+    return text ? { ok: true, text } : { ok: false, error: c.error || 'no authoring model available' };
+  };
+  const createStory = (s: AuthoredStory) => {
+    const hint = s.agentHint && ROUTING_HINT_FIELDS.has(s.agentHint) ? { [s.agentHint]: s.description } : {};
+    const story = createLocalStory(rootDir, {
+      name: s.name,
+      description: s.description,
+      acceptanceCriteria: s.acceptanceCriteria ?? '',
+      estimate: s.estimate ?? null,
+      status: 'Backlog',
+      ...hint,
+    });
+    return { number: story.number, name: story.name };
+  };
+  return { callModel, createStory };
+}
+
+/** Uniform response for an authoring result: on a usage limit schedule a retry
+ *  for the refresh time; on success optionally chain the assign-loop. */
+async function respondAuthorResult(
+  req: IncomingMessage,
+  res: ServerResponse,
+  rootDir: string,
+  opts: { retryGoal: string; autoAssign: boolean },
+  result: AuthorResult,
+): Promise<void> {
+  const host = req.headers.host || 'localhost:3001';
+
+  if (!result.ok) {
+    if (result.limited) {
+      const delayMs = computeRetryDelayMs(result.retryAt);
+      scheduleRetry({
+        rootDir,
+        key: `author:${opts.retryGoal}`,
+        delayMs,
+        action: { kind: 'author', goal: opts.retryGoal, autoAssign: opts.autoAssign },
+        execute: (action) => executeRetryAction(`http://${host}`, action),
+      });
+      json(res, { ...result, retryScheduled: { atIso: result.retryAt ?? null, inMs: delayMs } }, 429);
+      return;
+    }
+    json(res, result, 400);
+    return;
+  }
+
+  if (opts.autoAssign) {
+    try {
+      const tickRes = await fetch(`http://${host}/api/orchestrator/tick`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(60_000),
+      });
+      const tick = tickRes.ok ? await tickRes.json() : { error: `tick HTTP ${tickRes.status}` };
+      json(res, { ...result, tick }, 200);
+      return;
+    } catch (e) {
+      json(res, { ...result, tick: { error: e instanceof Error ? e.message : String(e) } }, 200);
+      return;
+    }
+  }
+  json(res, result, 200);
+}
+
 /**
- * Orchestrator routes. /api/orchestrator/tick runs one deterministic assign-loop
- * pass: in autonomous mode, route every free backlog story to its specialist and
- * assign it. Triggerable manually now; a periodic caller can drive it later.
+ * Orchestrator routes:
+ *  - /tick      : deterministic assign-loop (route + assign free backlog stories).
+ *  - /author    : decompose a goal into backlog stories (Claude sub → brain).
+ *  - /from-aiqa : seed authoring from the AI-QA scorecard findings.
  */
 export function mount(use: UseFn, rootDir: string, configFile: string): void {
   use('/api/orchestrator/tick', async (req, res) => {
@@ -21,7 +96,6 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
       json(res, { error: 'Method not allowed' }, 405);
       return;
     }
-    // Body is optional; accept and ignore for forward-compat (e.g. future limits).
     try { await readBody(req); } catch { /* no body is fine */ }
 
     const host = req.headers.host || 'localhost:3001';
@@ -52,89 +126,75 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
     }
   });
 
-  // POST /api/orchestrator/author { goal, autoAssign? } — the Layer-2 authoring
-  // step: decompose a goal into backlog stories using Claude (the sub) with the
-  // brain as fallback. Optionally chain the assign-loop to kick them off.
+  // POST /api/orchestrator/author { goal, autoAssign? }
   use('/api/orchestrator/author', async (req, res) => {
     if (req.method !== 'POST') {
       json(res, { error: 'Method not allowed' }, 405);
       return;
     }
     let body: Record<string, unknown> = {};
-    try { body = JSON.parse((await readBody(req)) || '{}'); } catch { /* empty/invalid body */ }
+    try { body = JSON.parse((await readBody(req)) || '{}'); } catch { /* empty/invalid */ }
     const goal = String(body.goal ?? '').trim();
     if (!goal) {
       json(res, { error: 'goal is required' }, 400);
       return;
     }
+    const { callModel, createStory } = makeAuthoringDeps(rootDir, configFile);
+    try {
+      const result = await authorStories({ goal, projectKey: getActiveProjectName(configFile), callModel, createStory });
+      await respondAuthorResult(req, res, rootDir, { retryGoal: goal, autoAssign: body.autoAssign === true }, result);
+    } catch (e) {
+      json(res, { error: e instanceof Error ? e.message : String(e) }, 500);
+    }
+  });
 
-    // Author on the Claude subscription via `claude -p`; fall back to the brain
-    // (OpenRouter) only when the CLI is unavailable. A usage limit is surfaced as
-    // limited (do NOT fall back — the orchestrator should pause and retry later).
-    const callModel = async (prompt: string): Promise<ModelCall> => {
-      const c = await claudePrint(prompt, { timeoutMs: 120_000 });
-      if (c.ok || c.limited) return c;
-      const text = await smartChat(prompt, configFile, { maxTokens: 1500, timeoutMs: 60_000 });
-      return text ? { ok: true, text } : { ok: false, error: c.error || 'no authoring model available' };
-    };
+  // POST /api/orchestrator/from-aiqa { autoAssign?, maxStories? } — seed authoring
+  // from the AI-QA scorecard: pull findings, frame them as a goal, author a fix
+  // story per finding. Self-fetches the scorecard (buildAiQaScorecard isn't exported).
+  use('/api/orchestrator/from-aiqa', async (req, res) => {
+    if (req.method !== 'POST') {
+      json(res, { error: 'Method not allowed' }, 405);
+      return;
+    }
+    let body: Record<string, unknown> = {};
+    try { body = JSON.parse((await readBody(req)) || '{}'); } catch { /* empty/invalid */ }
+    const host = req.headers.host || 'localhost:3001';
+    const maxStories = typeof body.maxStories === 'number' && body.maxStories > 0 ? Math.floor(body.maxStories) : 5;
 
-    const createStory = (s: AuthoredStory) => {
-      const hint = s.agentHint && ROUTING_HINT_FIELDS.has(s.agentHint) ? { [s.agentHint]: s.description } : {};
-      const story = createLocalStory(rootDir, {
-        name: s.name,
-        description: s.description,
-        acceptanceCriteria: s.acceptanceCriteria ?? '',
-        estimate: s.estimate ?? null,
-        status: 'Backlog',
-        ...hint,
-      });
-      return { number: story.number, name: story.name };
-    };
+    let findings: FindingSummary[] = [];
+    try {
+      const r = await fetch(`http://${host}/api/aiqa/scorecard`, { signal: AbortSignal.timeout(60_000) });
+      if (!r.ok) { json(res, { error: `AI-QA scorecard HTTP ${r.status}` }, 502); return; }
+      const sc = (await r.json()) as { findings?: Array<Record<string, unknown>> };
+      findings = (sc.findings ?? [])
+        .map((f) => ({
+          title: String(f.title ?? ''),
+          evidence: typeof f.evidence === 'string' ? f.evidence : undefined,
+          severity: typeof f.severity === 'string' ? f.severity : undefined,
+          suggestedOwner: typeof f.suggestedOwner === 'string' ? f.suggestedOwner : undefined,
+        }))
+        .filter((f) => f.title);
+    } catch (e) {
+      json(res, { error: `could not fetch AI-QA scorecard: ${e instanceof Error ? e.message : String(e)}` }, 502);
+      return;
+    }
 
+    if (findings.length === 0) {
+      json(res, { ok: false, reason: 'no AI-QA findings to author from', authored: [] }, 200);
+      return;
+    }
+
+    const goal = buildGoalFromFindings(findings, maxStories);
+    const { callModel, createStory } = makeAuthoringDeps(rootDir, configFile);
     try {
       const result = await authorStories({
         goal,
         projectKey: getActiveProjectName(configFile),
         callModel,
         createStory,
+        maxStories: Math.min(maxStories, findings.length),
       });
-      if (!result.ok) {
-        // Usage limit: schedule the retry for exactly when the quota refreshes
-        // (the time the CLI reported), re-firing the same authoring request.
-        if (result.limited) {
-          const host = req.headers.host || 'localhost:3001';
-          const delayMs = computeRetryDelayMs(result.retryAt);
-          scheduleRetry({
-            rootDir,
-            key: `author:${goal}`,
-            delayMs,
-            action: { kind: 'author', goal, autoAssign: body.autoAssign === true },
-            execute: (action) => executeRetryAction(`http://${host}`, action),
-          });
-          json(res, { ...result, retryScheduled: { atIso: result.retryAt ?? null, inMs: delayMs } }, 429);
-          return;
-        }
-        json(res, result, 400);
-        return;
-      }
-      // Optional: immediately route+assign the freshly authored backlog.
-      if (body.autoAssign === true) {
-        const host = req.headers.host || 'localhost:3001';
-        try {
-          const tickRes = await fetch(`http://${host}/api/orchestrator/tick`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            signal: AbortSignal.timeout(60_000),
-          });
-          const tick = tickRes.ok ? await tickRes.json() : { error: `tick HTTP ${tickRes.status}` };
-          json(res, { ...result, tick }, 200);
-          return;
-        } catch (e) {
-          json(res, { ...result, tick: { error: e instanceof Error ? e.message : String(e) } }, 200);
-          return;
-        }
-      }
-      json(res, result, 200);
+      await respondAuthorResult(req, res, rootDir, { retryGoal: goal, autoAssign: body.autoAssign === true }, result);
     } catch (e) {
       json(res, { error: e instanceof Error ? e.message : String(e) }, 500);
     }

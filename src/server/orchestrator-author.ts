@@ -33,6 +33,38 @@ export interface AuthorResult {
   authored: Array<{ number: string; name: string }>;
 }
 
+/** A QA finding reduced to what authoring needs. */
+export interface FindingSummary {
+  title: string;
+  evidence?: string;
+  severity?: string;
+  suggestedOwner?: string;
+}
+
+const SEVERITY_RANK: Record<string, number> = { critical: 3, high: 2, medium: 1, low: 0 };
+export function severityRank(s?: string): number {
+  return SEVERITY_RANK[(s ?? '').toLowerCase()] ?? 0;
+}
+
+/**
+ * Frame the most-severe QA findings as an authoring goal (most severe first,
+ * capped). The orchestrator then authors one fix story per finding. Returns ''
+ * when there are no findings.
+ */
+export function buildGoalFromFindings(findings: FindingSummary[], max: number = 5): string {
+  const top = [...findings]
+    .sort((a, b) => severityRank(b.severity) - severityRank(a.severity))
+    .slice(0, Math.max(1, max));
+  if (top.length === 0) return '';
+  const lines = top.map((f, i) =>
+    `${i + 1}. [${f.severity ?? 'finding'}] ${f.title}${f.evidence ? ` — ${f.evidence}` : ''}${f.suggestedOwner ? ` (suggested owner: ${f.suggestedOwner})` : ''}`);
+  return [
+    'These are findings from the AI-QA audit of the codebase. Author one focused, independently-mergeable fix story per finding below (a single change each):',
+    '',
+    ...lines,
+  ].join('\n');
+}
+
 /** The orchestrator's authoring instruction. Asks for a bare JSON array. */
 export function buildAuthoringPrompt(goal: string, projectKey: string): string {
   return [
