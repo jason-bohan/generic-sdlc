@@ -12,6 +12,7 @@ import { InteractiveView } from './InteractiveView';
 import { TasksView } from './TasksView';
 import { CreateStoryView } from './CreateStoryView';
 import { DirectChatView } from './DirectChatView';
+import { FleetView } from './FleetView';
 
 const DEFAULT_DIR = process.env.SDLC_FRAMEWORK_WORKSPACE ?? process.cwd();
 const COMMAND_NAME = process.env.SDLC_FRAMEWORK_CLI_NAME ?? 'sdlc-framework';
@@ -100,6 +101,14 @@ program
     .action(() => {
         const dir = program.opts().dir;
         render(<AgentsView dir={dir} />);
+    });
+
+program
+    .command('fleet')
+    .description('Live multi-agent fleet view (streams /api/status/stream)')
+    .helpGroup('Monitoring:')
+    .action(() => {
+        render(<FleetView />);
     });
 
 program
