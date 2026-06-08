@@ -13,6 +13,7 @@ import { TasksView } from './TasksView';
 import { CreateStoryView } from './CreateStoryView';
 import { DirectChatView } from './DirectChatView';
 import { FleetView } from './FleetView';
+import { OrchestrateView } from './OrchestrateView';
 
 const DEFAULT_DIR = process.env.SDLC_FRAMEWORK_WORKSPACE ?? process.cwd();
 const COMMAND_NAME = process.env.SDLC_FRAMEWORK_CLI_NAME ?? 'sdlc-framework';
@@ -127,6 +128,19 @@ program
     .action(() => {
         const dir = program.opts().dir;
         render(<CreateStoryView dir={dir} />);
+    });
+
+program
+    .command('orchestrate [goal]')
+    .description('Kick off the SDLC: author stories (from a goal or AI-QA findings), assign, and watch the fleet')
+    .helpGroup('Stories:')
+    .option('--from-aiqa', 'seed authoring from the AI-QA scorecard findings instead of a goal')
+    .action((goal: string | undefined, opts: { fromAiqa?: boolean }) => {
+        if (!goal && !opts.fromAiqa) {
+            console.error('Provide a goal (e.g. orchestrate "add a /api/ping/build endpoint") or use --from-aiqa');
+            process.exit(1);
+        }
+        render(<OrchestrateView goal={goal} fromAiqa={opts.fromAiqa} />);
     });
 
 program.parse();
