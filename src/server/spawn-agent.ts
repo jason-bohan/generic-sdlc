@@ -9,6 +9,7 @@ import { ensureMockShims } from './mock-mode-guard';
 import { startRunner } from './agent-runner';
 import { readLoopProviderConfig } from './agent-runner/provider';
 import { dbCreateAgentSession, dbUpdateAgentSession } from './db';
+import { enhancePrompt } from './promptEnhancer';
 import { parseJsonUtf8File } from './json-file';
 import { getActiveProject } from './project-config';
 
@@ -80,7 +81,8 @@ export function spawnAgent(
 
     const configPath = resolve(workspaceDir, '.sdlc-framework.config.json');
     const safetyDirective = getMockModeSafetyDirective(configPath);
-    const effectivePrompt = safetyDirective ? `${safetyDirective}\n\n${prompt}` : prompt;
+    let effectivePrompt = safetyDirective ? `${safetyDirective}\n\n${prompt}` : prompt;
+    effectivePrompt = enhancePrompt(effectivePrompt, agentId, workspaceDir);
 
     const statusFile = resolve(workspaceDir, `.${agentId}-status.json`);
     if (existsSync(statusFile)) {

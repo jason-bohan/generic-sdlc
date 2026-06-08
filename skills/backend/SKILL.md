@@ -51,6 +51,35 @@ If `externalMode` is `"mock"`:
 - Use local branches and local commits only
 - Simulate PR/review progress through frame status/API state
 
+## Tool Usage Rules
+
+Follow these rules in EVERY phase. They prevent the most common failures.
+
+### 1. Plan first — then execute
+When you enter `generating-code` or `addressing-feedback`, output a brief plan before any tool calls:
+```
+Plan: Read file A and file B to understand the pattern, then edit file A to add X.
+```
+The plan keeps you on track. Without it, you drift between files and lose context.
+
+### 2. Read in bursts of up to 2
+You may call `read_file` up to 2 times in a row (two consecutive tool calls) to gather context. Do NOT read 3+ files before acting — you will mix up their contents. Read 2 max, then make progress:
+- Read the file you need to modify + one neighbor → then edit
+- Read a config file + one existing source file → then write a new file
+
+### 3. Edit, then validate — never edit two files before validating
+After each `write_file` or `edit_file`, run the relevant check before the next edit:
+- TypeScript: run the type checker (`npx tsc --noEmit`) if the project has `tsconfig.json`
+- Python: `python -m py_compile <file>` or `ruff check <file>`
+- Run the project linter on the affected file(s)
+Fix any errors before touching the next file. Do NOT edit a second file before the first one compiles — errors compound and you lose track of which change broke what.
+
+### 4. Never run git manually
+Do not call `git add`, `git commit`, `git push`, `git fetch`, `git rebase`, `git merge`, or `gh pr create`. The framework handles all git operations when you call `complete_phase`. Running git yourself causes race conditions with the framework's automated git workflow.
+
+### 5. Call complete_phase once
+Call `complete_phase` exactly once per phase with the full output contract. Do not call it multiple times with partial data — the framework records one transition per phase.
+
 ## Worktree & Git (fully automatic — do not run git manually)
 
 The framework automatically:
