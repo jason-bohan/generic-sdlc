@@ -2,6 +2,7 @@ import { resolve } from 'path';
 import { getActiveProject } from '../project-config';
 import { spawnAgent } from '../spawn-agent';
 import { completePhase, startPhaseRun, superviseWorkflow } from '../orchestrator';
+import { freeStoryAgents } from '../reset-agents';
 import {
     dbGetPhaseEvents,
     dbGetWorkflowItemByStory,
@@ -155,7 +156,16 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                 // Autonomous mode: auto-spawn agent for the next phase
                 if (result.value) {
                     const nextItem = result.value;
-                    if (nextItem.active_phase && nextItem.active_phase !== 'complete' && nextItem.active_phase !== 'idle') {
+                    if (nextItem.active_phase === 'complete') {
+                        // Story-scoped completion (orchestrator-owned): free ONLY this story's
+                        // desks so a finished story can't leave stale PR state that contaminates
+                        // the next run, and never wipes agents working other stories. Replaces
+                        // the blunt global reset for the autonomous path.
+                        try {
+                            const sn = typeof nextItem.story_number === 'string' ? nextItem.story_number.trim() : '';
+                            if (sn) freeStoryAgents(rootDir, sn);
+                        } catch (e) { console.warn('[complete] freeStoryAgents failed:', e); }
+                    } else if (nextItem.active_phase && nextItem.active_phase !== 'idle') {
                         try {
                             const mode = getSchedulerWorkflowMode(configFile);
                             if (mode === 'autonomous' && nextItem.active_agent_id) {
