@@ -110,6 +110,44 @@ export function devLoopAction(devLoopStarts: number): 'local' | 'escalate-cloud'
     return 'local';
 }
 
+/**
+ * Step 3 coordination. The cap decisions used to live only in the review-complete handler,
+ * but the dev also gets re-spawned by the auto-resume path, which ignored them — so the
+ * 8B looped past the cap and cloud escalation never stuck (observed: 15 spawns, 0 cloud,
+ * 9 rounds). Fix: persist the decision on the desk as shared state that EVERY spawn path
+ * reads. `escalatedModel:'cloud'` makes the escalation sticky across re-spawns; `reworkStuck`
+ * (set by markStuck) makes the pause halt every path. Both cleared on story completion.
+ */
+function readDeskFlags(baseDir: string, agentId: string): Record<string, unknown> {
+    const file = resolve(baseDir, `.${agentId}-status.json`);
+    if (!existsSync(file)) return {};
+    try { return parseJsonUtf8File(file) as Record<string, unknown>; } catch { return {}; }
+}
+
+/** True when this desk has been paused for a human — no path should auto-respawn it. */
+export function isReworkStuck(baseDir: string, agentId: string): boolean {
+    return readDeskFlags(baseDir, agentId).reworkStuck === true;
+}
+
+/** The model a re-spawn of this desk should use: 'cloud' once escalated, else undefined (local). */
+export function escalatedRespawnModel(baseDir: string, agentId: string): 'cloud' | undefined {
+    return readDeskFlags(baseDir, agentId).escalatedModel === 'cloud' ? 'cloud' : undefined;
+}
+
+/** Mark this desk as cloud-escalated so EVERY subsequent re-spawn uses the cloud brain. */
+export function markEscalated(baseDir: string, agentId: string, reason: string): void {
+    const file = resolve(baseDir, `.${agentId}-status.json`);
+    if (!existsSync(file)) return;
+    try {
+        const s = parseJsonUtf8File(file) as Record<string, unknown>;
+        if (s.escalatedModel === 'cloud') return; // already escalated — don't spam events
+        s.escalatedModel = 'cloud';
+        if (!Array.isArray(s.events)) s.events = [];
+        (s.events as unknown[]).push({ timestamp: new Date().toISOString(), type: 'info', message: `Escalated to cloud brain: ${reason}` });
+        writeFileSync(file, JSON.stringify(s, null, 2));
+    } catch { /* non-fatal */ }
+}
+
 /** Validating-loop escalation exhausted (cloud-brain dev attempt still can't pass validation). */
 export function markDevLoopStuck(baseDir: string, agentId: string, storyNumber: string, starts: number): void {
     markStuck(baseDir, agentId, `Validating loop stuck for ${storyNumber} (${starts} dev-loop attempts, incl. a cloud-brain attempt that still failed validation). Paused for human review — not auto-retrying.`);

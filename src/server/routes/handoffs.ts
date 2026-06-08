@@ -13,6 +13,7 @@ import { notify } from '../providers';
 import { skillSubdirForAgentId } from '../../shared/agentSkillDirs';
 import { resolveAgentDisplayName } from '../agent-display-names';
 import { dbUpsertWorkflowArtifact } from '../db';
+import { saveReviewPending, completeReviewTrainingData } from '../reviewTrainingData';
 import { readBody, json, cors } from '../router';
 import { getExternalMode, isMockExternalMode } from '../external-mode';
 import { setMockPullRequestStatus } from '../mock-external';
@@ -26,7 +27,7 @@ import {
     storyNumberFromOwnerStatus } from '../route-shared';
 import type { UseFn } from './types';
 import { parseJsonUtf8File } from '../json-file';
-import { bumpReworkRound, resetReworkRound, reworkAction, markReworkStuck } from '../rework-cap';
+import { bumpReworkRound, resetReworkRound, reworkAction, markReworkStuck, markEscalated } from '../rework-cap';
 
 /**
  * Fallback feedback source for a changes-requested handoff. The loop-driver reviewer
@@ -121,6 +122,14 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                     }
                 }
             }
+            // Capture review training data before dispatching the next agent
+            if (verdict === 'changes-requested' && typeof branch === 'string' && branch) {
+                saveReviewPending(rootDir, configFile, prIdNum, branch, effectiveComments ?? []);
+            }
+            if (verdict === 'approved' && typeof branch === 'string' && branch) {
+                completeReviewTrainingData(rootDir, configFile, prIdNum, branch);
+            }
+
             const resolvedCommentCount = effectiveComments?.length
                 ? effectiveComments.length
                 : (typeof commentCount === 'number' && commentCount >= 0 ? commentCount : 0);
@@ -165,9 +174,15 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                     const round = bumpReworkRound(rootDir, prIdNum);
                     const action = reworkAction(round);
                     if (action === 'pause-human') {
+                        // markReworkStuck sets desk.reworkStuck — auto-resume now honors it too (Step 3),
+                        // so the pause halts EVERY spawn path, not just this handler.
                         markReworkStuck(rootDir, prIdNum, targetAgent, round);
                         await notify(rootDir, { title: `🚧 PR #${prId} stuck in rework`, body: `**${resolveAgentDisplayName(targetAgent, rootDir)}** has been rejected ${round - 1} times (incl. a cloud-brain attempt) on ${prLink}. Paused for human review — the loop is not auto-retrying.`, color: 'b91c1c' });
                     } else if (action === 'escalate-cloud') {
+                        // markEscalated persists escalatedModel:'cloud' on the desk so EVERY re-spawn
+                        // (here AND auto-resume) uses the cloud brain — not just this one-shot, which
+                        // auto-resume's local re-spawn used to immediately supersede (Step 3).
+                        markEscalated(rootDir, targetAgent, `rework round ${round} on PR #${prId}`);
                         const escalatedPrompt = `${reworkPrompt}\n\n[NOTE: previous attempts were rejected by the reviewer. You are running on a stronger model this round — read the feedback carefully and fix it correctly.]`;
                         try { agentSpawned = spawnAgent(targetAgent, escalatedPrompt, rootDir, 'cloud').spawned; } catch (e) { console.error('[handoff] escalated spawn failed:', e); }
                     } else {
