@@ -1297,6 +1297,18 @@ async function toolCompletePhase(
     outputs.codeChanges = stringArg('code_changes') ?? summary;
     outputs.classification = stringArg('classification') ?? 'feature';
     outputs.affectedRepo = stringArg('affected_repo') ?? '';
+
+    // Persist the analyzing-phase PLAN (the file→change list) onto the desk so the next
+    // generating-code prompt can surface it and the dev executes it (edits every affected
+    // file) instead of re-researching from scratch. See orchestrator buildPhaseRunPrompt.
+    if (currentPhase === 'analyzing') {
+        const plan = String(outputs.codeChanges ?? '').trim();
+        try {
+            const s = parseJsonUtf8File(statusFile) as Record<string, unknown>;
+            s.analysisPlan = plan || null;
+            writeFileSync(statusFile, JSON.stringify(s, null, 2));
+        } catch { /* non-fatal */ }
+    }
     outputs.handoff = args.handoff ?? `${agentId} completed ${currentPhase}`;
     outputs.designSpec = stringArg('design_spec') ?? '';
 

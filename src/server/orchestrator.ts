@@ -275,7 +275,7 @@ function buildOutputsSkeleton(contract: SdlcPhaseContract): Record<string, strin
     }));
 }
 
-function phaseSpecificInstructions(item: WorkflowItemRow, serverBaseUrl: string, priorValidationFailure?: string, reviewFeedback?: string): string {
+function phaseSpecificInstructions(item: WorkflowItemRow, serverBaseUrl: string, priorValidationFailure?: string, reviewFeedback?: string, analysisPlan?: string): string {
     if (item.active_phase === 'addressing-feedback') {
         return [
             ...(reviewFeedback ? [
@@ -306,13 +306,26 @@ function phaseSpecificInstructions(item: WorkflowItemRow, serverBaseUrl: string,
 
     if (item.active_phase === 'analyzing') {
         return [
-            'Analyzing phase — act immediately:',
-            '1. Call read_file on the status file to get the story description and task list.',
-            '2. Call list_directory on the target codebase to find relevant source files.',
-            '3. Call read_file on the specific files that need to change (routes, controllers, validators).',
-            '4. Once you have read the code, call complete_phase with your analysis — do NOT write code yet.',
-            'DO NOT describe what you plan to do. Call read_file immediately.',
-            'STRICT LIMIT: complete_phase MUST be called within your first 10 tool calls. Do not loop, do not re-read files you already read. Read → analyse → complete_phase. One pass only.',
+            'Analyzing phase — READ BROADLY, then write a concrete PLAN. No code yet.',
+            'The single biggest cause of rejected PRs is changing ONE file and forgetting the',
+            'others it touches (its test, its spec/docs). So find EVERY affected file now.',
+            '',
+            '1. read_file the status file for the story + task list.',
+            '2. Find the primary file the task names, then find what ELSE references it:',
+            '   - search_in_files for the route/function/symbol the story is about, to locate',
+            '     its TEST file and any spec/openapi/docs that mention it.',
+            '   - Reads in this phase come back SUMMARIZED (cheap) so you can afford to read widely —',
+            '     read the implementation file, its test file, and any spec that references it.',
+            '3. complete_phase with `code_changes` set to an explicit PLAN — one line per file that',
+            '   MUST change, in this exact form:',
+            '       PLAN:',
+            '       - <path>: <the exact change> (e.g. add GET /api/ledger/summary returning {entries,balance})',
+            '       - <path of the TEST>: <add/adjust a test for it>',
+            '       - <path of any spec/doc>: <update if it lists routes>',
+            '   List the test file explicitly even if you have to create it. A plan that names only',
+            '   the implementation file is incomplete and will lead to a rejected PR.',
+            'DO NOT write code or describe intentions in prose — produce the PLAN as code_changes.',
+            'STRICT LIMIT: complete_phase within your first 10 tool calls. Read → plan → complete_phase.',
         ].join('\n');
     }
 
@@ -329,6 +342,21 @@ function phaseSpecificInstructions(item: WorkflowItemRow, serverBaseUrl: string,
     }
 
     if (item.active_phase === 'generating-code') {
+        // The plan made in analyzing (read-broadly → file:change list). Execute it instead of
+        // re-researching from scratch — and crucially, edit EVERY file it names (incl. the test),
+        // which is the fix for the 8B's narrow-execution failure (changes the route, forgets the test).
+        const planBlock = analysisPlan && analysisPlan.trim()
+            ? [
+                '📋 EXECUTE THE PLAN YOU MADE IN ANALYZING — edit EVERY file it lists, including the test:',
+                '```',
+                analysisPlan.trim(),
+                '```',
+                'Do NOT stop after the implementation file. If the plan lists a test or spec, change those too —',
+                'a PR that updates the code but not its test is the most common rejection. You already did the',
+                'research in analyzing; spend your calls here EDITING, not re-reading.',
+                '',
+            ]
+            : [];
         const priorFailureBlock = priorValidationFailure
             ? [
                 '⚠️ YOUR PREVIOUS ATTEMPT FAILED VALIDATION. Fix EXACTLY these errors:',
@@ -354,6 +382,7 @@ function phaseSpecificInstructions(item: WorkflowItemRow, serverBaseUrl: string,
             ]
             : [];
         return [
+            ...planBlock,
             ...priorFailureBlock,
             ...storyContract,
             'Generating-code phase:',
@@ -456,6 +485,7 @@ export function buildPhaseRunPrompt(input: BuildPhasePromptInput): OrchestratorR
     // errors (captured by run_validation) so the model targets the fix instead of
     // blindly regenerating the same broken code.
     let priorValidationFailure: string | undefined;
+    let analysisPlan: string | undefined;
     if (phase === 'generating-code') {
         try {
             const sfPath = isAbsolute(statusFile) ? statusFile : resolve(process.cwd(), statusFile);
@@ -463,7 +493,12 @@ export function buildPhaseRunPrompt(input: BuildPhasePromptInput): OrchestratorR
             if (typeof s.lastValidationFailure === 'string' && s.lastValidationFailure.trim()) {
                 priorValidationFailure = s.lastValidationFailure;
             }
-        } catch { /* no prior failure recorded — first attempt */ }
+            // The plan persisted at the end of analyzing — surface it so generating-code
+            // executes it (edits every affected file) instead of re-researching.
+            if (typeof s.analysisPlan === 'string' && s.analysisPlan.trim()) {
+                analysisPlan = s.analysisPlan;
+            }
+        } catch { /* no prior failure / plan recorded — first attempt */ }
     }
     // On a rework after the reviewer requested changes, surface the open review
     // comments (applyReviewComplete stored them in status.requests) so the dev fixes
@@ -515,7 +550,7 @@ export function buildPhaseRunPrompt(input: BuildPhasePromptInput): OrchestratorR
         'Gates before completing the phase:',
         formatKeyList(contract.gates),
         '',
-        phaseSpecificInstructions(item, serverBaseUrl, priorValidationFailure, reviewFeedback),
+        phaseSpecificInstructions(item, serverBaseUrl, priorValidationFailure, reviewFeedback, analysisPlan),
         '',
         'When the phase is complete, POST this contract payload:',
         `${serverBaseUrl}/api/workflows/complete-phase`,
