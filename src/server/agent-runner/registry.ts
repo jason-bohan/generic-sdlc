@@ -25,6 +25,11 @@ export const registryEvents = new EventEmitter();
 registryEvents.setMaxListeners(50);
 
 const TERMINAL_PHASES = new Set(['idle', 'complete', 'error']);
+// A recorded reviewer verdict is terminal: the desk is done and the handoff has
+// fired. Re-spawning here re-reviews the same diff, and a non-deterministic model
+// flips the verdict, firing contradictory handoffs (split-brain). Pairs with the
+// PHASE_COMPLETE stop that toolUpdateStatus returns on a verdict.
+const REVIEWER_TERMINAL_PHASES = new Set(['approved', 'changes-requested']);
 
 const runners = new Map<string, AgentRunner>();
 
@@ -335,7 +340,9 @@ export function startRunner(
             try {
                 const s = parseJsonUtf8File(statusFile) as Record<string, unknown>;
                 const phase = String(s.currentPhase ?? 'idle');
-                if (!TERMINAL_PHASES.has(phase)) stoppedPhase = phase;
+                const isTerminal = TERMINAL_PHASES.has(phase)
+                    || (agentId === 'reviewer' && REVIEWER_TERMINAL_PHASES.has(phase));
+                if (!isTerminal) stoppedPhase = phase;
                 s.isRunning = false;
                 writeFileSync(statusFile, JSON.stringify(s, null, 2));
             } catch { /* non-critical */ }

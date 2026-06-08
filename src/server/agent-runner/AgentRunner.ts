@@ -19,6 +19,18 @@ const MUTATION_REQUIRED_PHASES = new Set(['generating-code']);
 const MAX_PREMATURE_COMPLETE_BLOCKS = 2;
 
 /**
+ * The reviewer's terminal action is recording a VERDICT (update_status with
+ * verdict:"approved"|"changes-requested"), NEVER complete_phase — a review does
+ * not "complete a phase", so the server rejects those calls. Capable-but-unfamiliar
+ * models (e.g. gpt-oss-120b) investigate the diff fine but then spam complete_phase
+ * and loop on the rejection. We intercept and redirect to update_status so the model
+ * lands a verdict. Gated purely on agentId (the reviewer spawn prompt carries no
+ * phase token, so phaseName is empty here — and complete_phase is invalid for the
+ * reviewer in every phase anyway).
+ */
+const MAX_REVIEWER_COMPLETE_REDIRECTS = 3;
+
+/**
  * Some local providers emit tool calls as text instead of the structured tool_calls field:
  * - MeshLLM/llama.cpp: ```json {"name":..,"arguments":..} ``` markdown blocks
  * - MLX (Qwen2.5-Coder etc.): <tools>{"name":..,"arguments":..}</tools> XML blocks
@@ -104,6 +116,7 @@ export class AgentRunner extends EventEmitter {
     private _completePhaseAttempted = false;
     private mutationCount = 0;
     private prematureCompleteBlocks = 0;
+    private reviewerCompleteRedirects = 0;
     private phaseName = '';
     // Cumulative token usage across all turns in this run, summed from each
     // completion's usage. Surfaced on the 'complete' event so the registry can
@@ -257,6 +270,12 @@ export class AgentRunner extends EventEmitter {
                             // the work — that just makes it escalate to next_phase="error".
                             this._emit('message', { content: `[nudge] No files changed yet in ${this.phaseName} (nudge ${this.consecutiveNudges}/2)`, turn: this.turnCount });
                             this.messages.push({ role: 'user', content: 'You have not changed any files yet. This phase requires implementing the code: call write_file with the actual file contents now. Do NOT call complete_phase until at least one file has been written.' });
+                        } else if (this.agentId === 'reviewer') {
+                            // The reviewer stalled without recording a verdict. Its terminal
+                            // action is update_status{verdict}, not complete_phase — point it
+                            // there directly rather than at complete_phase outputs.
+                            this._emit('message', { content: `[nudge] Reviewer has no verdict yet (nudge ${this.consecutiveNudges}/2)`, turn: this.turnCount });
+                            this.messages.push({ role: 'user', content: 'You have reviewed the diff but not recorded a verdict. Call update_status now with verdict:"approved" or verdict:"changes-requested" and a one-line summary. Do not call complete_phase — reviewers record a verdict; the phase follows it automatically.' });
                         } else if (this._completePhaseAttempted) {
                             // The model already called complete_phase but it was rejected
                             // (missing required outputs, server error, etc.). Don't tell it
@@ -293,6 +312,26 @@ export class AgentRunner extends EventEmitter {
                             role: 'tool',
                             tool_call_id: toolCall.id,
                             content: `Refused: phase "${this.phaseName}" cannot complete because no files have been written. Call write_file with the actual implementation, then complete the phase. Do not set next_phase to "error" to skip the work.`,
+                        });
+                        continue;
+                    }
+
+                    // Guard: the reviewer finishes a review by RECORDING A VERDICT, never by
+                    // calling complete_phase (the server rejects that — a review is not a
+                    // phase to "complete"). Capable models unfamiliar with this contract spam
+                    // complete_phase and loop on the rejection. Redirect them to update_status
+                    // so they land a verdict. Capped so a model that ignores the redirect still
+                    // terminates rather than looping to MAX_TURNS.
+                    if (toolCall.function.name === 'complete_phase'
+                        && this.agentId === 'reviewer'
+                        && this.reviewerCompleteRedirects < MAX_REVIEWER_COMPLETE_REDIRECTS) {
+                        this.reviewerCompleteRedirects++;
+                        this._completePhaseAttempted = true;
+                        this._emit('message', { content: `[guard] Redirected reviewer complete_phase → update_status verdict (${this.reviewerCompleteRedirects}/${MAX_REVIEWER_COMPLETE_REDIRECTS})`, turn: this.turnCount });
+                        this.messages.push({
+                            role: 'tool',
+                            tool_call_id: toolCall.id,
+                            content: 'Reviewers do NOT call complete_phase — that is why this was rejected. A review ends by recording a verdict. Call update_status now with verdict:"approved" (clean or nits-only) or verdict:"changes-requested" (blocking bug or story mismatch), plus a one-line summary of what you checked. The phase follows the verdict automatically and routes the PR (approved → devops; changes-requested → back to the author). Do this in a single update_status call.',
                         });
                         continue;
                     }

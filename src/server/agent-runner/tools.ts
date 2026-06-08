@@ -382,16 +382,32 @@ function readAgentPhase(frameworkDir: string, agentId: string): string {
 }
 
 async function toolReadFile(args: Record<string, unknown>, workspaceDir: string, frameworkDir: string, agentId: string, configPath: string): Promise<string> {
-    const check = safePath(String(args.path ?? ''), workspaceDir, [workspaceDir, frameworkDir]);
+    const rawPath = String(args.path ?? '');
+    const check = safePath(rawPath, workspaceDir, [workspaceDir, frameworkDir]);
     if (!check.ok) return `Error: ${check.error}`;
-    if (!existsSync(check.resolved)) return `Error: file not found: ${check.resolved}`;
+    let resolvedPath = check.resolved;
+    // Framework-dir fallback: agent control files (.<agent>-status.json, skills/…)
+    // live in the framework dir, but read_file resolves paths against the agent's
+    // workspaceDir (the target repo for devops/dev). When a path isn't found in the
+    // workspace, retry the SAME workspace-relative path under the framework dir —
+    // otherwise devops can't read .devops-status.json and stalls the build chain.
+    // Handles both bare-relative inputs (".devops-status.json") and absolute paths
+    // the model builds by prepending the announced "Workspace: <dir>" prefix.
+    if (!existsSync(resolvedPath) && resolve(frameworkDir) !== resolve(workspaceDir)) {
+        const relToWs = relative(resolve(workspaceDir), resolvedPath);
+        if (relToWs && !relToWs.startsWith('..')) {
+            const fwCheck = safePath(resolve(frameworkDir, relToWs), frameworkDir, [frameworkDir]);
+            if (fwCheck.ok && existsSync(fwCheck.resolved)) resolvedPath = fwCheck.resolved;
+        }
+    }
+    if (!existsSync(resolvedPath)) return `Error: file not found: ${resolvedPath}`;
     try {
-        const content = readFileSync(check.resolved, 'utf-8');
+        const content = readFileSync(resolvedPath, 'utf-8');
         // Understanding phase + large file → return a worker summary (context-saving),
         // unless the model explicitly asked for the full file (args.full === true).
         if (args.full !== true && content.length >= READ_SUMMARIZE_MIN_CHARS && UNDERSTANDING_PHASES.has(readAgentPhase(frameworkDir, agentId))) {
             try {
-                const summary = await getOrCreateWorkerPool(configPath).summarizeFile(check.resolved, content);
+                const summary = await getOrCreateWorkerPool(configPath).summarizeFile(resolvedPath, content);
                 if (summary && summary.trim()) {
                     return `[worker summary of ${String(args.path)} — ${content.length} bytes condensed by a cheap reader to save context. Re-read with {"full": true} (or read_file in a later phase) for exact contents before editing.]\n\n${summary}`;
                 }
@@ -1326,6 +1342,23 @@ async function toolCompletePhase(
     putIfProvided('pr', args.pr);
     putIfProvided('mockPr', args.mock_pr);
 
+    // Build-chain outputs are mechanical: the devops phases (pending-build,
+    // monitoring-build, build-passed) require a `build` (and monitoring also
+    // produces testResults) output, but the local loop has no real CI poller and
+    // the small model fumbles supplying them — so the phase contract rejects with
+    // 409 (missing 'build') and the chain stalls. Synthesize a succeeded build
+    // result deterministically when the model didn't provide one, matching the
+    // forward routing already applied above. (A real failure path would come from
+    // ado-bridge / a CI poller, which sets build-failed instead.)
+    if (agentId === 'devops' && DEVOPS_BUILD_CHAIN.has(currentPhase)) {
+        if (outputs.build === undefined) {
+            outputs.build = { status: 'succeeded', result: 'succeeded', source: 'local-loop (no CI configured)' };
+        }
+        if (currentPhase === 'monitoring-build' && outputs.testResults === undefined) {
+            outputs.testResults = 'No CI test stage configured in the local loop; build reported succeeded.';
+        }
+    }
+
     // Framework-driven creating-pr wins over model-supplied values: the deterministic
     // push + create-or-reuse is authoritative, so its pr/mockPr/handoff override.
     if (autoPr?.ok) {
@@ -1471,6 +1504,18 @@ function toolUpdateStatus(
             ? parseJsonUtf8File(statusFile) as Record<string, unknown>
             : {};
 
+        // Devops build chain is complete_phase-driven: pending-build → monitoring-build
+        // → build-passed → complete advances ONLY via complete_phase's deterministic
+        // routing (and the build-passed merge). The 8-bit, re-spawned mid-chain, otherwise
+        // uses update_status to set its own phase — walking BACKWARD (build-passed →
+        // pending-build) and stalling the merge. So for devops, refuse an update_status
+        // phase change while in the build chain; tell it to use complete_phase instead.
+        const existingPhase = String(existing.currentPhase ?? '');
+        if (agentId === 'devops' && DEVOPS_BUILD_CHAIN.has(existingPhase)
+            && args.phase !== undefined && String(args.phase) !== existingPhase) {
+            return `Refused: devops cannot change phase via update_status inside the build chain (currently "${existingPhase}"). The build chain advances automatically when you call complete_phase — call complete_phase to move forward. Do not set the phase by hand.`;
+        }
+
         const updated: Record<string, unknown> = {
             ...existing,
             currentPhase: args.phase,
@@ -1505,7 +1550,20 @@ function toolUpdateStatus(
         emitStatusChange(agentId, buildStatusBroadcast(updated, agentId, true, frameworkDir));
         const v = canonicalVerdict ? ` verdict=${canonicalVerdict}` : (args.verdict ? ` verdict=${args.verdict}` : '');
         const coerced = canonicalVerdict && resolvedPhase !== args.phase ? ` (phase set from verdict; requested ${args.phase})` : '';
-        return `Status updated: phase=${resolvedPhase}${v}${coerced}`;
+        // Terminal-verdict stop: a recorded reviewer verdict is final. Return the
+        // PHASE_COMPLETE sentinel so the AgentRunner ends the run immediately instead
+        // of looping (the reviewer otherwise keeps calling update_status, gets
+        // re-spawned, and a non-deterministic model flips the verdict — firing
+        // contradictory approved/changes-requested handoffs that split-brain the PR).
+        // Stop on the terminal verdict PHASE too (not only an explicit verdict field):
+        // a model that sets phase='approved' without the verdict arg still fires a
+        // handoff (the review-handoff infers the verdict from the phase), so the run
+        // must end there as well — otherwise it makes a second update_status and a
+        // second handoff. First verdict wins. Pairs with the registry.ts terminal guard.
+        const reviewerVerdictTerminal = agentId === 'reviewer'
+            && (resolvedPhase === 'approved' || resolvedPhase === 'changes-requested');
+        const stopPrefix = (canonicalVerdict || reviewerVerdictTerminal) ? `PHASE_COMPLETE::${resolvedPhase}\n` : '';
+        return `${stopPrefix}Status updated: phase=${resolvedPhase}${v}${coerced}`;
     } catch (e) {
         return `Error updating status: ${e instanceof Error ? e.message : String(e)}`;
     }
