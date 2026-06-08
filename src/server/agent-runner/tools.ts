@@ -28,11 +28,12 @@ export const AGENT_TOOLS: ToolDefinition[] = [
         type: 'function',
         function: {
             name: 'read_file',
-            description: 'Read the contents of a file. Path may be absolute or relative to the workspace root.',
+            description: 'Read the contents of a file. Path may be absolute or relative to the workspace root. In the early understanding phases, large files come back as a concise summary to save context; pass full:true (or read again once you are editing) to get exact contents.',
             parameters: {
                 type: 'object',
                 properties: {
                     path: { type: 'string', description: 'File path to read' },
+                    full: { type: 'boolean', description: 'Return the exact full file contents even in an understanding phase (needed before editing). Default false = may be summarized for large files.' },
                 },
                 required: ['path'],
             },
@@ -365,12 +366,37 @@ function safePath(
 // Tool executors
 // ---------------------------------------------------------------------------
 
-function toolReadFile(args: Record<string, unknown>, workspaceDir: string, frameworkDir: string): string {
+// Phases where the agent is UNDERSTANDING the codebase (not yet editing). Here a large
+// read_file is auto-routed through the cheap worker as a summary to save the main model's
+// context — adoption of the parallel reader isn't left to the 8B's discretion (it reflexively
+// uses read_file and ignores summarize_file). In editing phases read_file stays full-content
+// so edit_file gets the exact text it needs.
+const UNDERSTANDING_PHASES = new Set(['reading-story', 'analyzing']);
+const READ_SUMMARIZE_MIN_CHARS = 1500;
+
+function readAgentPhase(frameworkDir: string, agentId: string): string {
+    try {
+        const s = parseJsonUtf8File(resolve(frameworkDir, `.${agentId}-status.json`)) as { currentPhase?: string };
+        return String(s.currentPhase ?? '');
+    } catch { return ''; }
+}
+
+async function toolReadFile(args: Record<string, unknown>, workspaceDir: string, frameworkDir: string, agentId: string, configPath: string): Promise<string> {
     const check = safePath(String(args.path ?? ''), workspaceDir, [workspaceDir, frameworkDir]);
     if (!check.ok) return `Error: ${check.error}`;
     if (!existsSync(check.resolved)) return `Error: file not found: ${check.resolved}`;
     try {
         const content = readFileSync(check.resolved, 'utf-8');
+        // Understanding phase + large file → return a worker summary (context-saving),
+        // unless the model explicitly asked for the full file (args.full === true).
+        if (args.full !== true && content.length >= READ_SUMMARIZE_MIN_CHARS && UNDERSTANDING_PHASES.has(readAgentPhase(frameworkDir, agentId))) {
+            try {
+                const summary = await getOrCreateWorkerPool(configPath).summarizeFile(check.resolved, content);
+                if (summary && summary.trim()) {
+                    return `[worker summary of ${String(args.path)} — ${content.length} bytes condensed by a cheap reader to save context. Re-read with {"full": true} (or read_file in a later phase) for exact contents before editing.]\n\n${summary}`;
+                }
+            } catch { /* worker unavailable — fall through to full content */ }
+        }
         return content.length > 200_000
             ? content.slice(0, 200_000) + `\n\n[... truncated at 200KB, total ${content.length} bytes]`
             : content;
@@ -1696,7 +1722,7 @@ export async function executeToolCall(
     const a = (args && typeof args === 'object' ? args : {}) as Record<string, unknown>;
 
     switch (name) {
-        case 'read_file':       return toolReadFile(a, workspaceDir, frameworkDir);
+        case 'read_file':       return toolReadFile(a, workspaceDir, frameworkDir, agentId, configPath);
         case 'write_file':      return toolWriteFile(a, workspaceDir, frameworkDir, agentId);
         case 'edit_file':       return toolEditFile(a, workspaceDir, frameworkDir, agentId);
         case 'list_directory':  return toolListDirectory(a, workspaceDir, frameworkDir);
