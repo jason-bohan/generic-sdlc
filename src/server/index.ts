@@ -14,6 +14,7 @@ loadDotenv({ path: resolve(ROOT_DIR, '.env') });
 import chalk from 'chalk';
 import { initDb, closeDb } from './db';
 import { createApp } from './app';
+import { resumeRetries, executeRetryAction } from './orchestrator-retry';
 import { startAdoBridge, stopAdoBridge } from './ado-bridge';
 import { stopOllamaManager } from './ollamaManager';
 import { withSecurity } from './security';
@@ -113,6 +114,14 @@ server.listen(PORT, () => {
     // (reviewer changes-requested → review-complete handoff, PR automation, etc.).
     if (!process.env.VITEST || mock) {
         bootAdoBridge();
+    }
+    // Reschedule any orchestrator limit-retries that were pending across this restart
+    // (a Claude usage pause whose refresh time may be in the past or future now).
+    if (!process.env.VITEST) {
+        try {
+            const resumed = resumeRetries(ROOT_DIR, (action) => executeRetryAction(`http://localhost:${PORT}`, action));
+            if (resumed > 0) log.info(`Resumed ${resumed} pending orchestrator limit-retry(ies)`);
+        } catch { /* non-fatal */ }
     }
     if (!process.env.VITEST) {
         probeMeshllm().then(async (available) => {

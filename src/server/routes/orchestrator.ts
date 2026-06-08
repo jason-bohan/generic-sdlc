@@ -3,7 +3,7 @@ import type { UseFn } from './types';
 import { runOrchestratorTick, type AssignmentPlanItem } from '../orchestrator-tick';
 import { authorStories, type AuthoredStory, type ModelCall } from '../orchestrator-author';
 import { claudePrint } from '../claude-print';
-import { computeRetryDelayMs, scheduleRetry } from '../orchestrator-retry';
+import { computeRetryDelayMs, scheduleRetry, executeRetryAction } from '../orchestrator-retry';
 import { smartChat } from '../brainModel';
 import { createLocalStory } from '../local-planning';
 import { getActiveProjectName } from '../project-config';
@@ -104,12 +104,12 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
         if (result.limited) {
           const host = req.headers.host || 'localhost:3001';
           const delayMs = computeRetryDelayMs(result.retryAt);
-          scheduleRetry(`author:${goal}`, delayMs, () => {
-            fetch(`http://${host}/api/orchestrator/author`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ goal, autoAssign: body.autoAssign === true }),
-            }).catch(() => { /* next scheduled retry (if still limited) will re-arm */ });
+          scheduleRetry({
+            rootDir,
+            key: `author:${goal}`,
+            delayMs,
+            action: { kind: 'author', goal, autoAssign: body.autoAssign === true },
+            execute: (action) => executeRetryAction(`http://${host}`, action),
           });
           json(res, { ...result, retryScheduled: { atIso: result.retryAt ?? null, inMs: delayMs } }, 429);
           return;
