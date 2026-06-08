@@ -65,6 +65,7 @@ export function freeStoryAgents(baseDir: string, storyNumber: string, prId?: num
             assignedPR: null,
             handoffDispatched: false,
             reworkStuck: false,
+            escalatedModel: null,
             events: [...(Array.isArray(raw.events) ? raw.events.slice(-10) : []), ...event],
         };
         writeFileSync(path, JSON.stringify(idle, null, 2));

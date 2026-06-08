@@ -19,7 +19,7 @@ import {
 import { buildContextPreamble } from '../contextLoader';
 import { startPhaseRun } from '../orchestrator';
 import { dbGetWorkflowItemByStory, dbGetPhaseEvents } from '../db';
-import { devLoopAction, markDevLoopStuck } from '../rework-cap';
+import { devLoopAction, markDevLoopStuck, isReworkStuck, escalatedRespawnModel } from '../rework-cap';
 import { notify } from '../providers';
 import { getActiveProject } from '../project-config';
 import { resolve as pathResolve } from 'path';
@@ -425,6 +425,19 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                 return;
             }
 
+            // Step 3 coordination — auto-resume honors the shared desk flags the cap decisions
+            // write, so this path can't bypass them (the bug: 15 spawns / 0 cloud / 9 rounds
+            // because the review-complete cap was on a different spawn path than this one):
+            //  • reworkStuck → the loop was paused for a human; do NOT re-spawn from here either.
+            //  • escalatedModel → a prior cap escalated this desk to the cloud brain; keep using
+            //    cloud on every re-spawn (not just the handler's one-shot, which this path used
+            //    to immediately supersede with a local re-spawn).
+            if (isReworkStuck(rootDir, agentId)) {
+                console.warn(`[auto-resume] ${agentId} is reworkStuck (paused for human) — not re-spawning`);
+                return;
+            }
+            const stickyModel = escalatedRespawnModel(rootDir, agentId);
+
             // Validating-loop escalation (dev side): the local 14B can grind
             // generating-code↔validating forever — the per-phase cap below never trips because
             // the bounce alternates phases. Count the story's dev-loop phase entries; past a
@@ -475,15 +488,18 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                 // GC stale entries after 10 minutes
                 setTimeout(() => memoryResumeCounts.delete(key), 600_000);
             }
-            if (!devLoopModel && resumeCount >= MAX_AUTO_RESUMES) {
+            // Cloud if EITHER the dev-loop cap escalated this run, or a prior cap stuck the
+            // 'cloud' flag on the desk (sticky across re-spawns).
+            const respawnModel = devLoopModel ?? stickyModel;
+            if (!respawnModel && resumeCount >= MAX_AUTO_RESUMES) {
                 console.warn(`[auto-resume] ${agentId} hit max auto-resumes (${MAX_AUTO_RESUMES}) in '${phase}' — stopping`);
                 return;
             }
 
             const prompt = buildContinuePrompt(agentId, phase, storyNum, rootDir, configFile, '', '');
             try {
-                spawnAgent(agentId, prompt, rootDir, devLoopModel ?? getAgentModel(agentId, rootDir));
-                console.log(`[auto-resume] ${agentId} re-spawned after stopping in '${phase}'${devLoopModel ? ' (escalated to cloud brain)' : ''}`);
+                spawnAgent(agentId, prompt, rootDir, respawnModel ?? getAgentModel(agentId, rootDir));
+                console.log(`[auto-resume] ${agentId} re-spawned after stopping in '${phase}'${respawnModel ? ' (cloud brain)' : ''}`);
             } catch (e) { console.error(`[auto-resume] failed to resume ${agentId}:`, e); }
         }, 2_000);
     });
