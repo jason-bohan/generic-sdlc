@@ -1,4 +1,6 @@
 ﻿import { existsSync } from 'node:fs';
+import { generateText } from 'ai';
+import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import type { Message, ToolDefinition, CompletionResponse, ProviderConfig } from './types';
 import { parseJsonUtf8File } from '../json-file';
 
@@ -67,46 +69,105 @@ export class OpenAICompatibleProvider {
         await this.resolveModel();
         const { baseUrl, apiKey, model, maxTokens = 1500, temperature = 0.2 } = this.config;
 
-        const body: Record<string, unknown> = {
-            model,
-            messages,
+        const provider = createOpenAICompatible({
+            name: 'sdlc-framework',
+            baseURL: baseUrl,
+            ...(apiKey ? { apiKey } : {}),
+        });
+
+        const aiTools: Record<string, { description: string; parameters: Record<string, unknown> }> = {};
+        for (const t of tools) {
+            aiTools[t.function.name] = {
+                description: t.function.description,
+                parameters: t.function.parameters as Record<string, unknown>,
+            };
+        }
+
+        // Convert our custom messages to AI SDK v6 ModelMessage format.
+        // v6 uses a parts array in content for tool calls/results instead of
+        // the old flat tool_calls / tool_call_id properties.
+        const aiMessages = messages.map((msg, idx) => _toAiV6Message(msg, idx, messages));
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const result = await (generateText as any)({
+            model: provider.languageModel(model),
+            messages: aiMessages,
+            allowSystemInMessages: true,
+            ...(Object.keys(aiTools).length > 0 ? { tools: aiTools, toolChoice: 'auto' } : {}),
             temperature,
-            max_tokens: maxTokens };
-
-        if (tools.length > 0) {
-            body.tools = tools;
-            body.tool_choice = 'auto';
-        }
-
-        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-        if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
-
-        const res = await fetch(`${baseUrl}/chat/completions`, {
-            method: 'POST',
-            headers,
-            body: JSON.stringify(body),
-            signal: AbortSignal.timeout(600_000) });
-
-        if (!res.ok) {
-            const text = await res.text();
-            throw new Error(`LLM ${res.status}: ${text.slice(0, 400)}`);
-        }
-
-        const data = await res.json() as {
-            choices: Array<{ message: Message; finish_reason: string }>;
-            usage?: { prompt_tokens?: number; completion_tokens?: number };
-        };
-
-        const choice = data.choices?.[0];
-        if (!choice) throw new Error('Empty choices from LLM');
+            maxOutputTokens: maxTokens,
+        });
 
         return {
-            message: choice.message,
-            finish_reason: choice.finish_reason as CompletionResponse['finish_reason'],
-            usage: data.usage
-                ? { inputTokens: data.usage.prompt_tokens ?? 0, outputTokens: data.usage.completion_tokens ?? 0 }
-                : undefined };
+            message: {
+                role: 'assistant',
+                content: result.text ?? null,
+                tool_calls: result.toolCalls?.map((tc: { toolCallId: string; toolName: string; input: Record<string, unknown> }) => ({
+                    id: tc.toolCallId,
+                    type: 'function' as const,
+                    function: {
+                        name: tc.toolName,
+                        arguments: JSON.stringify(tc.input),
+                    },
+                })),
+            },
+            finish_reason: result.finishReason === 'tool-calls' ? 'tool_calls'
+                : result.finishReason === 'stop' ? 'stop'
+                : null,
+            usage: result.usage ? {
+                inputTokens: result.usage.inputTokens ?? 0,
+                outputTokens: result.usage.outputTokens ?? 0,
+            } : undefined,
+        };
     }
+}
+
+/**
+ * Convert a custom Message to AI SDK v6 ModelMessage format.
+ * v6 uses a `content` array of typed parts for tool calls/results
+ * instead of the old flat `tool_calls` / `tool_call_id` properties.
+ */
+function _toAiV6Message(msg: Message, idx: number, allMessages: Message[]): unknown {
+    if (msg.role === 'system') {
+        return { role: 'system', content: msg.content ?? '' };
+    }
+    if (msg.role === 'user') {
+        return { role: 'user', content: msg.content ?? '' };
+    }
+    if (msg.role === 'assistant') {
+        if (msg.tool_calls && msg.tool_calls.length > 0) {
+            return {
+                role: 'assistant',
+                content: msg.tool_calls.map(tc => ({
+                    type: 'tool-call',
+                    toolCallId: tc.id,
+                    toolName: tc.function.name,
+                    input: (() => { try { return JSON.parse(tc.function.arguments); } catch { return {}; } })(),
+                })),
+            };
+        }
+        return { role: 'assistant', content: msg.content ?? '' };
+    }
+    if (msg.role === 'tool') {
+        let toolName = '';
+        for (let i = idx - 1; i >= 0; i--) {
+            const prev = allMessages[i];
+            if (prev.role === 'assistant' && prev.tool_calls) {
+                const tc = prev.tool_calls.find(t => t.id === msg.tool_call_id);
+                if (tc) { toolName = tc.function.name; break; }
+            }
+        }
+        return {
+            role: 'tool',
+            content: [{
+                type: 'tool-result',
+                toolCallId: msg.tool_call_id ?? '',
+                toolName,
+                output: { type: 'text', value: msg.content ?? '' },
+            }],
+        };
+    }
+    return msg;
 }
 
 /**

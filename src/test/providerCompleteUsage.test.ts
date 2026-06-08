@@ -1,46 +1,72 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { OpenAICompatibleProvider, detectLoopProvider } from '../server/agent-runner/provider';
 
-const realFetch = global.fetch;
-afterEach(() => { global.fetch = realFetch; vi.restoreAllMocks(); });
+// Mock generateText from the ai SDK — must use vi.hoisted before vi.mock (hoisted to top)
+const mockGenerateText = vi.hoisted(() => vi.fn());
+vi.mock('ai', async () => {
+    const actual = await vi.importActual('ai');
+    return {
+        ...actual,
+        generateText: mockGenerateText,
+    };
+});
 
-function mockChatResponse(body: object) {
-    global.fetch = vi.fn(async () => ({
-        ok: true,
-        status: 200,
-        json: async () => body,
-        text: async () => JSON.stringify(body),
-    })) as unknown as typeof fetch;
-}
+afterEach(() => { vi.restoreAllMocks(); });
 
 // model:'auto' short-circuits resolveModel() so only the chat/completions call fires.
 const provider = () => new OpenAICompatibleProvider({ baseUrl: 'http://localhost:8083/v1', model: 'auto' });
 
 describe('OpenAICompatibleProvider.complete — usage', () => {
     it('surfaces the OpenAI-compatible usage object as normalized input/output tokens', async () => {
-        mockChatResponse({
-            choices: [{ message: { role: 'assistant', content: 'hi' }, finish_reason: 'stop' }],
-            usage: { prompt_tokens: 34, completion_tokens: 2, total_tokens: 36 },
+        mockGenerateText.mockResolvedValueOnce({
+            text: 'hi',
+            toolCalls: undefined,
+            finishReason: 'stop',
+            usage: { inputTokens: 34, outputTokens: 2 },
         });
         const res = await provider().complete([{ role: 'user', content: 'hi' }], []);
         expect(res.usage).toEqual({ inputTokens: 34, outputTokens: 2 });
     });
 
     it('tolerates a partial usage object (missing counts default to 0)', async () => {
-        mockChatResponse({
-            choices: [{ message: { role: 'assistant', content: 'x' }, finish_reason: 'stop' }],
-            usage: { prompt_tokens: 10 },
+        mockGenerateText.mockResolvedValueOnce({
+            text: 'x',
+            toolCalls: undefined,
+            finishReason: 'stop',
+            usage: { inputTokens: 10, outputTokens: undefined },
         });
         const res = await provider().complete([{ role: 'user', content: 'x' }], []);
         expect(res.usage).toEqual({ inputTokens: 10, outputTokens: 0 });
     });
 
     it('leaves usage undefined when the backend reports none', async () => {
-        mockChatResponse({
-            choices: [{ message: { role: 'assistant', content: 'x' }, finish_reason: 'stop' }],
+        mockGenerateText.mockResolvedValueOnce({
+            text: 'x',
+            toolCalls: undefined,
+            finishReason: 'stop',
+            usage: undefined,
         });
         const res = await provider().complete([{ role: 'user', content: 'x' }], []);
         expect(res.usage).toBeUndefined();
+    });
+
+    it('maps tool calls from generateText result', async () => {
+        mockGenerateText.mockResolvedValueOnce({
+            text: null,
+            toolCalls: [
+                { toolCallId: 'call_1', toolName: 'read_file', input: { path: 'src/index.ts' } },
+            ],
+            finishReason: 'tool-calls',
+            usage: undefined,
+        });
+        const res = await provider().complete(
+            [{ role: 'user', content: 'read file' }],
+            [{ type: 'function', function: { name: 'read_file', description: 'read', parameters: { type: 'object', properties: { path: { type: 'string' } } } } }],
+        );
+        expect(res.message.tool_calls).toHaveLength(1);
+        expect(res.message.tool_calls![0].function.name).toBe('read_file');
+        expect(res.message.tool_calls![0].function.arguments).toBe(JSON.stringify({ path: 'src/index.ts' }));
+        expect(res.finish_reason).toBe('tool_calls');
     });
 });
 
