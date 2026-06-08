@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import { parseAuthoredStories, authorStories, buildAuthoringPrompt, type ModelCall } from '../server/orchestrator-author';
+import {
+  parseAuthoredStories, authorStories, buildAuthoringPrompt,
+  buildGoalFromFindings, severityRank, type ModelCall, type FindingSummary,
+} from '../server/orchestrator-author';
 
 describe('parseAuthoredStories', () => {
   it('parses a bare JSON array', () => {
@@ -27,6 +30,40 @@ describe('parseAuthoredStories', () => {
     expect(parseAuthoredStories('not json at all')).toEqual([]);
     expect(parseAuthoredStories('[ {bad json ')).toEqual([]);
     expect(parseAuthoredStories('')).toEqual([]);
+  });
+});
+
+describe('buildGoalFromFindings', () => {
+  const findings: FindingSummary[] = [
+    { title: 'Low thing', severity: 'low', evidence: 'minor' },
+    { title: 'Build broken', severity: 'high', evidence: 'tsc fails on main', suggestedOwner: 'backend' },
+    { title: 'Medium thing', severity: 'medium' },
+  ];
+
+  it('severityRank orders critical > high > medium > low > unknown', () => {
+    expect(severityRank('critical')).toBeGreaterThan(severityRank('high'));
+    expect(severityRank('high')).toBeGreaterThan(severityRank('medium'));
+    expect(severityRank('medium')).toBeGreaterThan(severityRank('low'));
+    expect(severityRank('nonsense')).toBe(0);
+  });
+
+  it('frames findings most-severe-first and includes evidence + owner', () => {
+    const goal = buildGoalFromFindings(findings);
+    expect(goal).toMatch(/AI-QA audit/);
+    // high-severity "Build broken" should appear before the low one
+    expect(goal.indexOf('Build broken')).toBeLessThan(goal.indexOf('Low thing'));
+    expect(goal).toContain('tsc fails on main');
+    expect(goal).toContain('suggested owner: backend');
+  });
+
+  it('caps at max findings', () => {
+    const many: FindingSummary[] = Array.from({ length: 9 }, (_, i) => ({ title: `F${i}`, severity: 'high' }));
+    const goal = buildGoalFromFindings(many, 3);
+    expect(goal.match(/^\d+\. /gm)).toHaveLength(3);
+  });
+
+  it('returns empty string for no findings', () => {
+    expect(buildGoalFromFindings([])).toBe('');
   });
 });
 
