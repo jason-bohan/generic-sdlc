@@ -1,6 +1,7 @@
-import { writeFileSync, existsSync, mkdirSync, readFileSync } from 'fs';
+import { writeFileSync, existsSync, mkdirSync, readFileSync, unlinkSync } from 'fs';
 import { execFileSync } from 'child_process';
 import { resolve, dirname } from 'path';
+import { resolveWorktreeRepoRoots } from './worktree-cleanup';
 
 const PENDING_DIR = '.review-training-pending';
 const OUTPUT_FILE = 'review_training_data.jsonl';
@@ -31,7 +32,6 @@ interface WorktreeRepoRoots {
 }
 
 function repoRoots(rootDir: string, configFile: string): WorktreeRepoRoots {
-  const { resolveWorktreeRepoRoots } = require('./worktree-cleanup');
   const all = resolveWorktreeRepoRoots(rootDir, configFile) as string[];
   const frameworkRoot = resolve(rootDir);
   return {
@@ -84,7 +84,6 @@ function removePending(rootDir: string, prId: number): void {
   const p = pendingPath(rootDir, prId);
   if (existsSync(p)) {
     try {
-      const { unlinkSync } = require('fs');
       unlinkSync(p);
     } catch { /* ok */ }
   }

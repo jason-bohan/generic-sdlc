@@ -13,7 +13,6 @@ import { notify } from '../providers';
 import { skillSubdirForAgentId } from '../../shared/agentSkillDirs';
 import { resolveAgentDisplayName } from '../agent-display-names';
 import { dbUpsertWorkflowArtifact } from '../db';
-import { saveReviewPending, completeReviewTrainingData } from '../reviewTrainingData';
 import { readBody, json, cors } from '../router';
 import { getExternalMode, isMockExternalMode } from '../external-mode';
 import { setMockPullRequestStatus } from '../mock-external';
