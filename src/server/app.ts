@@ -14,6 +14,7 @@ import { mount as mountHandoffs } from './routes/handoffs';
 import { mount as mountWorkflows } from './routes/workflows';
 import { mount as mountPlanning } from './routes/planning';
 import { mount as mountScheduler } from './routes/scheduler';
+import { mount as mountOrchestrator } from './routes/orchestrator';
 import { mount as mountTokens } from './routes/tokens';
 import { mount as mountAnalytics } from './routes/analytics';
 import { mount as mountOllama } from './routes/ollama';
@@ -45,6 +46,7 @@ export function createApp(rootDir: string): http.RequestListener {
     mountWorkflows(use, rootDir, configFile);
     mountPlanning(use, rootDir, configFile);
     mountScheduler(use, rootDir, configFile);
+    mountOrchestrator(use, rootDir, configFile);
     mountTokens(use, rootDir, configFile);
     mountAnalytics(use, rootDir, configFile);
     mountOllama(use, rootDir, configFile);
