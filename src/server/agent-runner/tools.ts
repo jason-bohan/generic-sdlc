@@ -8,6 +8,7 @@
 } from 'fs';
 import { resolve, dirname, relative, sep, basename } from 'path';
 import { execFile, execFileSync } from 'child_process';
+import { authorizeToolCall } from '../gateway/tool-authz';
 import { isMockExternalMode } from '../external-mode';
 import { isGlobalStepMode, isAgentStepMode } from '../stepMode';
 import { ensureMockShims } from '../mock-mode-guard';
@@ -1790,6 +1791,12 @@ export async function executeToolCall(
     configPath: string,
 ): Promise<string> {
     const a = (args && typeof args === 'object' ? args : {}) as Record<string, unknown>;
+
+    // Gateway authorization: gate workflow-mutating tools by role scope before
+    // execution (default-deny). Structurally stops e.g. a reviewer advancing a
+    // phase — a guarantee that no longer depends on the model heeding a nudge.
+    const authz = authorizeToolCall(agentId, name);
+    if (!authz.ok) return `Refused: ${authz.reason}`;
 
     switch (name) {
         case 'read_file':       return toolReadFile(a, workspaceDir, frameworkDir, agentId, configPath);
