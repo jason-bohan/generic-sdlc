@@ -701,21 +701,22 @@ describe('runInlineQuery with Cursor AI disabled', () => {
                 },
             },
         });
-        const fetchMock = vi.fn(async () => ({
+        const MOCK_RESPONSE = { choices: [{ message: { role: 'assistant', content: 'loop reply' }, finish_reason: 'stop' }] };
+        const fetchMock = vi.fn(async (_input: string | URL | Request, _init?: RequestInit) => ({
             ok: true,
-            json: async () => ({
-                choices: [{ message: { role: 'assistant', content: 'loop reply' }, finish_reason: 'stop' }],
-            }),
-        })) as unknown as typeof fetch;
-        global.fetch = fetchMock;
+            headers: new Headers({ 'content-type': 'application/json' }),
+            text: async () => JSON.stringify(MOCK_RESPONSE),
+        }));
+        global.fetch = fetchMock as unknown as typeof fetch;
 
         await expect(runInlineQuery('hello', TMP, CONFIG)).resolves.toBe('loop reply');
-        expect(fetchMock).toHaveBeenCalledWith(
-            'http://provider.test/v1/chat/completions',
-            expect.objectContaining({
-                method: 'POST',
-                headers: expect.objectContaining({ Authorization: 'Bearer test-key' }),
-            }),
-        );
+        // AI SDK calls fetch internally — verify the chat completion request was made
+        expect(fetchMock).toHaveBeenCalledTimes(2); // 1=models probe, 2=chat completions
+        const chatCall = fetchMock.mock.calls[1];
+        expect(chatCall[0]).toBe('http://provider.test/v1/chat/completions');
+        expect(chatCall[1]).toMatchObject({
+            method: 'POST',
+            headers: { authorization: 'Bearer test-key' },
+        });
     });
 });
