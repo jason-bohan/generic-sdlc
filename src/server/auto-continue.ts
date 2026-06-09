@@ -16,6 +16,7 @@ import { getActiveAgents } from './spawn-agent';
 import { isRunnerActive } from './agent-runner';
 import { resolveAgentDriverConfig } from './agent-drivers';
 import { isAgentStepMode } from './stepMode';
+import { isLoopActive } from './loop-control';
 import { existsSync } from 'fs';
 import { parseJsonUtf8File } from './json-file';
 import { serverLog as log } from './logger';
@@ -32,6 +33,8 @@ const NEVER_AUTO_CONTINUE_PHASES = new Set([
  * that are idle, not in step mode, and have a story to continue.
  */
 export function maybeAutoContinueAgent(rootDir: string, port: number, configFile: string, agentId: string): void {
+    // Loop brake: when the loop is paused/stopped, don't auto-continue to the next phase.
+    if (!isLoopActive(rootDir)) return;
     // Safety check: make sure the agent actually has a story to continue.
     const statusFile = `${rootDir}/.${agentId}-status.json`;
     if (!existsSync(statusFile)) return;

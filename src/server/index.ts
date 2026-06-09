@@ -28,6 +28,7 @@ import { maybeHandoffReviewVerdict } from './review-handoff';
 import { maybeTriggerVerification } from './verify-trigger';
 import { startAutoFinetune } from './autoFinetune';
 import { startBuildGateDriver } from './build-gate-driver';
+import { isLoopActive } from './loop-control';
 import { getActiveProject } from './project-config';
 import { isMockExternalMode } from './external-mode';
 import { serverLog as log } from './logger';
@@ -156,7 +157,8 @@ server.listen(PORT, () => {
                 catch (e) { log.warn(`[verify-trigger] ${e instanceof Error ? e.message : String(e)}`); }
                 // Autonomous reviewer→dev handoff: when the reviewer posts a verdict,
                 // route it back (changes → dev rework, approved → devops build).
-                try { maybeHandoffReviewVerdict(PORT, ev); }
+                // Gated by the loop brake — a paused/stopped loop spawns no handoff agents.
+                try { if (isLoopActive(ROOT_DIR)) maybeHandoffReviewVerdict(PORT, ev); }
                 catch (e) { log.warn(`[review-handoff] ${e instanceof Error ? e.message : String(e)}`); }
                 try { maybeAutoContinueAgent(ROOT_DIR, PORT, CONFIG_FILE, ev.agentId); }
                 catch (e) { log.warn(`[auto-continue] ${e instanceof Error ? e.message : String(e)}`); }
