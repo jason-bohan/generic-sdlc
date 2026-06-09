@@ -43,11 +43,13 @@ function makeAuthoringDeps(rootDir: string, configFile: string) {
       ...hint,
     });
     // Fire-and-forget mirror to the external tracker (Linear/GitHub) if configured.
-    // Non-blocking, but failures are LOGGED, never swallowed: a story that lands only
-    // in the local store while the live tracker is the source of truth is invisible to
-    // the assign-loop, so a silent mirror failure must not look like success.
+    // Skipped for local-only stories (e.g. framework self-audit findings, which belong in
+    // the local planner, not the target project's tracker). Non-blocking, but failures are
+    // LOGGED, never swallowed: a story that lands only in the local store while the live
+    // tracker is the source of truth is invisible to the assign-loop, so a silent mirror
+    // failure must not look like success.
     const pmProvider = (process.env.PM_PROVIDER ?? '').toLowerCase();
-    if (pmProvider === 'linear' || pmProvider === 'github') {
+    if (!s.localOnly && (pmProvider === 'linear' || pmProvider === 'github')) {
       const warn = (e: unknown) =>
         console.warn(`[author] mirror to ${pmProvider} failed for ${story.number} (${s.name}) — story is local-only: ${e instanceof Error ? e.message : String(e)}`);
       resolveProjectTracker(rootDir, configFile).then(tracker => {
@@ -213,6 +215,7 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
           evidence: typeof f.evidence === 'string' ? f.evidence : undefined,
           severity: typeof f.severity === 'string' ? f.severity : undefined,
           suggestedOwner: typeof f.suggestedOwner === 'string' ? f.suggestedOwner : undefined,
+          project: typeof f.project === 'string' ? f.project : undefined,
         }))
         .filter((f) => f.title);
     } catch (e) {
@@ -243,6 +246,14 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
       const f = findingFor(s);
       return f ? sortOrderForSeverity(f.severity) : undefined;
     };
+    // A finding only mirrors to the external tracker when it belongs to the active
+    // (externally-tracked) project. Framework self-audit findings (project != active)
+    // stay in the local planner. Unresolved findings default to local-only (safe).
+    const activeProject = getActiveProjectName(configFile);
+    const localOnlyFor = (s: AuthoredStory): boolean => {
+      const f = findingFor(s);
+      return !f || f.project !== activeProject;
+    };
 
     const goal = buildGoalFromFindings(findings, maxStories);
     const { callModel, createStory } = makeAuthoringDeps(rootDir, configFile);
@@ -256,6 +267,7 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
         sourceFindingIdFor,
         preferredAgentFor,
         sortOrderFor,
+        localOnlyFor,
       });
       await respondAuthorResult(req, res, rootDir, { retryGoal: goal, autoAssign: body.autoAssign === true }, result);
     } catch (e) {

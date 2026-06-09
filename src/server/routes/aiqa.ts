@@ -29,6 +29,12 @@ type Severity = 'high' | 'medium' | 'low';
 
 type FindingSource = 'status' | 'sessions' | 'logs' | 'tokens' | 'eval' | 'hallucination' | 'red-team' | 'financial-control' | 'regulated-data' | 'provider-policy';
 
+// The project a finding belongs to. Today every finding is the framework self-audit
+// (agent telemetry), so they're tagged FRAMEWORK_PROJECT. A future target-repo scanner
+// would tag its findings with the target project key so authoring routes them to that
+// project's planner instead of the framework's local one.
+export const FRAMEWORK_PROJECT = 'sdlc-framework';
+
 interface AiQaFinding {
     id: string;
     severity: Severity;
@@ -38,6 +44,8 @@ interface AiQaFinding {
     suggestedOwner: string;
     source: FindingSource;
     status: 'open';
+    /** Which project/repo this finding is about. Drives which planner an authored fix lands in. */
+    project: string;
     createdAt: string;
     // Populated once a finding has been synced to the planner as a tracked task,
     // whichever provider backs it. Absent until then; the dashboard renders the
@@ -915,9 +923,9 @@ function attachAuthoredStories(findings: AiQaFinding[], rootDir: string): void {
     } catch { /* no local store — leave findings unlinked */ }
 }
 
-function makeFinding(severity: Severity, agentId: string, title: string, evidence: string, suggestedOwner: string, source: FindingSource, createdAt: string): AiQaFinding {
+function makeFinding(severity: Severity, agentId: string, title: string, evidence: string, suggestedOwner: string, source: FindingSource, createdAt: string, project: string = FRAMEWORK_PROJECT): AiQaFinding {
     const id = `${source}:${agentId}:${title}:${evidence}`;
-    return { id, severity, agentId, title, evidence, suggestedOwner, source, status: 'open', createdAt };
+    return { id, severity, agentId, title, evidence, suggestedOwner, source, status: 'open', project, createdAt };
 }
 
 function dedupeFindings(findings: AiQaFinding[]): AiQaFinding[] {
