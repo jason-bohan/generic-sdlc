@@ -35,6 +35,9 @@ function makeAuthoringDeps(rootDir: string, configFile: string) {
       // Tag the story with its origin finding (resolved per-story by the caller) so
       // the AI-QA desk can show which findings already have an authored story.
       ...(s.sourceFindingId ? { sourceFindingId: s.sourceFindingId } : {}),
+      // Explicit routing target (e.g. the finding's suggestedOwner) so the story
+      // routes deterministically to the right specialist instead of via classification.
+      ...(s.preferredAgent ? { preferredAgent: s.preferredAgent } : {}),
       ...hint,
     });
     // Fire-and-forget mirror to the external tracker (Linear/GitHub) if configured.
@@ -221,16 +224,19 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
       return;
     }
 
-    // Link authored stories back to findings. The goal numbers findings 1..N (via
-    // topFindingsForGoal) and asks the model to set findingRef per story; resolve that
-    // index → finding id. A single-finding run links deterministically even if the model
-    // omits findingRef. Unattributed stories in a bulk run simply don't link.
+    // Resolve each story back to the finding it addresses. The goal numbers findings
+    // 1..N (via topFindingsForGoal) and asks the model to set findingRef per story;
+    // map that index → finding. A single-finding run resolves deterministically even if
+    // the model omits findingRef. From the finding we take both the link (id) and the
+    // routing target (suggestedOwner) so the authored story routes to the right specialist.
     const top = topFindingsForGoal(findings, maxStories);
-    const indexToFindingId = new Map<number, string | undefined>(top.map((f, i) => [i + 1, f.id]));
-    const sourceFindingIdFor = (s: AuthoredStory): string | undefined => {
-      if (typeof s.findingRef === 'number' && indexToFindingId.has(s.findingRef)) return indexToFindingId.get(s.findingRef);
-      return top.length === 1 ? top[0].id : undefined;
+    const indexToFinding = new Map<number, FindingSummary>(top.map((f, i) => [i + 1, f]));
+    const findingFor = (s: AuthoredStory): FindingSummary | undefined => {
+      if (typeof s.findingRef === 'number' && indexToFinding.has(s.findingRef)) return indexToFinding.get(s.findingRef);
+      return top.length === 1 ? top[0] : undefined;
     };
+    const sourceFindingIdFor = (s: AuthoredStory): string | undefined => findingFor(s)?.id;
+    const preferredAgentFor = (s: AuthoredStory): string | undefined => findingFor(s)?.suggestedOwner;
 
     const goal = buildGoalFromFindings(findings, maxStories);
     const { callModel, createStory } = makeAuthoringDeps(rootDir, configFile);
@@ -242,6 +248,7 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
         createStory,
         maxStories: Math.min(maxStories, findings.length),
         sourceFindingIdFor,
+        preferredAgentFor,
       });
       await respondAuthorResult(req, res, rootDir, { retryGoal: goal, autoAssign: body.autoAssign === true }, result);
     } catch (e) {

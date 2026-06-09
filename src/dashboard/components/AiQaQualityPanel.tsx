@@ -196,14 +196,18 @@ export function AiQaQualityPanel({ accentColor }: { accentColor: string }) {
     // Author fix stories from findings. No ids → top findings across the scorecard;
     // one id → just that finding (the per-finding modal action). Reloads after, so the
     // freshly-linked story surfaces on the finding once the mirror lands.
-    const authorFromFindings = (findingIds?: string[]) => {
+    const authorFromFindings = (findingIds?: string[], autoAssign = false) => {
         setAuthoring(true);
         setAuthorResult(null);
-        postFromAiqa(findingIds ? { findingIds } : {})
+        postFromAiqa({ ...(findingIds ? { findingIds } : {}), autoAssign })
             .then((r) => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
-            .then((body: { ok?: boolean; reason?: string; limited?: boolean; authored?: Array<{ number: string; name: string }> }) => {
+            .then((body: { ok?: boolean; reason?: string; limited?: boolean; authored?: Array<{ number: string; name: string }>; tick?: { assigned?: Array<{ storyNumber: string; agentId: string }> } }) => {
                 if (body.ok && body.authored?.length) {
-                    setAuthorResult(`Authored ${body.authored.length} story(ies): ${body.authored.map((a) => a.number).join(', ')}`);
+                    const base = `Authored ${body.authored.length} story(ies): ${body.authored.map((a) => a.number).join(', ')}`;
+                    const routed = body.tick?.assigned?.length
+                        ? ` — assigned: ${body.tick.assigned.map((a) => `${a.storyNumber}→${a.agentId}`).join(', ')}`
+                        : (autoAssign ? ' — no agents free to assign yet' : '');
+                    setAuthorResult(base + routed);
                 } else if (body.limited) {
                     setAuthorResult('Model usage limit reached — authoring paused, will retry after refresh.');
                 } else {
@@ -300,6 +304,27 @@ export function AiQaQualityPanel({ accentColor }: { accentColor: string }) {
                         }}
                     >
                         {authoring ? 'Authoring…' : 'Author Fix Stories'}
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => authorFromFindings(undefined, true)}
+                        disabled={authoring || !data?.findings.length}
+                        title="Author fix stories from the top findings AND route each to its specialist agent"
+                        style={{
+                            border: `1px solid ${effectiveAccent}`,
+                            background: effectiveAccent,
+                            color: 'var(--bg-card)',
+                            borderRadius: 6,
+                            padding: '8px 12px',
+                            cursor: authoring ? 'wait' : (!data?.findings.length ? 'not-allowed' : 'pointer'),
+                            opacity: !data?.findings.length ? 0.5 : 1,
+                            fontWeight: 800,
+                            fontSize: 12,
+                            fontFamily: 'var(--font-mono)',
+                            letterSpacing: 0,
+                        }}
+                    >
+                        {authoring ? 'Authoring…' : 'Author & Assign'}
                     </button>
                 </div>
             </div>

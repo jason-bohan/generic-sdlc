@@ -50,6 +50,7 @@ function toOrchestrationStory(s: LocalPlanningStory, projectKey: string): StoryF
     frontend: s.frontend || null,
     backend: s.backend || null,
     qa: s.qa || null,
+    preferredAgent: s.preferredAgent || null,
     projectKey,
   };
 }

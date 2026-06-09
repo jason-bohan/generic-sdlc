@@ -23,6 +23,7 @@ import {
 } from './db';
 import { resolve, isAbsolute } from 'path';
 import { parseJsonUtf8File } from './json-file';
+import { asSdlcAgentId } from './status-normalize';
 
 export type StoryClassification =
     | 'frontend'
@@ -43,6 +44,9 @@ export interface StoryForOrchestration {
     designSpec?: string | null;
     projectKey?: string | null;
     affectedRepo?: string | null;
+    /** Explicit routing target (e.g. an AI-QA finding's suggestedOwner). When it
+     *  names a valid implementation specialist, routing honors it over classification. */
+    preferredAgent?: string | null;
 }
 
 export interface AssignmentDecision {
@@ -742,6 +746,12 @@ export async function triageStoryAgent(story: StoryForOrchestration, opts?: Tria
  * specify a valid specialist.
  */
 export async function resolveStoryAgent(story: StoryForOrchestration, opts?: TriageOptions): Promise<SdlcAgentId> {
+    // Honor an explicit routing target first (deterministic) — only when it names a
+    // valid implementation specialist. This is how an AI-QA finding's suggestedOwner
+    // routes the authored story straight to the right agent without relying on triage.
+    const preferred = story.preferredAgent ? asSdlcAgentId(story.preferredAgent.trim().toLowerCase()) : undefined;
+    if (preferred && TRIAGE_AGENTS.includes(preferred)) return preferred;
+
     const decision = classifyStory(story);
     if (decision.classification !== 'unknown') return decision.primaryAgent;
     const triaged = await triageStoryAgent(story, opts);

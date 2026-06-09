@@ -198,4 +198,21 @@ describe('finding attribution (bulk linkage)', () => {
     });
     expect(created.map((s) => s.sourceFindingId)).toEqual(['finding-A', 'finding-B', undefined]);
   });
+
+  it('authorStories applies preferredAgentFor to each created story (routing target)', async () => {
+    const created: AuthoredStory[] = [];
+    const createStory = (s: AuthoredStory) => { created.push(s); return { number: s.name, name: s.name }; };
+    const ownerByRef: Record<number, string> = { 1: 'backend', 2: 'ux' };
+    await authorStories({
+      goal: 'g', projectKey: 'x',
+      callModel: async () => ({ ok: true, text: JSON.stringify([
+        { name: 'S1', findingRef: 1 },
+        { name: 'S2', findingRef: 2 },
+        { name: 'S3' },
+      ]) }),
+      createStory,
+      preferredAgentFor: (s) => (s.findingRef ? ownerByRef[s.findingRef] : undefined),
+    });
+    expect(created.map((s) => s.preferredAgent)).toEqual(['backend', 'ux', undefined]);
+  });
 });
