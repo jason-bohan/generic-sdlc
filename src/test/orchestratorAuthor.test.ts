@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   parseAuthoredStories, authorStories, buildAuthoringPrompt,
-  buildGoalFromFindings, severityRank, type ModelCall, type FindingSummary,
+  buildGoalFromFindings, severityRank, selectFindingsForAuthoring,
+  type ModelCall, type FindingSummary,
 } from '../server/orchestrator-author';
 
 describe('parseAuthoredStories', () => {
@@ -126,5 +127,30 @@ describe('authorStories', () => {
     });
     expect(result.ok).toBe(false);
     expect(result.reason).toMatch(/no valid stories/i);
+  });
+});
+
+describe('selectFindingsForAuthoring', () => {
+  const findings: FindingSummary[] = [
+    { id: 'a', title: 'A' },
+    { id: 'b', title: 'B' },
+    { id: 'c', title: 'C' },
+  ];
+
+  it('returns all findings when no ids are given', () => {
+    expect(selectFindingsForAuthoring(findings)).toHaveLength(3);
+    expect(selectFindingsForAuthoring(findings, [])).toHaveLength(3);
+  });
+
+  it('restricts to the requested ids (per-finding authoring)', () => {
+    const out = selectFindingsForAuthoring(findings, ['b']);
+    expect(out).toHaveLength(1);
+    expect(out[0].id).toBe('b');
+  });
+
+  it('ignores unknown ids and findings without an id', () => {
+    expect(selectFindingsForAuthoring(findings, ['zzz'])).toHaveLength(0);
+    const noId: FindingSummary[] = [{ title: 'no id' }];
+    expect(selectFindingsForAuthoring(noId, ['anything'])).toHaveLength(0);
   });
 });

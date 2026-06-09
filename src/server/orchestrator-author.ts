@@ -35,10 +35,23 @@ export interface AuthorResult {
 
 /** A QA finding reduced to what authoring needs. */
 export interface FindingSummary {
+  /** Stable finding id (source:agentId:title:evidence) — links an authored story back to its finding. */
+  id?: string;
   title: string;
   evidence?: string;
   severity?: string;
   suggestedOwner?: string;
+}
+
+/**
+ * Pure: pick which findings to author from. With no ids, author from all (the
+ * caller still caps + severity-sorts). With ids, restrict to those findings —
+ * the per-finding "Author story" desk action passes a single id.
+ */
+export function selectFindingsForAuthoring(findings: FindingSummary[], findingIds?: string[]): FindingSummary[] {
+  if (!findingIds || findingIds.length === 0) return findings;
+  const wanted = new Set(findingIds);
+  return findings.filter((f) => f.id !== undefined && wanted.has(f.id));
 }
 
 const SEVERITY_RANK: Record<string, number> = { critical: 3, high: 2, medium: 1, low: 0 };

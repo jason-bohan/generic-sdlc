@@ -3,7 +3,7 @@ import { readBody, json } from '../router';
 import type { UseFn } from './types';
 import { runOrchestratorTick, type AssignmentPlanItem } from '../orchestrator-tick';
 import {
-  authorStories, buildGoalFromFindings,
+  authorStories, buildGoalFromFindings, selectFindingsForAuthoring,
   type AuthoredStory, type ModelCall, type AuthorResult, type FindingSummary,
 } from '../orchestrator-author';
 import { claudePrint } from '../claude-print';
@@ -17,7 +17,7 @@ const ROUTING_HINT_FIELDS = new Set(['backend', 'frontend', 'qa']);
 
 /** Author on the Claude sub via `claude -p`, falling back to the brain only when
  *  the CLI is unavailable (NOT on a usage limit — that pauses & retries). */
-function makeAuthoringDeps(rootDir: string, configFile: string) {
+function makeAuthoringDeps(rootDir: string, configFile: string, sourceFindingId?: string) {
   const callModel = async (prompt: string): Promise<ModelCall> => {
     const c = await claudePrint(prompt, { timeoutMs: 120_000 });
     if (c.ok || c.limited) return c;
@@ -32,6 +32,9 @@ function makeAuthoringDeps(rootDir: string, configFile: string) {
       acceptanceCriteria: s.acceptanceCriteria ?? '',
       estimate: s.estimate ?? null,
       status: 'Backlog',
+      // Tag the story with its origin finding so the AI-QA desk can show which
+      // findings already have an authored story (set only for single-finding authoring).
+      ...(sourceFindingId ? { sourceFindingId } : {}),
       ...hint,
     });
     // Fire-and-forget mirror to the external tracker (Linear/GitHub) if configured.
@@ -187,6 +190,12 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
     const host = req.headers.host || 'localhost:3001';
     const maxStories = typeof body.maxStories === 'number' && body.maxStories > 0 ? Math.floor(body.maxStories) : 5;
 
+    // Optional: restrict authoring to specific findings (the per-finding desk action
+    // passes one id). Absent → author from the top findings across the whole scorecard.
+    const findingIds = Array.isArray(body.findingIds)
+      ? body.findingIds.map((x) => String(x)).filter(Boolean)
+      : undefined;
+
     let findings: FindingSummary[] = [];
     try {
       const r = await fetch(`http://${host}/api/aiqa/scorecard`, { signal: AbortSignal.timeout(60_000) });
@@ -194,6 +203,7 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
       const sc = (await r.json()) as { findings?: Array<Record<string, unknown>> };
       findings = (sc.findings ?? [])
         .map((f) => ({
+          id: typeof f.id === 'string' ? f.id : undefined,
           title: String(f.title ?? ''),
           evidence: typeof f.evidence === 'string' ? f.evidence : undefined,
           severity: typeof f.severity === 'string' ? f.severity : undefined,
@@ -205,13 +215,18 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
       return;
     }
 
+    findings = selectFindingsForAuthoring(findings, findingIds);
     if (findings.length === 0) {
-      json(res, { ok: false, reason: 'no AI-QA findings to author from', authored: [] }, 200);
+      json(res, { ok: false, reason: findingIds ? 'no matching AI-QA findings to author from' : 'no AI-QA findings to author from', authored: [] }, 200);
       return;
     }
 
+    // Tag authored stories with their origin finding only when authoring from exactly
+    // one finding — a bulk run decomposes many findings into stories with no 1:1 mapping.
+    const sourceFindingId = findings.length === 1 ? findings[0].id : undefined;
+
     const goal = buildGoalFromFindings(findings, maxStories);
-    const { callModel, createStory } = makeAuthoringDeps(rootDir, configFile);
+    const { callModel, createStory } = makeAuthoringDeps(rootDir, configFile, sourceFindingId);
     try {
       const result = await authorStories({
         goal,
