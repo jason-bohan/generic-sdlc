@@ -133,6 +133,20 @@ export function postAiQaSweep() {
     return fetch('/api/aiqa/sweep', { method: 'POST' });
 }
 
+/**
+ * Author fix stories from AI-QA findings. With no findingIds, authors from the top
+ * findings across the scorecard; with findingIds, restricts to those (the per-finding
+ * "Author story" action passes one). autoAssign stays false from the desk — authoring
+ * only, no fleet kickoff.
+ */
+export function postFromAiqa(body: { findingIds?: string[]; maxStories?: number; autoAssign?: boolean } = {}) {
+    return fetch('/api/orchestrator/from-aiqa', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ autoAssign: false, ...body }),
+    });
+}
+
 export function fetchAiQaEval() {
     return fetch('/api/aiqa/eval');
 }

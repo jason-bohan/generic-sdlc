@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { fetchAiQaScorecard, postAiQaSweep, fetchAiQaEval, fetchAiQaHallucinations, fetchAiQaDatasets } from '../api';
+import { fetchAiQaScorecard, postAiQaSweep, postFromAiqa, fetchAiQaEval, fetchAiQaHallucinations, fetchAiQaDatasets } from '../api';
 import { useDemoMode } from '../DemoModeProvider';
 
 type Severity = 'high' | 'medium' | 'low';
@@ -64,6 +64,8 @@ interface AiQaFinding {
     createdAt?: string;
     /** Present only after the finding has been synced to the planner (provider-agnostic) as a tracked task. */
     plannerUrl?: string;
+    /** Present once a fix story has been authored from this finding. `number` is the live tracker ref (e.g. UNW-126). */
+    authoredStory?: { number: string; url?: string };
 }
 
 interface AgentQualityCard {
@@ -157,6 +159,8 @@ export function AiQaQualityPanel({ accentColor }: { accentColor: string }) {
     const [datasets, setDatasets] = useState<DatasetInfo[] | null>(null);
     const [hallucinationReport, setHallucinationReport] = useState<HallucinationReport | null>(null);
     const [selectedFinding, setSelectedFinding] = useState<AiQaFinding | null>(null);
+    const [authoring, setAuthoring] = useState(false);
+    const [authorResult, setAuthorResult] = useState<string | null>(null);
 
     const load = () => {
         setLoading(true);
@@ -183,7 +187,33 @@ export function AiQaQualityPanel({ accentColor }: { accentColor: string }) {
         return () => clearInterval(t);
     }, []);
 
-    const topFindings = useMemo(() => data?.findings.slice(0, 6) ?? [], [data]);
+    const SEV_ORDER: Record<string, number> = { high: 0, medium: 1, low: 2 };
+    const allFindings = useMemo(
+        () => [...(data?.findings ?? [])].sort((a, b) => (SEV_ORDER[a.severity] ?? 3) - (SEV_ORDER[b.severity] ?? 3)),
+        [data],
+    );
+
+    // Author fix stories from findings. No ids → top findings across the scorecard;
+    // one id → just that finding (the per-finding modal action). Reloads after, so the
+    // freshly-linked story surfaces on the finding once the mirror lands.
+    const authorFromFindings = (findingIds?: string[]) => {
+        setAuthoring(true);
+        setAuthorResult(null);
+        postFromAiqa(findingIds ? { findingIds } : {})
+            .then((r) => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
+            .then((body: { ok?: boolean; reason?: string; limited?: boolean; authored?: Array<{ number: string; name: string }> }) => {
+                if (body.ok && body.authored?.length) {
+                    setAuthorResult(`Authored ${body.authored.length} story(ies): ${body.authored.map((a) => a.number).join(', ')}`);
+                } else if (body.limited) {
+                    setAuthorResult('Model usage limit reached — authoring paused, will retry after refresh.');
+                } else {
+                    setAuthorResult(body.reason ?? 'No stories authored.');
+                }
+                load();
+            })
+            .catch((e) => setAuthorResult(`Authoring failed: ${e instanceof Error ? e.message : String(e)}`))
+            .finally(() => setAuthoring(false));
+    };
 
     const runSweep = () => {
         setSweeping(true);
@@ -249,6 +279,27 @@ export function AiQaQualityPanel({ accentColor }: { accentColor: string }) {
                         }}
                     >
                         {sweeping ? 'Running Sweep' : 'Run Eval Sweep'}
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => authorFromFindings()}
+                        disabled={authoring || !data?.findings.length}
+                        title="Author fix stories from the top findings (no fleet kickoff)"
+                        style={{
+                            border: `1px solid ${effectiveAccent}`,
+                            background: effectiveAccent,
+                            color: 'var(--bg-card)',
+                            borderRadius: 6,
+                            padding: '8px 12px',
+                            cursor: authoring ? 'wait' : (!data?.findings.length ? 'not-allowed' : 'pointer'),
+                            opacity: !data?.findings.length ? 0.5 : 1,
+                            fontWeight: 800,
+                            fontSize: 12,
+                            fontFamily: 'var(--font-mono)',
+                            letterSpacing: 0,
+                        }}
+                    >
+                        {authoring ? 'Authoring…' : 'Author Fix Stories'}
                     </button>
                 </div>
             </div>
@@ -393,35 +444,47 @@ export function AiQaQualityPanel({ accentColor }: { accentColor: string }) {
                     )}
 
                     <div style={styles.findingList}>
-                        <div style={styles.sectionTitle}>Top Findings</div>
-                        {topFindings.length === 0 ? (
+                        <div style={styles.sectionTitle}>Findings ({allFindings.length})</div>
+                        {allFindings.length === 0 ? (
                             <p style={styles.muted}>No open AIQA findings detected.</p>
-                        ) : topFindings.map((finding) => (
-                            <div
-                                key={finding.id}
-                                role="button"
-                                tabIndex={0}
-                                aria-label={`Open finding: ${finding.title}`}
-                                onClick={() => setSelectedFinding(finding)}
-                                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedFinding(finding); } }}
-                                style={{ ...styles.findingRow, ...styles.findingRowClickable }}
-                            >
-                                <span style={{ ...styles.severity, color: severityColor(finding.severity), borderColor: `${severityColor(finding.severity)}66` }}>
-                                    {finding.severity}
-                                </span>
-                                <div style={{ minWidth: 0 }}>
-                                    <div style={styles.findingTitle}>{finding.title} <span style={styles.findingAgent}>{finding.agentId}</span></div>
-                                    <div style={styles.findingEvidence}>{finding.evidence}</div>
-                                    <div style={styles.findingRoute}>
-                                        Owner: {finding.suggestedOwner} | Source: {finding.source}
-                                        {finding.plannerUrl ? ' | Planner ↗' : ''}
+                        ) : (
+                            <div style={styles.findingScroll}>
+                                {allFindings.map((finding) => (
+                                    <div
+                                        key={finding.id}
+                                        role="button"
+                                        tabIndex={0}
+                                        aria-label={`Open finding: ${finding.title}`}
+                                        onClick={() => setSelectedFinding(finding)}
+                                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedFinding(finding); } }}
+                                        style={{ ...styles.findingRow, ...styles.findingRowClickable }}
+                                    >
+                                        <span style={{ ...styles.severity, color: severityColor(finding.severity), borderColor: `${severityColor(finding.severity)}66` }}>
+                                            {finding.severity}
+                                        </span>
+                                        <div style={{ minWidth: 0 }}>
+                                            <div style={styles.findingTitle}>
+                                                {finding.title} <span style={styles.findingAgent}>{finding.agentId}</span>
+                                                {finding.authoredStory && (
+                                                    <span style={{ ...styles.storyBadge, color: accentColor, borderColor: `${accentColor}66` }}>
+                                                        {finding.authoredStory.number}
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <div style={styles.findingEvidence}>{finding.evidence}</div>
+                                            <div style={styles.findingRoute}>
+                                                Owner: {finding.suggestedOwner} | Source: {finding.source}
+                                                {finding.plannerUrl ? ' | Planner ↗' : ''}
+                                            </div>
+                                        </div>
                                     </div>
-                                </div>
+                                ))}
                             </div>
-                        ))}
+                        )}
                     </div>
 
                     {sweepResult && <p style={{ ...styles.muted, color: accentColor }}>{sweepResult}</p>}
+                    {authorResult && <p style={{ ...styles.muted, color: accentColor }} data-testid="aiqa-author-result">{authorResult}</p>}
                 </>
             )}
 
@@ -429,6 +492,8 @@ export function AiQaQualityPanel({ accentColor }: { accentColor: string }) {
                 <FindingModal
                     finding={selectedFinding}
                     accent={effectiveAccent}
+                    authoring={authoring}
+                    onAuthor={() => authorFromFindings(selectedFinding.id ? [selectedFinding.id] : undefined)}
                     onClose={() => setSelectedFinding(null)}
                 />
             )}
@@ -436,7 +501,7 @@ export function AiQaQualityPanel({ accentColor }: { accentColor: string }) {
     );
 }
 
-function FindingModal({ finding, accent, onClose }: { finding: AiQaFinding; accent: string; onClose: () => void }) {
+function FindingModal({ finding, accent, authoring, onAuthor, onClose }: { finding: AiQaFinding; accent: string; authoring: boolean; onAuthor: () => void; onClose: () => void }) {
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
         window.addEventListener('keydown', onKey);
@@ -473,6 +538,33 @@ function FindingModal({ finding, accent, onClose }: { finding: AiQaFinding; acce
                 <p style={styles.modalEvidence}>{finding.evidence}</p>
 
                 <div style={styles.modalActions}>
+                    {finding.authoredStory ? (
+                        finding.authoredStory.url ? (
+                            <a
+                                href={finding.authoredStory.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                data-testid="aiqa-finding-story-link"
+                                style={{ ...styles.modalPlannerLink, borderColor: accent, color: accent, background: `${accent}1a` }}
+                            >
+                                Story {finding.authoredStory.number} ↗
+                            </a>
+                        ) : (
+                            <span style={{ ...styles.modalPlannerLink, borderColor: accent, color: accent, background: `${accent}1a` }}>
+                                Story {finding.authoredStory.number}
+                            </span>
+                        )
+                    ) : (
+                        <button
+                            type="button"
+                            onClick={onAuthor}
+                            disabled={authoring}
+                            data-testid="aiqa-finding-author-btn"
+                            style={{ ...styles.modalPlannerLink, borderColor: accent, color: 'var(--bg-card)', background: accent, cursor: authoring ? 'wait' : 'pointer' }}
+                        >
+                            {authoring ? 'Authoring…' : 'Author fix story'}
+                        </button>
+                    )}
                     {finding.plannerUrl ? (
                         <a
                             href={finding.plannerUrl}
@@ -483,11 +575,7 @@ function FindingModal({ finding, accent, onClose }: { finding: AiQaFinding; acce
                         >
                             Open planner task ↗
                         </a>
-                    ) : (
-                        <span style={styles.modalNoPlanner} title="This finding has not been synced to the planner yet.">
-                            Not yet synced to planner
-                        </span>
-                    )}
+                    ) : null}
                     <button type="button" onClick={onClose} style={styles.modalDismiss}>Close</button>
                 </div>
             </div>
@@ -535,6 +623,8 @@ const styles: Record<string, React.CSSProperties> = {
     evalName: { fontSize: 12, fontWeight: 750, color: 'var(--text-primary)' },
     evalEvidence: { fontSize: 11, color: 'var(--text-tertiary)', marginTop: 2, lineHeight: 1.35 },
     findingList: { display: 'flex', flexDirection: 'column', gap: 8 },
+    findingScroll: { display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 360, overflowY: 'auto', paddingRight: 4 },
+    storyBadge: { marginLeft: 6, border: '1px solid', borderRadius: 4, padding: '1px 5px', fontSize: 10, fontWeight: 800, fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap' },
     sectionTitle: { fontSize: 11, color: 'var(--text-secondary)', textTransform: 'uppercase', fontFamily: 'var(--font-mono)', fontWeight: 800, letterSpacing: 0 },
     findingRow: { display: 'grid', gridTemplateColumns: '74px minmax(0, 1fr)', gap: 10, border: '1px solid var(--border)', borderRadius: 6, padding: 10, background: 'var(--bg-secondary)' },
     findingRowClickable: { cursor: 'pointer', textAlign: 'left' as const, width: '100%', font: 'inherit' },

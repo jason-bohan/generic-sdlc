@@ -5,6 +5,7 @@ import { parseJsonUtf8File } from '../json-file';
 import { getActiveProject, getActiveProjectName } from '../project-config';
 import { readBody, json } from '../router';
 import { getDefaultStatus, normalizeStatus } from '../status-normalize';
+import { loadLocalPlanningState } from '../local-planning';
 import { readTelemetry } from '../telemetry-reader';
 import { evaluateExample, evaluateBatch, summarizeResults } from '../aiqa/evaluator';
 import { buildHallucinationReport } from '../aiqa/hallucination-detector';
@@ -42,6 +43,10 @@ interface AiQaFinding {
     // whichever provider backs it. Absent until then; the dashboard renders the
     // task link only when present.
     plannerUrl?: string;
+    // Populated when a fix story has been authored from this finding (via /from-aiqa).
+    // `number` is the live tracker ref (e.g. UNW-126) once mirrored, else the local
+    // story number; `url` is the external story URL when available.
+    authoredStory?: { number: string; url?: string };
 }
 
 interface AgentQualityCard {
@@ -98,6 +103,7 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
     use('/api/aiqa/scorecard', async (req, res) => {
         if (req.method !== 'GET') { res.statusCode = 405; res.end('Method not allowed'); return; }
         const scorecard = await buildAiQaScorecard(rootDir, configFile);
+        attachAuthoredStories(scorecard.findings, rootDir);
         json(res, scorecard);
     });
 
@@ -880,6 +886,33 @@ function writeAiQaTaskPills(rootDir: string, findings: AiQaFinding[]): number {
     };
     writeFileSync(statusFile, JSON.stringify(next, null, 2));
     return newTasks.length;
+}
+
+/**
+ * Pure: attach the authored fix story to each finding that has one, matching on
+ * the finding's stable id (stored as `sourceFindingId` on the story). Prefers the
+ * external tracker ref/url (set once the story mirrors to Linear/GitHub), else the
+ * local story number. First non-deleted story wins per finding.
+ */
+export function linkAuthoredStories(
+    findings: AiQaFinding[],
+    stories: Array<{ number: string; sourceFindingId?: string; externalRef?: string; externalUrl?: string; deleted?: boolean }>,
+): void {
+    const byFinding = new Map<string, { number: string; url?: string }>();
+    for (const s of stories) {
+        if (s.deleted || !s.sourceFindingId || byFinding.has(s.sourceFindingId)) continue;
+        byFinding.set(s.sourceFindingId, { number: s.externalRef || s.number, url: s.externalUrl });
+    }
+    for (const f of findings) {
+        const hit = byFinding.get(f.id);
+        if (hit) f.authoredStory = hit;
+    }
+}
+
+function attachAuthoredStories(findings: AiQaFinding[], rootDir: string): void {
+    try {
+        linkAuthoredStories(findings, loadLocalPlanningState(rootDir).stories);
+    } catch { /* no local store — leave findings unlinked */ }
 }
 
 function makeFinding(severity: Severity, agentId: string, title: string, evidence: string, suggestedOwner: string, source: FindingSource, createdAt: string): AiQaFinding {
