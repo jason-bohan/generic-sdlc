@@ -281,6 +281,7 @@ export function createLocalStory(rootDir: string, input: Partial<LocalPlanningSt
         externalUrl: input.externalUrl,
         sourceFindingId: input.sourceFindingId,
         preferredAgent: input.preferredAgent,
+        sortOrder: input.sortOrder,
         createdAt: now,
         updatedAt: now,
     };

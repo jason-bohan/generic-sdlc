@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   parseAuthoredStories, authorStories, buildAuthoringPrompt,
-  buildGoalFromFindings, severityRank, selectFindingsForAuthoring, topFindingsForGoal,
+  buildGoalFromFindings, severityRank, selectFindingsForAuthoring, topFindingsForGoal, sortOrderForSeverity,
   type AuthoredStory, type ModelCall, type FindingSummary,
 } from '../server/orchestrator-author';
 
@@ -214,5 +214,32 @@ describe('finding attribution (bulk linkage)', () => {
       preferredAgentFor: (s) => (s.findingRef ? ownerByRef[s.findingRef] : undefined),
     });
     expect(created.map((s) => s.preferredAgent)).toEqual(['backend', 'ux', undefined]);
+  });
+
+  it('sortOrderForSeverity orders severe findings first (smaller = earlier)', () => {
+    expect(sortOrderForSeverity('critical')).toBeLessThan(sortOrderForSeverity('high'));
+    expect(sortOrderForSeverity('high')).toBeLessThan(sortOrderForSeverity('medium'));
+    expect(sortOrderForSeverity('medium')).toBeLessThan(sortOrderForSeverity('low'));
+    // severe findings sort ahead of default (sortOrder 0) backlog
+    expect(sortOrderForSeverity('high')).toBeLessThan(0);
+    expect(sortOrderForSeverity('low')).toBe(0);
+    expect(sortOrderForSeverity(undefined)).toBe(0);
+  });
+
+  it('authorStories applies sortOrderFor to each created story', async () => {
+    const created: AuthoredStory[] = [];
+    const createStory = (s: AuthoredStory) => { created.push(s); return { number: s.name, name: s.name }; };
+    const orderByRef: Record<number, number> = { 1: -2, 2: 0 };
+    await authorStories({
+      goal: 'g', projectKey: 'x',
+      callModel: async () => ({ ok: true, text: JSON.stringify([
+        { name: 'S1', findingRef: 1 },
+        { name: 'S2', findingRef: 2 },
+        { name: 'S3' },
+      ]) }),
+      createStory,
+      sortOrderFor: (s) => (s.findingRef ? orderByRef[s.findingRef] : undefined),
+    });
+    expect(created.map((s) => s.sortOrder)).toEqual([-2, 0, undefined]);
   });
 });

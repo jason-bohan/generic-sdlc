@@ -3,7 +3,7 @@ import { readBody, json } from '../router';
 import type { UseFn } from './types';
 import { runOrchestratorTick, type AssignmentPlanItem } from '../orchestrator-tick';
 import {
-  authorStories, buildGoalFromFindings, selectFindingsForAuthoring, topFindingsForGoal,
+  authorStories, buildGoalFromFindings, selectFindingsForAuthoring, topFindingsForGoal, sortOrderForSeverity,
   type AuthoredStory, type ModelCall, type AuthorResult, type FindingSummary,
 } from '../orchestrator-author';
 import { claudePrint } from '../claude-print';
@@ -38,6 +38,8 @@ function makeAuthoringDeps(rootDir: string, configFile: string) {
       // Explicit routing target (e.g. the finding's suggestedOwner) so the story
       // routes deterministically to the right specialist instead of via classification.
       ...(s.preferredAgent ? { preferredAgent: s.preferredAgent } : {}),
+      // Board ordering from finding severity so the assign-loop works severe findings first.
+      ...(s.sortOrder !== undefined ? { sortOrder: s.sortOrder } : {}),
       ...hint,
     });
     // Fire-and-forget mirror to the external tracker (Linear/GitHub) if configured.
@@ -237,6 +239,10 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
     };
     const sourceFindingIdFor = (s: AuthoredStory): string | undefined => findingFor(s)?.id;
     const preferredAgentFor = (s: AuthoredStory): string | undefined => findingFor(s)?.suggestedOwner;
+    const sortOrderFor = (s: AuthoredStory): number | undefined => {
+      const f = findingFor(s);
+      return f ? sortOrderForSeverity(f.severity) : undefined;
+    };
 
     const goal = buildGoalFromFindings(findings, maxStories);
     const { callModel, createStory } = makeAuthoringDeps(rootDir, configFile);
@@ -249,6 +255,7 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
         maxStories: Math.min(maxStories, findings.length),
         sourceFindingIdFor,
         preferredAgentFor,
+        sortOrderFor,
       });
       await respondAuthorResult(req, res, rootDir, { retryGoal: goal, autoAssign: body.autoAssign === true }, result);
     } catch (e) {
