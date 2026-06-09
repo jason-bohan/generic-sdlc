@@ -19,6 +19,9 @@ export interface AuthoredStory {
   sourceFindingId?: string;
   /** Resolved routing target (specialist agent id) — set by the caller before createStory. */
   preferredAgent?: string;
+  /** Board ordering — set by the caller before createStory. Lower sorts earlier, so a more
+   *  severe finding gets a smaller value and is worked first by the orchestrator's assign-loop. */
+  sortOrder?: number;
 }
 
 export interface ModelCall {
@@ -64,6 +67,16 @@ export function selectFindingsForAuthoring(findings: FindingSummary[], findingId
 const SEVERITY_RANK: Record<string, number> = { critical: 3, high: 2, medium: 1, low: 0 };
 export function severityRank(s?: string): number {
   return SEVERITY_RANK[(s ?? '').toLowerCase()] ?? 0;
+}
+
+/**
+ * Board sortOrder for a finding-authored story, derived from severity. The assign-loop
+ * sorts backlog by sortOrder ascending, so a more severe finding gets a smaller value and
+ * is picked up first: critical(-3) → high(-2) → medium(-1) → low/unknown(0). Negative so
+ * severe findings sort ahead of default (sortOrder 0) backlog.
+ */
+export function sortOrderForSeverity(severity?: string): number {
+  return -severityRank(severity) || 0; // `|| 0` normalizes -0 → 0
 }
 
 /**
@@ -166,6 +179,9 @@ export async function authorStories(opts: {
   /** Resolve the routing target for a story (e.g. the finding's suggestedOwner).
    *  Applied per story before createStory so authored stories route deterministically. */
   preferredAgentFor?: (s: AuthoredStory) => string | undefined;
+  /** Resolve the board ordering for a story (e.g. from the finding's severity).
+   *  Applied per story before createStory so severe findings are worked first. */
+  sortOrderFor?: (s: AuthoredStory) => number | undefined;
 }): Promise<AuthorResult> {
   const goal = opts.goal?.trim();
   if (!goal) return { ok: false, reason: 'goal is required', authored: [] };
@@ -187,6 +203,7 @@ export async function authorStories(opts: {
     ...s,
     sourceFindingId: opts.sourceFindingIdFor ? opts.sourceFindingIdFor(s) : s.sourceFindingId,
     preferredAgent: opts.preferredAgentFor ? opts.preferredAgentFor(s) : s.preferredAgent,
+    sortOrder: opts.sortOrderFor ? opts.sortOrderFor(s) : s.sortOrder,
   }));
   return { ok: true, authored };
 }
