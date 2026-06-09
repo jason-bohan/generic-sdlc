@@ -29,6 +29,7 @@ import { maybeTriggerVerification } from './verify-trigger';
 import { startAutoFinetune } from './autoFinetune';
 import { startBuildGateDriver } from './build-gate-driver';
 import { startDepBabysitter } from './dep-babysitter';
+import { startOrchestratorLoop } from './orchestrator-loop';
 import { isLoopActive } from './loop-control';
 import { getActiveProject } from './project-config';
 import { isMockExternalMode } from './external-mode';
@@ -180,6 +181,9 @@ server.listen(PORT, () => {
         // Auto-merge safe (non-major, CI-green) Renovate/Dependabot PRs across the framework +
         // target repos. Gated internally to loop-active + autonomous; never touches majors.
         startDepBabysitter(ROOT_DIR, CONFIG_FILE);
+        // Continuous autonomy: periodically tick the assign-loop so the orchestrator keeps
+        // picking up backlog as specialists free. Gated to loop-active + autonomous.
+        startOrchestratorLoop(ROOT_DIR, PORT);
     }
 
     // Seed the orchestrator status into the SSE stream so the FleetView
