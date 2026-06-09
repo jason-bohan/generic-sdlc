@@ -5,6 +5,8 @@ import { mkdtempSync } from 'fs';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
     createLocalStory,
+    updateLocalStory,
+    findLocalStory,
     loadLocalPlanningState,
     LOCAL_STORY_PREFIX,
     LOCAL_TASK_PREFIX,
@@ -57,5 +59,23 @@ describe('local planning default state', () => {
         expect(story.number).toBe(`${LOCAL_STORY_PREFIX}0011`);
         expect(story.id).toBe(`LocalStory:${LOCAL_STORY_PREFIX}0011`);
         expect(LOCAL_TASK_PREFIX).toBe('LOCAL-TK-');
+    });
+});
+
+describe('updateLocalStory sourceFindingId', () => {
+    it('sets sourceFindingId on a story that lacks one (backfill), and preserves it across unrelated updates', () => {
+        const root = tempRoot();
+        const story = createLocalStory(root, { name: 'Add deterministic money-path tests' });
+        expect(story.sourceFindingId).toBeUndefined();
+
+        // Backfill the link.
+        updateLocalStory(root, story.number, { sourceFindingId: 'financial-control:aiqa:Money path tests:evidence' });
+        expect(findLocalStory(root, story.number)?.sourceFindingId).toBe('financial-control:aiqa:Money path tests:evidence');
+
+        // An unrelated update must not wipe the link.
+        updateLocalStory(root, story.number, { status: 'In Progress' });
+        const after = findLocalStory(root, story.number);
+        expect(after?.status).toBe('In Progress');
+        expect(after?.sourceFindingId).toBe('financial-control:aiqa:Money path tests:evidence');
     });
 });
