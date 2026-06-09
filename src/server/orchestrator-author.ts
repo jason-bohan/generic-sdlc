@@ -22,6 +22,9 @@ export interface AuthoredStory {
   /** Board ordering — set by the caller before createStory. Lower sorts earlier, so a more
    *  severe finding gets a smaller value and is worked first by the orchestrator's assign-loop. */
   sortOrder?: number;
+  /** When true, the story stays in the local planner only (no external tracker mirror) —
+   *  e.g. a framework self-audit finding that doesn't belong in the target project's planner. */
+  localOnly?: boolean;
 }
 
 export interface ModelCall {
@@ -51,6 +54,8 @@ export interface FindingSummary {
   evidence?: string;
   severity?: string;
   suggestedOwner?: string;
+  /** Which project/repo the finding is about — drives which planner an authored fix lands in. */
+  project?: string;
 }
 
 /**
@@ -182,6 +187,9 @@ export async function authorStories(opts: {
   /** Resolve the board ordering for a story (e.g. from the finding's severity).
    *  Applied per story before createStory so severe findings are worked first. */
   sortOrderFor?: (s: AuthoredStory) => number | undefined;
+  /** Decide whether a story stays local-only (no external mirror), e.g. a finding whose
+   *  project isn't the active external-tracked project. Applied per story. */
+  localOnlyFor?: (s: AuthoredStory) => boolean;
 }): Promise<AuthorResult> {
   const goal = opts.goal?.trim();
   if (!goal) return { ok: false, reason: 'goal is required', authored: [] };
@@ -204,6 +212,7 @@ export async function authorStories(opts: {
     sourceFindingId: opts.sourceFindingIdFor ? opts.sourceFindingIdFor(s) : s.sourceFindingId,
     preferredAgent: opts.preferredAgentFor ? opts.preferredAgentFor(s) : s.preferredAgent,
     sortOrder: opts.sortOrderFor ? opts.sortOrderFor(s) : s.sortOrder,
+    localOnly: opts.localOnlyFor ? opts.localOnlyFor(s) : s.localOnly,
   }));
   return { ok: true, authored };
 }

@@ -242,4 +242,21 @@ describe('finding attribution (bulk linkage)', () => {
     });
     expect(created.map((s) => s.sortOrder)).toEqual([-2, 0, undefined]);
   });
+
+  it('authorStories applies localOnlyFor to each created story (planner routing)', async () => {
+    const created: AuthoredStory[] = [];
+    const createStory = (s: AuthoredStory) => { created.push(s); return { number: s.name, name: s.name }; };
+    // ref 1 = framework finding (local-only), ref 2 = active-project finding (mirror)
+    const localByRef: Record<number, boolean> = { 1: true, 2: false };
+    await authorStories({
+      goal: 'g', projectKey: 'x',
+      callModel: async () => ({ ok: true, text: JSON.stringify([
+        { name: 'S1', findingRef: 1 },
+        { name: 'S2', findingRef: 2 },
+      ]) }),
+      createStory,
+      localOnlyFor: (s) => (s.findingRef ? localByRef[s.findingRef] : true),
+    });
+    expect(created.map((s) => s.localOnly)).toEqual([true, false]);
+  });
 });
