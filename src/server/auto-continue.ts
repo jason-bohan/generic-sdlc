@@ -46,6 +46,9 @@ export function maybeAutoContinueAgent(rootDir: string, port: number, configFile
     if (NEVER_AUTO_CONTINUE_PHASES.has(phase)) return;
     if (!status.storyNumber) return;
 
+    // Don't auto-continue a paused agent — the user must manually Continue.
+    if (status.paused) return;
+
     // Only auto-continue spawn-based drivers (opencode, aider, goose, generic).
     // Loop drivers auto-resume internally via registry events.
     const driver = resolveAgentDriverConfig(agentId, configFile);

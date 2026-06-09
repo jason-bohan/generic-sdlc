@@ -9,7 +9,8 @@ import {
 import { claudePrint } from '../claude-print';
 import { computeRetryDelayMs, scheduleRetry, executeRetryAction } from '../orchestrator-retry';
 import { smartChat } from '../brainModel';
-import { createLocalStory } from '../local-planning';
+import { createLocalStory, updateLocalStory } from '../local-planning';
+import { resolveProjectTracker } from '../providers';
 import { getActiveProjectName } from '../project-config';
 
 const ROUTING_HINT_FIELDS = new Set(['backend', 'frontend', 'qa']);
@@ -33,6 +34,25 @@ function makeAuthoringDeps(rootDir: string, configFile: string) {
       status: 'Backlog',
       ...hint,
     });
+    // Fire-and-forget: push to external tracker (Linear/GitHub) if configured.
+    const pmProvider = (process.env.PM_PROVIDER ?? '').toLowerCase();
+    if (pmProvider === 'linear' || pmProvider === 'github') {
+      resolveProjectTracker(rootDir, configFile).then(tracker => {
+        if (tracker) {
+          tracker.createWorkItem({
+            title: s.name,
+            description: s.description,
+            type: 'story',
+            acceptanceCriteria: s.acceptanceCriteria,
+            estimate: s.estimate ?? null,
+          }).then(ext => {
+            if (ext.number) {
+              updateLocalStory(rootDir, story.number, { externalRef: ext.number, externalUrl: ext.url });
+            }
+          }).catch(() => {});
+        }
+      }).catch(() => {});
+    }
     return { number: story.number, name: story.name };
   };
   return { callModel, createStory };

@@ -32,7 +32,7 @@ import {
     type StatusChangeEvent,
 } from '../server/status-events';
 
-const AGENT_IDS = ['frontend', 'backend', 'qa', 'ux', 'reviewer', 'devops', 'aiqa'];
+const AGENT_IDS = ['frontend', 'backend', 'qa', 'ux', 'reviewer', 'devops', 'aiqa', 'orchestrator'];
 
 // Ensure each test starts and ends with a clean watcher state and clear mock history.
 beforeEach(() => {
