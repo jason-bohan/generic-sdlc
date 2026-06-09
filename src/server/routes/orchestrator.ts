@@ -34,24 +34,30 @@ function makeAuthoringDeps(rootDir: string, configFile: string) {
       status: 'Backlog',
       ...hint,
     });
-    // Fire-and-forget: push to external tracker (Linear/GitHub) if configured.
+    // Fire-and-forget mirror to the external tracker (Linear/GitHub) if configured.
+    // Non-blocking, but failures are LOGGED, never swallowed: a story that lands only
+    // in the local store while the live tracker is the source of truth is invisible to
+    // the assign-loop, so a silent mirror failure must not look like success.
     const pmProvider = (process.env.PM_PROVIDER ?? '').toLowerCase();
     if (pmProvider === 'linear' || pmProvider === 'github') {
+      const warn = (e: unknown) =>
+        console.warn(`[author] mirror to ${pmProvider} failed for ${story.number} (${s.name}) — story is local-only: ${e instanceof Error ? e.message : String(e)}`);
       resolveProjectTracker(rootDir, configFile).then(tracker => {
-        if (tracker) {
-          tracker.createWorkItem({
-            title: s.name,
-            description: s.description,
-            type: 'story',
-            acceptanceCriteria: s.acceptanceCriteria,
-            estimate: s.estimate ?? null,
-          }).then(ext => {
-            if (ext.number) {
-              updateLocalStory(rootDir, story.number, { externalRef: ext.number, externalUrl: ext.url });
-            }
-          }).catch(() => {});
-        }
-      }).catch(() => {});
+        if (!tracker) { warn('no tracker resolved'); return; }
+        return tracker.createWorkItem({
+          title: s.name,
+          description: s.description,
+          type: 'story',
+          acceptanceCriteria: s.acceptanceCriteria,
+          estimate: s.estimate ?? null,
+        }).then(ext => {
+          if (ext.number) {
+            updateLocalStory(rootDir, story.number, { externalRef: ext.number, externalUrl: ext.url });
+          } else {
+            warn('tracker returned no issue number');
+          }
+        });
+      }).catch(warn);
     }
     return { number: story.number, name: story.name };
   };
