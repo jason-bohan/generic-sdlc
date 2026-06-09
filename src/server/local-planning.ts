@@ -354,6 +354,7 @@ export function updateLocalStory(rootDir: string, storyNumber: string, input: Pa
         owner: input.owner ?? story.owner,
         externalRef: input.externalRef ?? story.externalRef,
         externalUrl: input.externalUrl ?? story.externalUrl,
+        sourceFindingId: input.sourceFindingId ?? story.sourceFindingId,
         updatedAt: new Date().toISOString(),
     });
     saveLocalPlanningState(rootDir, state);
