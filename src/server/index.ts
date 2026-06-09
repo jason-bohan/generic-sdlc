@@ -28,6 +28,7 @@ import { maybeHandoffReviewVerdict } from './review-handoff';
 import { maybeTriggerVerification } from './verify-trigger';
 import { startAutoFinetune } from './autoFinetune';
 import { startBuildGateDriver } from './build-gate-driver';
+import { startDepBabysitter } from './dep-babysitter';
 import { isLoopActive } from './loop-control';
 import { getActiveProject } from './project-config';
 import { isMockExternalMode } from './external-mode';
@@ -176,6 +177,9 @@ server.listen(PORT, () => {
         // Deterministically drive the GitHub build gate so a slow devops agent can't strand a
         // CI-green, mergeable PR at pending-build (autonomous-gated internally).
         startBuildGateDriver(ROOT_DIR, CONFIG_FILE);
+        // Auto-merge safe (non-major, CI-green) Renovate/Dependabot PRs across the framework +
+        // target repos. Gated internally to loop-active + autonomous; never touches majors.
+        startDepBabysitter(ROOT_DIR, CONFIG_FILE);
     }
 
     // Seed the orchestrator status into the SSE stream so the FleetView
