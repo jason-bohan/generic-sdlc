@@ -27,6 +27,7 @@ import { maybeAutoContinueAgent } from './auto-continue';
 import { maybeHandoffReviewVerdict } from './review-handoff';
 import { maybeTriggerVerification } from './verify-trigger';
 import { startAutoFinetune } from './autoFinetune';
+import { startBuildGateDriver } from './build-gate-driver';
 import { getActiveProject } from './project-config';
 import { isMockExternalMode } from './external-mode';
 import { serverLog as log } from './logger';
@@ -170,6 +171,9 @@ server.listen(PORT, () => {
             catch (e) { log.warn(`[agent-stop] ${agentId}: ${e instanceof Error ? e.message : String(e)}`); }
         });
         startAutoFinetune(ROOT_DIR);
+        // Deterministically drive the GitHub build gate so a slow devops agent can't strand a
+        // CI-green, mergeable PR at pending-build (autonomous-gated internally).
+        startBuildGateDriver(ROOT_DIR, CONFIG_FILE);
     }
 
     // Seed the orchestrator status into the SSE stream so the FleetView
