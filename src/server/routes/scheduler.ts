@@ -433,13 +433,15 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
             // Auto-populate story name/description from local planning state if not provided.
             let storyName = rawStoryName ? String(rawStoryName).trim() : null;
             let storyDescription = rawStoryDesc ? String(rawStoryDesc).trim() : null;
-            if (!storyName && isLocalStoryNumber(storyNumber)) {
+            let preferredAgent: string | null = null;
+            if (isLocalStoryNumber(storyNumber)) {
                 try {
-                    const planningState = parseJsonUtf8File(resolve(rootDir, '.sdlc-framework', 'local-planning', 'state.json')) as { stories?: Array<{ number: string; name?: string; description?: string }> };
+                    const planningState = parseJsonUtf8File(resolve(rootDir, '.sdlc-framework', 'local-planning', 'state.json')) as { stories?: Array<{ number: string; name?: string; description?: string; preferredAgent?: string }> };
                     const match = planningState.stories?.find((s: { number: string }) => s.number === storyNumber);
                     if (match) {
                         if (!storyName) storyName = match.name?.replace(/<[^>]*>/g, '').trim() || null;
                         if (!storyDescription) storyDescription = match.description?.replace(/<[^>]*>/g, '').trim() || null;
+                        if (!preferredAgent) preferredAgent = match.preferredAgent || null;
                     }
                 } catch { /* non-fatal — proceed with null metadata */ }
             }
@@ -448,7 +450,7 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
             // invalid/generic agentId (e.g. "developer") routes to the right specialist
             // instead of silently defaulting to frontend.
             const agentId = asSdlcAgentId(String(requestedAgentId).trim()) ?? await resolveStoryAgent(
-                { number: storyNumber, name: storyName ?? null, description: storyDescription ?? null, frontend: frontend ?? null, backend: backend ?? null, qa: qa ?? null },
+                { number: storyNumber, name: storyName ?? null, description: storyDescription ?? null, frontend: frontend ?? null, backend: backend ?? null, qa: qa ?? null, preferredAgent },
                 { configPath: configFile },
             );
             const config = getSchedulerConfig(rootDir);

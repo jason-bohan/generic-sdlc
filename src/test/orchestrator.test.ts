@@ -231,6 +231,29 @@ describe('orchestrator-lite', () => {
         expect(agent).toBe('qa');
     });
 
+    it('resolveStoryAgent honors a valid preferredAgent over classification (no triage)', async () => {
+        let called = false;
+        // A clearly-backend story, but preferredAgent=devops wins deterministically.
+        const agent = await resolveStoryAgent(
+            { number: 'x', name: 'Add a GET /health endpoint', description: 'a server route', preferredAgent: 'devops' },
+            { chat: async () => { called = true; return 'frontend'; } },
+        );
+        expect(agent).toBe('devops');
+        expect(called).toBe(false);
+    });
+
+    it('resolveStoryAgent ignores an invalid/non-implementation preferredAgent and falls back', async () => {
+        // 'reviewer' is not an implementation owner; 'bogus' is not an agent — both fall back.
+        expect(await resolveStoryAgent(
+            { number: 'x', name: 'Add a GET /health endpoint', description: 'a server route', preferredAgent: 'reviewer' },
+            { chat: async () => 'frontend' },
+        )).toBe('backend');
+        expect(await resolveStoryAgent(
+            { number: 'x', name: 'Add a GET /health endpoint', description: 'a server route', preferredAgent: 'bogus' },
+            { chat: async () => 'frontend' },
+        )).toBe('backend');
+    });
+
     it('startWorkflow with assignedAgentId on full-stack story removes agent from collaborators', () => {
         // Dashboard assigns directly to frontend on a story that classifies as full-stack
         // Frontend should be primary, NOT also listed as its own collaborator

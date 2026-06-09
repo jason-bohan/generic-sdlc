@@ -25,6 +25,8 @@ export interface LocalPlanningStory {
     externalUrl?: string;
     /** When the story was authored from an AI-QA finding, the finding's stable id — links the story back to its finding. */
     sourceFindingId?: string;
+    /** Explicit routing target (a specialist agent id) — routing honors it over classification. */
+    preferredAgent?: string;
     deleted?: boolean;
     sortOrder?: number;
     createdAt: string;
@@ -278,6 +280,7 @@ export function createLocalStory(rootDir: string, input: Partial<LocalPlanningSt
         externalRef: input.externalRef,
         externalUrl: input.externalUrl,
         sourceFindingId: input.sourceFindingId,
+        preferredAgent: input.preferredAgent,
         createdAt: now,
         updatedAt: now,
     };
@@ -355,6 +358,7 @@ export function updateLocalStory(rootDir: string, storyNumber: string, input: Pa
         externalRef: input.externalRef ?? story.externalRef,
         externalUrl: input.externalUrl ?? story.externalUrl,
         sourceFindingId: input.sourceFindingId ?? story.sourceFindingId,
+        preferredAgent: input.preferredAgent ?? story.preferredAgent,
         updatedAt: new Date().toISOString(),
     });
     saveLocalPlanningState(rootDir, state);

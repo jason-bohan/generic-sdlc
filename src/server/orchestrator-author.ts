@@ -17,6 +17,8 @@ export interface AuthoredStory {
   findingRef?: number;
   /** Resolved finding id this story links to — set by the caller before createStory. */
   sourceFindingId?: string;
+  /** Resolved routing target (specialist agent id) — set by the caller before createStory. */
+  preferredAgent?: string;
 }
 
 export interface ModelCall {
@@ -161,6 +163,9 @@ export async function authorStories(opts: {
   /** Resolve the finding a story links to (e.g. via its findingRef). Applied per
    *  story before createStory so bulk-authored stories link back to findings. */
   sourceFindingIdFor?: (s: AuthoredStory) => string | undefined;
+  /** Resolve the routing target for a story (e.g. the finding's suggestedOwner).
+   *  Applied per story before createStory so authored stories route deterministically. */
+  preferredAgentFor?: (s: AuthoredStory) => string | undefined;
 }): Promise<AuthorResult> {
   const goal = opts.goal?.trim();
   if (!goal) return { ok: false, reason: 'goal is required', authored: [] };
@@ -181,6 +186,7 @@ export async function authorStories(opts: {
   const authored = stories.map((s) => opts.createStory({
     ...s,
     sourceFindingId: opts.sourceFindingIdFor ? opts.sourceFindingIdFor(s) : s.sourceFindingId,
+    preferredAgent: opts.preferredAgentFor ? opts.preferredAgentFor(s) : s.preferredAgent,
   }));
   return { ok: true, authored };
 }
