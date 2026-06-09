@@ -215,11 +215,11 @@ export class LinearProjectTracker implements IProjectTracker {
     }
 
     async createWorkItem(fields: Partial<WorkItem>): Promise<WorkItem> {
-        const teamId = fields.teamId ?? process.env.LINEAR_TEAM_ID;
+        let teamId = fields.teamId ?? process.env.LINEAR_TEAM_ID;
         if (!teamId) {
             const teams = await this.getTeams();
             if (!teams.length) throw new Error('No Linear teams found and LINEAR_TEAM_ID is not set');
-            fields.teamId = teams[0].id;
+            teamId = teams[0].id;
         }
 
         const result = await this.gql<{
@@ -242,7 +242,7 @@ export class LinearProjectTracker implements IProjectTracker {
             }
         `, {
             input: {
-                teamId: fields.teamId,
+                teamId,
                 title: fields.title ?? 'Untitled',
                 description: fields.description ?? '',
             },

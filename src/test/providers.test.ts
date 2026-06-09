@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { resolve } from 'path';
 import { mkdirSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
@@ -9,6 +9,7 @@ import {
     MockNotifications,
     MockProjectTracker,
 } from '../server/providers';
+import { LinearProjectTracker } from '../server/providers/linear';
 
 const TMP = resolve(tmpdir(), `providers-test-${Date.now()}`);
 
@@ -161,5 +162,36 @@ describe('resolveProjectTracker', () => {
         process.env.PM_PROVIDER = 'mock';
         const tracker = await resolveProjectTracker(TMP, resolve(TMP, '.sdlc-framework.config.json'));
         expect(tracker.providerName).toBe('mock');
+    });
+});
+
+// ── LinearProjectTracker.createWorkItem — teamId resolution ─────────────────
+describe('LinearProjectTracker.createWorkItem', () => {
+    afterEach(() => {
+        vi.restoreAllMocks();
+        delete process.env.LINEAR_TEAM_ID;
+    });
+
+    it('sends the env LINEAR_TEAM_ID in the mutation input (regression: was undefined)', async () => {
+        // Bug: when teamId came from process.env (not fields), the mutation sent
+        // teamId: undefined → Linear 400 → swallowed mirror → local-only stories.
+        process.env.LINEAR_TEAM_ID = 'team-123';
+        let sentInput: Record<string, unknown> | undefined;
+        vi.spyOn(globalThis, 'fetch').mockImplementation(async (_url, init) => {
+            sentInput = (JSON.parse(String((init as RequestInit).body)).variables as { input: Record<string, unknown> }).input;
+            return new Response(JSON.stringify({
+                data: { issueCreate: { success: true, issue: {
+                    id: 'i1', identifier: 'UNW-200', number: 200, title: 'X', url: 'http://x',
+                    description: '', state: { name: 'Backlog' }, team: { id: 'team-123', name: 'T' },
+                    priority: 3, labels: { nodes: [] },
+                } } },
+            }), { status: 200 });
+        });
+
+        const tracker = new LinearProjectTracker('key');
+        const item = await tracker.createWorkItem({ title: 'Mirror me', description: 'd' });
+
+        expect(sentInput?.teamId).toBe('team-123');
+        expect(item.number).toBe('UNW-200');
     });
 });
