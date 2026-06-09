@@ -29,13 +29,18 @@ function versionPairs(title: string, body: string): Array<[string, string]> {
   // Dependabot: "Bump <pkg> from 1.2.3 to 1.3.0" (also "Update ... from X to Y")
   const t = title.match(/\bfrom\s+([\w.^~=v-]+)\s+to\s+([\w.^~=v-]+)/i);
   if (t) pairs.push([t[1], t[2]]);
-  // Renovate: parse ONLY the "updates" table at the very top — the body's later Release Notes /
-  // changelog sections are full of unrelated `x.y.z → a.b.c` version mentions that must not be
-  // read as the bump. Truncate at the first horizontal rule / heading / release-notes marker.
-  const tableRegion = (body || '').split(/\n\s*(?:-{3,}|#{1,6}\s|Release Notes\b|Configuration\b)/i)[0];
-  const re = /`(={0,2}[0-9v][^`]*)`\s*(?:→|-&gt;|->)\s*`(={0,2}[0-9v][^`]*)`/g;
+  // Parse ONLY the top of the body — the later Release Notes / changelog sections are full of
+  // unrelated version mentions that must not be read as the bump. Truncate at the first rule /
+  // heading / release-notes marker.
+  const top = (body || '').split(/\n\s*(?:-{3,}|#{1,6}\s|Release Notes\b|Changelog\b|Configuration\b)/i)[0];
   let m: RegExpExecArray | null;
-  while ((m = re.exec(tableRegion)) !== null) pairs.push([m[1], m[2]]);
+  // Renovate update table: `4.8.5` → `5.0.0`, `==4.8.5` → `==5.0.0`
+  const reRenovate = /`(={0,2}[0-9v][^`]*)`\s*(?:→|-&gt;|->)\s*`(={0,2}[0-9v][^`]*)`/g;
+  while ((m = reRenovate.exec(top)) !== null) pairs.push([m[1], m[2]]);
+  // Dependabot body, including GROUPED PRs: "Updates `vite` from 5.4.21 to 8.0.16",
+  // "Bumps `esbuild` from 0.21.0 to 0.25.0" — one line per package.
+  const reDependabot = /(?:Updates?|Bumps?)\s+`?[^`\s]+`?\s+from\s+([\w.^~=v-]+)\s+to\s+([\w.^~=v-]+)/gi;
+  while ((m = reDependabot.exec(top)) !== null) pairs.push([m[1], m[2]]);
   return pairs;
 }
 
@@ -97,9 +102,16 @@ export function babysitDepPRs(rootDir: string, configFile: string): BabysitResul
       const tag = `${repo}#${pr.number}`;
       const cls = classifyDepPr(pr.title ?? '', pr.body ?? '');
       if (cls !== 'safe') { result.skipped.push({ pr: tag, reason: cls }); continue; }
+      // `gh pr list` returns mergeStateStatus lazily (UNKNOWN until a PR is viewed). Force the
+      // compute with `gh pr view` so an idle-but-mergeable PR isn't skipped forever.
+      let state = pr.mergeStateStatus;
+      if (state === 'UNKNOWN') {
+        const v = gh(['pr', 'view', String(pr.number), '-R', repo, '--json', 'mergeStateStatus', '-q', '.mergeStateStatus']);
+        if (v.ok && v.out) state = v.out.trim();
+      }
       // Only merge a CLEAN PR (mergeable + green + up to date). BEHIND/BLOCKED/CONFLICTING are
       // left for the bot to rebase and a later pass to retry — avoids lockfile merge churn.
-      if (pr.mergeStateStatus !== 'CLEAN') { result.skipped.push({ pr: tag, reason: `not clean (${pr.mergeStateStatus})` }); continue; }
+      if (state !== 'CLEAN') { result.skipped.push({ pr: tag, reason: `not clean (${state})` }); continue; }
       const merged = gh(['pr', 'merge', String(pr.number), '-R', repo, '--squash', '--delete-branch']);
       if (merged.ok) result.merged.push(tag);
       else result.skipped.push({ pr: tag, reason: `merge failed: ${merged.out.slice(0, 120)}` });

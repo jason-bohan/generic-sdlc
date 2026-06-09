@@ -25,8 +25,17 @@ describe('classifyDepPr', () => {
     expect(classifyDepPr('Bump foo from 0.9.0 to 1.0.0', '')).toBe('major');
   });
 
-  it('grouped/unparseable updates are unknown (not auto-merged)', () => {
-    expect(classifyDepPr('Bump the npm group with 3 updates', '')).toBe('unknown');
+  it('grouped Dependabot PRs: versions parsed from the body (incl. a major)', () => {
+    // real-shape grouped Dependabot body — versions are in the body, not the title
+    const body = 'Bumps [vite] and [@vitejs/plugin-react]. These needed to be updated together.\nUpdates `vite` from 5.4.21 to 8.0.16\nUpdates `@vitejs/plugin-react` from 4.0.0 to 4.3.0';
+    expect(classifyDepPr('chore(deps-dev): bump vite and @vitejs/plugin-react', body)).toBe('major');
+
+    const safeBody = 'Updates `esbuild` from 0.21.0 to 0.21.5\nUpdates `vite` from 5.4.0 to 5.4.21';
+    expect(classifyDepPr('chore(deps): bump esbuild and vite', safeBody)).toBe('safe');
+  });
+
+  it('truly unparseable updates are unknown (not auto-merged)', () => {
+    expect(classifyDepPr('Bump the npm group with 3 updates', 'just a description, no versions')).toBe('unknown');
     expect(classifyDepPr('chore(deps): update something', 'no versions here')).toBe('unknown');
   });
 
