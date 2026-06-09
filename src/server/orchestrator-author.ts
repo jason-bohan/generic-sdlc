@@ -12,6 +12,11 @@ export interface AuthoredStory {
   estimate?: number;
   /** Optional routing hint the model may emit (backend/frontend/qa/ux). */
   agentHint?: string;
+  /** 1-based index of the finding this story addresses, as numbered in the goal.
+   *  The model emits it for findings-based authoring so each story links back. */
+  findingRef?: number;
+  /** Resolved finding id this story links to — set by the caller before createStory. */
+  sourceFindingId?: string;
 }
 
 export interface ModelCall {
@@ -60,14 +65,24 @@ export function severityRank(s?: string): number {
 }
 
 /**
- * Frame the most-severe QA findings as an authoring goal (most severe first,
- * capped). The orchestrator then authors one fix story per finding. Returns ''
- * when there are no findings.
+ * Pure: the most-severe findings, capped — the exact set (and order) framed into
+ * the authoring goal. The route reuses this to build the same 1-based index→id map
+ * the goal numbers findings by, so authored stories can be linked back.
  */
-export function buildGoalFromFindings(findings: FindingSummary[], max: number = 5): string {
-  const top = [...findings]
+export function topFindingsForGoal(findings: FindingSummary[], max: number = 5): FindingSummary[] {
+  return [...findings]
     .sort((a, b) => severityRank(b.severity) - severityRank(a.severity))
     .slice(0, Math.max(1, max));
+}
+
+/**
+ * Frame the most-severe QA findings as an authoring goal (most severe first,
+ * capped). The orchestrator then authors one fix story per finding. Returns ''
+ * when there are no findings. Each finding is numbered so the model can attribute
+ * each story to its finding via `findingRef`.
+ */
+export function buildGoalFromFindings(findings: FindingSummary[], max: number = 5): string {
+  const top = topFindingsForGoal(findings, max);
   if (top.length === 0) return '';
   const lines = top.map((f, i) =>
     `${i + 1}. [${f.severity ?? 'finding'}] ${f.title}${f.evidence ? ` — ${f.evidence}` : ''}${f.suggestedOwner ? ` (suggested owner: ${f.suggestedOwner})` : ''}`);
@@ -75,6 +90,8 @@ export function buildGoalFromFindings(findings: FindingSummary[], max: number = 
     'These are findings from the AI-QA audit of the codebase. Author one focused, independently-mergeable fix story per finding below (a single change each):',
     '',
     ...lines,
+    '',
+    'On each story you author, set "findingRef" to the number of the finding above that it addresses.',
   ].join('\n');
 }
 
@@ -124,6 +141,7 @@ export function parseAuthoredStories(raw: string): AuthoredStory[] {
       acceptanceCriteria: typeof o.acceptanceCriteria === 'string' ? o.acceptanceCriteria.trim() : undefined,
       estimate: typeof o.estimate === 'number' && Number.isFinite(o.estimate) ? o.estimate : undefined,
       agentHint: typeof o.agentHint === 'string' ? o.agentHint.trim().toLowerCase() : undefined,
+      findingRef: typeof o.findingRef === 'number' && Number.isFinite(o.findingRef) ? o.findingRef : undefined,
     });
   }
   return stories;
@@ -140,6 +158,9 @@ export async function authorStories(opts: {
   callModel: (prompt: string) => Promise<ModelCall>;
   createStory: (s: AuthoredStory) => { number: string; name: string };
   maxStories?: number;
+  /** Resolve the finding a story links to (e.g. via its findingRef). Applied per
+   *  story before createStory so bulk-authored stories link back to findings. */
+  sourceFindingIdFor?: (s: AuthoredStory) => string | undefined;
 }): Promise<AuthorResult> {
   const goal = opts.goal?.trim();
   if (!goal) return { ok: false, reason: 'goal is required', authored: [] };
@@ -157,6 +178,9 @@ export async function authorStories(opts: {
     return { ok: false, reason: 'model output contained no valid stories', authored: [] };
   }
 
-  const authored = stories.map((s) => opts.createStory(s));
+  const authored = stories.map((s) => opts.createStory({
+    ...s,
+    sourceFindingId: opts.sourceFindingIdFor ? opts.sourceFindingIdFor(s) : s.sourceFindingId,
+  }));
   return { ok: true, authored };
 }

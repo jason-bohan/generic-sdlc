@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   parseAuthoredStories, authorStories, buildAuthoringPrompt,
-  buildGoalFromFindings, severityRank, selectFindingsForAuthoring,
-  type ModelCall, type FindingSummary,
+  buildGoalFromFindings, severityRank, selectFindingsForAuthoring, topFindingsForGoal,
+  type AuthoredStory, type ModelCall, type FindingSummary,
 } from '../server/orchestrator-author';
 
 describe('parseAuthoredStories', () => {
@@ -152,5 +152,50 @@ describe('selectFindingsForAuthoring', () => {
     expect(selectFindingsForAuthoring(findings, ['zzz'])).toHaveLength(0);
     const noId: FindingSummary[] = [{ title: 'no id' }];
     expect(selectFindingsForAuthoring(noId, ['anything'])).toHaveLength(0);
+  });
+});
+
+describe('finding attribution (bulk linkage)', () => {
+  it('parseAuthoredStories parses a numeric findingRef (ignores non-numeric)', () => {
+    const raw = JSON.stringify([
+      { name: 'A', findingRef: 2 },
+      { name: 'B', findingRef: 'nope' },
+      { name: 'C' },
+    ]);
+    const out = parseAuthoredStories(raw);
+    expect(out[0].findingRef).toBe(2);
+    expect(out[1].findingRef).toBeUndefined();
+    expect(out[2].findingRef).toBeUndefined();
+  });
+
+  it('buildGoalFromFindings asks the model to set findingRef', () => {
+    const goal = buildGoalFromFindings([{ id: 'x', title: 'T', severity: 'high' }]);
+    expect(goal).toMatch(/findingRef/);
+  });
+
+  it('topFindingsForGoal sorts by severity and caps', () => {
+    const fs: FindingSummary[] = [
+      { id: 'lo', title: 'lo', severity: 'low' },
+      { id: 'hi', title: 'hi', severity: 'high' },
+      { id: 'md', title: 'md', severity: 'medium' },
+    ];
+    expect(topFindingsForGoal(fs, 2).map((f) => f.id)).toEqual(['hi', 'md']);
+  });
+
+  it('authorStories applies sourceFindingIdFor to each created story', async () => {
+    const created: AuthoredStory[] = [];
+    const createStory = (s: AuthoredStory) => { created.push(s); return { number: s.name, name: s.name }; };
+    const idByRef: Record<number, string> = { 1: 'finding-A', 2: 'finding-B' };
+    await authorStories({
+      goal: 'g', projectKey: 'x',
+      callModel: async () => ({ ok: true, text: JSON.stringify([
+        { name: 'S1', findingRef: 1 },
+        { name: 'S2', findingRef: 2 },
+        { name: 'S3' }, // no ref → unlinked
+      ]) }),
+      createStory,
+      sourceFindingIdFor: (s) => (s.findingRef ? idByRef[s.findingRef] : undefined),
+    });
+    expect(created.map((s) => s.sourceFindingId)).toEqual(['finding-A', 'finding-B', undefined]);
   });
 });

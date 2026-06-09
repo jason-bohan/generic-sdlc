@@ -3,7 +3,7 @@ import { readBody, json } from '../router';
 import type { UseFn } from './types';
 import { runOrchestratorTick, type AssignmentPlanItem } from '../orchestrator-tick';
 import {
-  authorStories, buildGoalFromFindings, selectFindingsForAuthoring,
+  authorStories, buildGoalFromFindings, selectFindingsForAuthoring, topFindingsForGoal,
   type AuthoredStory, type ModelCall, type AuthorResult, type FindingSummary,
 } from '../orchestrator-author';
 import { claudePrint } from '../claude-print';
@@ -17,7 +17,7 @@ const ROUTING_HINT_FIELDS = new Set(['backend', 'frontend', 'qa']);
 
 /** Author on the Claude sub via `claude -p`, falling back to the brain only when
  *  the CLI is unavailable (NOT on a usage limit — that pauses & retries). */
-function makeAuthoringDeps(rootDir: string, configFile: string, sourceFindingId?: string) {
+function makeAuthoringDeps(rootDir: string, configFile: string) {
   const callModel = async (prompt: string): Promise<ModelCall> => {
     const c = await claudePrint(prompt, { timeoutMs: 120_000 });
     if (c.ok || c.limited) return c;
@@ -32,9 +32,9 @@ function makeAuthoringDeps(rootDir: string, configFile: string, sourceFindingId?
       acceptanceCriteria: s.acceptanceCriteria ?? '',
       estimate: s.estimate ?? null,
       status: 'Backlog',
-      // Tag the story with its origin finding so the AI-QA desk can show which
-      // findings already have an authored story (set only for single-finding authoring).
-      ...(sourceFindingId ? { sourceFindingId } : {}),
+      // Tag the story with its origin finding (resolved per-story by the caller) so
+      // the AI-QA desk can show which findings already have an authored story.
+      ...(s.sourceFindingId ? { sourceFindingId: s.sourceFindingId } : {}),
       ...hint,
     });
     // Fire-and-forget mirror to the external tracker (Linear/GitHub) if configured.
@@ -221,12 +221,19 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
       return;
     }
 
-    // Tag authored stories with their origin finding only when authoring from exactly
-    // one finding — a bulk run decomposes many findings into stories with no 1:1 mapping.
-    const sourceFindingId = findings.length === 1 ? findings[0].id : undefined;
+    // Link authored stories back to findings. The goal numbers findings 1..N (via
+    // topFindingsForGoal) and asks the model to set findingRef per story; resolve that
+    // index → finding id. A single-finding run links deterministically even if the model
+    // omits findingRef. Unattributed stories in a bulk run simply don't link.
+    const top = topFindingsForGoal(findings, maxStories);
+    const indexToFindingId = new Map<number, string | undefined>(top.map((f, i) => [i + 1, f.id]));
+    const sourceFindingIdFor = (s: AuthoredStory): string | undefined => {
+      if (typeof s.findingRef === 'number' && indexToFindingId.has(s.findingRef)) return indexToFindingId.get(s.findingRef);
+      return top.length === 1 ? top[0].id : undefined;
+    };
 
     const goal = buildGoalFromFindings(findings, maxStories);
-    const { callModel, createStory } = makeAuthoringDeps(rootDir, configFile, sourceFindingId);
+    const { callModel, createStory } = makeAuthoringDeps(rootDir, configFile);
     try {
       const result = await authorStories({
         goal,
@@ -234,6 +241,7 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
         callModel,
         createStory,
         maxStories: Math.min(maxStories, findings.length),
+        sourceFindingIdFor,
       });
       await respondAuthorResult(req, res, rootDir, { retryGoal: goal, autoAssign: body.autoAssign === true }, result);
     } catch (e) {
