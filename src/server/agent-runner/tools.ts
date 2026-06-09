@@ -1173,6 +1173,25 @@ export function autoMergePr(frameworkDir: string, configPath: string): AutoMerge
     const view = gh(['pr', 'view', String(prId), '-R', repo, '--json', 'mergeStateStatus,state']);
     let mergeState = '';
     try { mergeState = (JSON.parse(view.out) as { mergeStateStatus?: string }).mergeStateStatus ?? ''; } catch { /* */ }
+    // Conflict-resolution-gate: a DIRTY PR has merge conflicts that no merge verb can resolve.
+    // Instead of bailing, resolve the branch info and return a directive so the devops agent
+    // resolves the conflicts using run_command (git fetch + merge, resolve markers, push) and
+    // retries complete_phase — agents learn by doing.
+    if (mergeState === 'DIRTY') {
+        const prInfo = gh(['pr', 'view', String(prId), '-R', repo, '--json', 'headRefName,baseRefName']);
+        let headBranch = '';
+        let baseBranch = 'main';
+        try {
+            const parsed = JSON.parse(prInfo.out) as { headRefName?: string; baseRefName?: string };
+            headBranch = parsed.headRefName ?? '';
+            baseBranch = parsed.baseRefName ?? 'main';
+        } catch { /* use defaults */ }
+        return {
+            ok: false,
+            merged: false,
+            note: `DIRTY:PR #${prId} in ${repo} (${headBranch} → ${baseBranch}) — resolve conflicts via: git fetch origin && git checkout ${headBranch} && git merge origin/${baseBranch}, resolve conflict markers in affected files, git add/commit, git push origin ${headBranch}, then retry complete_phase`,
+        };
+    }
     if (mergeState === 'BEHIND') {
         const upd = gh(['pr', 'update-branch', String(prId), '-R', repo]);
         if (!upd.ok && !/up to date|no new commits/i.test(upd.out)) {
@@ -1235,6 +1254,26 @@ async function toolCompletePhase(
         if (!autoCommit.ok) {
             return `Cannot complete committing: ${autoCommit.note}. This phase requires real source changes to commit. If generating-code produced no changes, set next_phase to "generating-code" and implement the story — do not complete committing with an empty/junk commit.`;
         }
+        // Proactive merge: after committing, merge origin/main into the feature branch so the PR
+        // starts current and avoids BEHIND/DIRTY at merge time. If conflicts arise, the agent
+        // resolves them using run_command + edit_file — agents learn by doing.
+        try {
+            const branch = execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { encoding: 'utf8', timeout: 10_000, cwd: workspaceDir }).trim();
+            if (branch !== 'main' && branch !== 'HEAD') {
+                execFileSync('git', ['fetch', 'origin', 'main'], { encoding: 'utf8', timeout: 30_000, cwd: workspaceDir });
+                try {
+                    execFileSync('git', ['merge', 'origin/main'], { encoding: 'utf8', timeout: 30_000, cwd: workspaceDir });
+                    autoCommit.note += '; merged origin/main into branch';
+                } catch (mergeErr) {
+                    const mergeOutput = typeof mergeErr === 'object' && mergeErr !== null
+                        ? String((mergeErr as { stderr?: string; stdout?: string; message?: string }).stderr ?? (mergeErr as { message?: string }).message ?? '')
+                        : String(mergeErr);
+                    if (/conflict|CONFLICT|Merge conflict/i.test(mergeOutput)) {
+                        return `Proactive merge of origin/main into ${branch} produced conflicts. Use run_command to see conflicted files (git status), read_file to view conflict markers, edit_file to resolve them, then git add + git commit + call complete_phase with next_phase="committing" to retry.`;
+                    }
+                }
+            }
+        } catch { /* fetch/merge failed (no remote, no network) — non-fatal, proceed */ }
     }
 
     // PR-gate: the creating-pr phase pushes the branch and creates-or-reuses the PR
@@ -1282,8 +1321,13 @@ async function toolCompletePhase(
             }
             autoMerge = autoMergePr(frameworkDir, configPath);
             // A failed merge must NOT mark the story complete with an unmerged PR — hold at
-            // build-passed so it can be retried or merged by hand. (Auto-merge armed = ok.)
+            // build-passed so the agent can resolve conflicts or the merge can be retried.
+            // (Auto-merge armed = ok.)
             if (!autoMerge.ok) {
+                const isDirty = autoMerge.note.startsWith('DIRTY:');
+                if (isDirty) {
+                    return `[build-gate] ${autoMerge.note.slice(6)}\n\nYour workspace may have a different branch checked out. Use run_command to resolve the conflicts:\n1. git fetch origin\n2. git checkout BRANCH && git merge origin/main\n3. Use read_file to see conflict markers, edit_file to resolve them\n4. git add . && git commit -m "merge main into BRANCH"\n5. git push origin BRANCH\n6. Call complete_phase with next_phase="build-passed" to retry the merge\n\nDo not advance to complete until the PR merges successfully. (devops desk left at build-passed.)`;
+                }
                 return `[build-gate] Could not merge the PR: ${autoMerge.note}. Story NOT marked complete — resolve the merge, then re-run. (devops desk left at build-passed.)`;
             }
         }
