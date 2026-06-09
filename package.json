@@ -48,7 +48,7 @@
         "@ai-sdk/openai-compatible": "^2.0.48",
         "@react-three/drei": "^10.7.7",
         "@react-three/fiber": "^9.6.1",
-        "@scalar/express-api-reference": "^0.9.14",
+        "@scalar/express-api-reference": "^0.10.0",
         "@tanstack/react-router": "^1.170.4",
         "@tauri-apps/api": "^2.11.0",
         "@tauri-apps/plugin-notification": "^2.3.3",
