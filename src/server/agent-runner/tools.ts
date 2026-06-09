@@ -14,6 +14,7 @@ import { isGlobalStepMode, isAgentStepMode } from '../stepMode';
 import { ensureMockShims } from '../mock-mode-guard';
 import { emitStatusChange } from '../status-events';
 import { buildStatusBroadcast } from '../status-broadcast';
+import { asSdlcPhaseId } from '../status-normalize';
 import { normalizeReviewerVerdict, reviewerPhaseForVerdict } from '../reviewer-verdict';
 import { getSdlcPhaseContract, type SdlcPhaseId } from '../../shared/sdlcContracts';
 import type { ToolDefinition } from './types';
@@ -1453,6 +1454,24 @@ async function toolCompletePhase(
                 const prLine = autoPr ? `\n[pr-gate] ${autoPr.note}` : '';
                 const mergeLine = autoMerge ? `\n[build-gate] ${autoMerge.note}` : '';
                 return `PHASE_COMPLETE::${recordedPhase}\nHTTP ${res.status}${commitLine}${prLine}${mergeLine}\n${text.slice(0, 500)}`;
+            }
+            // Desk/DB desync recovery: the workflow has already advanced past the phase the
+            // agent is trying to complete (a prior complete_phase succeeded but the desk
+            // wasn't synced, so the agent re-ran the phase). The DB is authoritative — sync the
+            // desk to its phase and signal PHASE_COMPLETE so the runner advances to that phase
+            // instead of looping forever on 409s.
+            if (res.status === 409) {
+                const m = text.match(/Workflow item is in (\S+?),\s*not\b/i);
+                const actual = m ? asSdlcPhaseId(m[1]) : undefined;
+                if (actual) {
+                    try {
+                        const status = parseJsonUtf8File(statusFile) as Record<string, unknown>;
+                        status.currentPhase = actual;
+                        writeFileSync(statusFile, JSON.stringify(status, null, 2));
+                        emitStatusChange(agentId, buildStatusBroadcast(status, agentId, true, frameworkDir));
+                    } catch { /* recovery is best-effort */ }
+                    return `PHASE_COMPLETE::${actual}\nPhase "${currentPhase}" was already completed — the workflow has advanced to "${actual}". Synced the desk; continue from "${actual}".`;
+                }
             }
             return `HTTP ${res.status}\n${text.slice(0, 1000)}`;
         } catch (e) {
