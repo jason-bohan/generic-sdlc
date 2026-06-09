@@ -21,6 +21,8 @@ export interface LocalPlanningStory {
     backend: string;
     qa: string;
     owner?: string;
+    externalRef?: string;
+    externalUrl?: string;
     deleted?: boolean;
     sortOrder?: number;
     createdAt: string;
@@ -271,6 +273,8 @@ export function createLocalStory(rootDir: string, input: Partial<LocalPlanningSt
         backend: input.backend ?? '',
         qa: input.qa ?? '',
         owner: input.owner,
+        externalRef: input.externalRef,
+        externalUrl: input.externalUrl,
         createdAt: now,
         updatedAt: now,
     };
@@ -345,6 +349,8 @@ export function updateLocalStory(rootDir: string, storyNumber: string, input: Pa
         backend: input.backend ?? story.backend,
         qa: input.qa ?? story.qa,
         owner: input.owner ?? story.owner,
+        externalRef: input.externalRef ?? story.externalRef,
+        externalUrl: input.externalUrl ?? story.externalUrl,
         updatedAt: new Date().toISOString(),
     });
     saveLocalPlanningState(rootDir, state);

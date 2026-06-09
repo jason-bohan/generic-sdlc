@@ -93,7 +93,7 @@ export function getEnabledAgents(): string[] {
     const config = loadConfig();
     if (!config?.scheduler?.agents) return [];
     return Object.entries(config.scheduler.agents)
-        .filter(([_, cfg]) => cfg.enabled)
+        .filter(([_, cfg]) => cfg.enabled !== false)
         .map(([name]) => name);
 }
 

@@ -34,6 +34,8 @@ import { existsSync } from 'fs';
 import { deriveApiPort, persistDevPort } from './worktree-port';
 import { parseJsonUtf8File } from './json-file';
 import { setOnAgentStop } from './spawn-agent';
+import { emitStatusChange } from './status-events';
+import { buildStatusBroadcast } from './status-broadcast';
 
 const PORT = deriveApiPort(ROOT_DIR);
 persistDevPort(ROOT_DIR, PORT);
@@ -169,6 +171,19 @@ server.listen(PORT, () => {
         });
         startAutoFinetune(ROOT_DIR);
     }
+
+    // Seed the orchestrator status into the SSE stream so the FleetView
+    // sees it even without a status file on disk.
+    try {
+        const idleStatus = {
+            storyNumber: null, storyName: null, currentPhase: 'idle',
+            currentTask: null, startedAt: null, tasks: [], prs: [], requests: [],
+            tokens: { cloud: { input: 0, output: 0 }, ollama: { input: 0, output: 0 }, mlx: { input: 0, output: 0 } },
+            cypress: { lastRun: null, total: 0, passed: 0, failed: 0, skipped: 0, failures: [] },
+            events: [{ timestamp: new Date().toISOString(), type: 'info', message: 'Orchestrator is idle.' }],
+        };
+        emitStatusChange('orchestrator', buildStatusBroadcast(idleStatus, 'orchestrator', true, ROOT_DIR));
+    } catch { /* non-fatal */ }
 });
 
 server.once('close', () => {

@@ -12,7 +12,7 @@ import type { IncomingMessage, ServerResponse } from 'http';
 import type { UseFn } from './types';
 import { buildStatusBroadcast } from '../status-broadcast';
 
-const AGENT_IDS = ['frontend', 'backend', 'qa', 'ux', 'reviewer', 'devops', 'aiqa'];
+const AGENT_IDS = ['frontend', 'backend', 'qa', 'ux', 'reviewer', 'devops', 'aiqa', 'orchestrator'];
 const SSE_KEEPALIVE_MS = 25_000;
 
 export function mount(use: UseFn, rootDir: string, _configFile: string): void {

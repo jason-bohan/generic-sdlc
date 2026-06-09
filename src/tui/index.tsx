@@ -109,7 +109,10 @@ program
     .description('Live multi-agent fleet view (streams /api/status/stream)')
     .helpGroup('Monitoring:')
     .action(() => {
-        render(<FleetView />);
+        const { unmount } = render(<FleetView onBack={() => {
+            unmount();
+            render(<InteractiveView agent={null} dir={program.opts().dir} />);
+        }} />);
     });
 
 program

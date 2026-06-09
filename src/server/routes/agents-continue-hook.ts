@@ -229,6 +229,30 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
         } catch (e: unknown) { json(res, { error: e instanceof Error ? e.message : String(e) }, 500); }
     });
 
+    // ── /api/agent/pause ────────────────────────────────────────────────────
+    // Stop the agent's runner and mark it as paused so auto-resume skips it.
+    // The user must manually Continue to resume.
+    use('/api/agent/pause', async (req, res) => {
+        cors(res, 'POST, OPTIONS');
+        if (req.method === 'OPTIONS') { res.statusCode = 204; res.end(); return; }
+        if (req.method !== 'POST') { res.statusCode = 405; res.end('Method not allowed'); return; }
+        const body = await readBody(req);
+        try {
+            const { agentId } = JSON.parse(body);
+            if (!agentId || typeof agentId !== 'string') { json(res, { error: 'agentId required' }, 400); return; }
+            const id = agentId.trim();
+            stopRunner(id);
+            const statusFile = resolve(rootDir, `.${id}-status.json`);
+            try {
+                const status = parseJsonUtf8File(statusFile) as Record<string, unknown>;
+                status.paused = true;
+                status.handoffDispatched = false;
+                writeFileSync(statusFile, JSON.stringify(status, null, 2));
+            } catch { /* no status file to update */ }
+            json(res, { ok: true, agentId: id, paused: true });
+        } catch (e: unknown) { json(res, { error: e instanceof Error ? e.message : String(e) }, 500); }
+    });
+
     // ── /api/hook/agent-stop ─────────────────────────────────────────────────
     // IDE-agnostic watcher trigger. Any IDE (or CI/CD) can POST here instead of
     // running the .cursor/hooks/*.ps1 scripts directly. Returns the same
