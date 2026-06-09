@@ -13,6 +13,7 @@ import { resolveStoryAgent, type StoryForOrchestration } from './orchestrator';
 import { isRunnerActive } from './agent-runner/registry';
 import { getSchedulerWorkflowMode } from './schedulerMode';
 import { getSchedulerConfig } from './route-shared';
+import { isLoopActive, getLoopState } from './loop-control';
 import { getActiveProjectName } from './project-config';
 import { parseJsonUtf8File } from './json-file';
 import type { SdlcAgentId } from '../shared/sdlcContracts';
@@ -113,6 +114,9 @@ export async function runOrchestratorTick(opts: {
 }): Promise<OrchestratorTickResult> {
   const { rootDir, configFile, assign } = opts;
 
+  if (!isLoopActive(rootDir)) {
+    return { ran: false, reason: `loop ${getLoopState(rootDir)}`, assigned: [], skipped: [] };
+  }
   const mode = getSchedulerWorkflowMode(getSchedulerConfig(rootDir));
   if (mode !== 'autonomous') {
     return { ran: false, reason: 'scheduler mode is not autonomous', assigned: [], skipped: [] };

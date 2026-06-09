@@ -19,6 +19,7 @@ import { autoMergePr } from './agent-runner/tools';
 import { getSchedulerConfig } from './route-shared';
 import { getSchedulerWorkflowMode } from './schedulerMode';
 import { isGlobalStepMode, isAgentStepMode } from './stepMode';
+import { isLoopActive } from './loop-control';
 
 // Build-chain phases where devops is waiting on CI/merge and the driver may act.
 const DRIVE_PHASES = new Set(['pending-build', 'monitoring-build', 'build-passed']);
@@ -46,6 +47,7 @@ function ghRepoAndId(url: string): { repo: string; id: number } | null {
  * re-arm every tick — then waits for the merge to land on a later pass.
  */
 export function driveDevopsBuildGate(rootDir: string, configFile: string): { acted: boolean; note: string } {
+  if (!isLoopActive(rootDir)) return { acted: false, note: 'loop paused' };
   if (getSchedulerWorkflowMode(getSchedulerConfig(rootDir)) !== 'autonomous') return { acted: false, note: 'not autonomous' };
   const devopsFile = resolve(rootDir, '.devops-status.json');
   if (!existsSync(devopsFile)) return { acted: false, note: 'no devops desk' };
