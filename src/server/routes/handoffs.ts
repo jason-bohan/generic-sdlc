@@ -3,7 +3,7 @@ import { execFileSync } from 'child_process';
 import { resolve } from 'path';
 import { findStoryOwnerByPrId, applyReviewComplete, applyBuildComplete, applyDesignReady, applyDesignReviewComplete, loadReviewerCommentsAsReviewComments, wrapUpDeskRequestId } from '../handoff';
 import type { ReviewComment } from '../handoff';
-import { tryClaimBuildCompleteNotification } from '../build-complete-dedup';
+import { tryClaimBuildCompleteNotification, tryClaimBuildRework } from '../build-complete-dedup';
 import { voteOnPr } from '../ado-bridge';
 import { getProjectProfile } from '../project-config';
 import { cleanupStoryWorktrees, resolveWorktreeRepoRoots } from '../worktree-cleanup';
@@ -248,9 +248,10 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
         if (req.method !== 'POST') { res.statusCode = 405; res.end('Method not allowed'); return; }
         const body = await readBody(req);
         try {
-            const parsed = JSON.parse(body) as { prId?: unknown; result?: unknown; buildId?: unknown };
+            const parsed = JSON.parse(body) as { prId?: unknown; result?: unknown; buildId?: unknown; headSha?: unknown };
             const prId = Number(parsed.prId);
             const buildResult = parsed.result as 'passed' | 'failed' | string | undefined;
+            const headSha = typeof parsed.headSha === 'string' ? parsed.headSha.trim() : '';
             const buildIdParsed = parsed.buildId === undefined || parsed.buildId === null || parsed.buildId === ''
                 ? undefined
                 : Number(parsed.buildId);
@@ -270,13 +271,26 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                     if (typeof sn0 === 'string' && sn0.trim()) devopsStoryNumberSnapshot = sn0.trim();
                     const deskIdRaw = cs.assignedPR?.id;
                     const deskId = typeof deskIdRaw === 'number' ? deskIdRaw : Number(deskIdRaw);
-                    if (['build-passed', 'build-failed', 'idle', 'complete'].includes(cs.currentPhase) && Number.isFinite(deskId) && deskId === prId) alreadyHandled = true;
+                    const isThisPr = Number.isFinite(deskId) && deskId === prId;
+                    // Phase-dedup keys off the *terminal-for-this-result* desk state. The passed wrap-up
+                    // is done once devops reaches build-passed. A failure is "already processed" only once
+                    // devops reaches build-failed — NOT build-passed, which is the very state the GitHub
+                    // CI-failure path posts FROM (keying failed off build-passed silently dropped the
+                    // rework; observed: PR #56 stranded red). Per-commit dedup for failed is below.
+                    if (isThisPr && buildResult === 'passed' && ['build-passed', 'idle', 'complete'].includes(cs.currentPhase)) alreadyHandled = true;
+                    if (isThisPr && buildResult === 'failed' && ['build-failed', 'idle', 'complete'].includes(cs.currentPhase)) alreadyHandled = true;
                 } catch { /* ok */ }
             }
             if (alreadyHandled) {
                 if (isMockExternalMode(configFile) && buildResult === 'passed') {
                     setMockPullRequestStatus(rootDir, prId, 'completed');
                 }
+                json(res, { ok: true, deduplicated: true });
+                return;
+            }
+            // Route a CI failure to rework at most once per PR head SHA (a re-pushed fix re-routes).
+            // The driver already claims before posting; this guards any other caller from double-spawning.
+            if (buildResult === 'failed' && headSha && !tryClaimBuildRework(rootDir, prId, headSha)) {
                 json(res, { ok: true, deduplicated: true });
                 return;
             }
