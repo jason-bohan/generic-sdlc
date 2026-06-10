@@ -14,6 +14,7 @@ import { CreateStoryView } from './CreateStoryView';
 import { DirectChatView } from './DirectChatView';
 import { FleetView } from './FleetView';
 import { OrchestrateView } from './OrchestrateView';
+import { ProvidersView } from './ProvidersView';
 
 const DEFAULT_DIR = process.env.SDLC_FRAMEWORK_WORKSPACE ?? process.cwd();
 const COMMAND_NAME = process.env.SDLC_FRAMEWORK_CLI_NAME ?? 'sdlc-framework';
@@ -102,6 +103,14 @@ program
     .action(() => {
         const dir = program.opts().dir;
         render(<AgentsView dir={dir} />);
+    });
+
+program
+    .command('providers')
+    .description('View all providers, health, and available models')
+    .helpGroup('Monitoring:')
+    .action(() => {
+        render(<ProvidersView onBack={() => process.exit(0)} />);
     });
 
 program
