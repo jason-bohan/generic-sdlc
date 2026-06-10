@@ -219,7 +219,10 @@ describe('workflow routes', () => {
             }),
         });
         expect(rejected.res.status).toBe(409);
-        expect(rejected.body.missing).toEqual(expect.arrayContaining(['branchPlan', 'testMatrix', 'risks', 'openQuestions', 'auditEvent']));
+        // branchPlan + auditEvent are auto-filled (framework-derivable bookkeeping); only the
+        // judgment/evidence outputs remain required, so a caller can't loop on the mechanical ones.
+        expect(rejected.body.missing).toEqual(expect.arrayContaining(['testMatrix', 'risks', 'openQuestions']));
+        expect(rejected.body.missing).not.toContain('branchPlan');
 
         const accepted = await request('/api/workflows/complete-phase', {
             method: 'POST',
