@@ -1,0 +1,23 @@
+[
+  {
+    "title": "Add dark mode toggle to dashboard",
+    "description": "Implement a dark/light mode toggle in the dashboard. Use the existing theme context in `src/dashboard/context/ThemeContext.tsx`. Add a toggle button to the header and persist user preference in localStorage.",
+    "repo": "frontend",
+    "expected_phases": ["tasking", "coding", "reviewing", "devops"],
+    "expected_tools": ["read_file", "edit_file", "create_pr"]
+  },
+  {
+    "title": "Fix login redirect loop",
+    "description": "After successful login, users are redirected to `/dashboard` but immediately loop back to `/login`. Debug the auth flow in `src/server/auth.ts` and fix the redirect logic.",
+    "repo": "backend",
+    "expected_phases": ["tasking", "coding", "reviewing", "devops"],
+    "expected_tools": ["read_file", "edit_file", "create_pr", "run_tests"]
+  },
+  {
+    "title": "Add API rate limiting",
+    "description": "Implement rate limiting for the `/api/work-items` endpoint. Use the `express-rate-limit` package and configure a limit of 100 requests per minute per IP.",
+    "repo": "backend",
+    "expected_phases": ["tasking", "coding", "reviewing", "devops"],
+    "expected_tools": ["read_file", "edit_file", "create_pr", "install_package"]
+  }
+]

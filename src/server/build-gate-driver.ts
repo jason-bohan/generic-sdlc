@@ -87,6 +87,30 @@ export function driveDevopsBuildGate(rootDir: string, configFile: string): { act
   const r = autoMergePr(rootDir, configFile);
   if (r.ok && r.merged) { advance(r.note, true); return { acted: true, note: r.note }; }
   if (r.ok) { advance(r.note, false); return { acted: true, note: r.note }; }
+
+  // CI failed: deterministically route the failure back to the owner for rework via the existing
+  // build-complete handoff — once per PR head SHA, so a re-pushed fix re-routes but unchanged red
+  // CI doesn't spam. Without this the desk strands at build-passed (auto-resume exhausts, stops)
+  // and the red PR sits open forever (observed: PR #56, double() util — test missing vitest import).
+  if (r.note.startsWith('BUILD-FAILED:')) {
+    let sha = '';
+    try { sha = execFileSync('gh', ['pr', 'view', String(info.id), '-R', info.repo, '--json', 'headRefOid', '-q', '.headRefOid'], { encoding: 'utf8', timeout: 30_000 }).trim(); } catch { /* sha unavailable */ }
+    if (!sha) return { acted: false, note: `CI failed for PR #${info.id} but head SHA unavailable` };
+    // Post the head SHA so the build-complete handler dedups rework per-commit (single claimer there,
+    // so we don't claim here). The handler also flips devops → build-failed, which takes this desk out
+    // of the drive phases on the next tick — so at most ~1 redundant post before we stop.
+    const serverUrl = process.env.SDLC_SERVER_URL || 'http://localhost:3001';
+    void fetch(`${serverUrl}/api/handoff/build-complete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prId: info.id, result: 'failed', headSha: sha }),
+      signal: AbortSignal.timeout(20_000),
+    }).catch((e) => console.warn('[build-gate-driver] rework handoff failed:', e instanceof Error ? e.message : String(e)));
+    // Don't touch the devops desk here — the build-complete handler's applyBuildComplete owns the
+    // desk transition to build-failed (writing it here would race that). The SHA claim above already
+    // guarantees we post at most once per commit.
+    return { acted: true, note: `CI failed — routed PR #${info.id} to rework` };
+  }
   return { acted: false, note: r.note }; // DIRTY/unmergeable — leave for rework
 }
 

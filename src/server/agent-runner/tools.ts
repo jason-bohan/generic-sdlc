@@ -1360,26 +1360,13 @@ async function toolCompletePhase(
                 if (isDirty) {
                     return `[build-gate] ${autoMerge.note.slice(6)}\n\nYour workspace may have a different branch checked out. Use run_command to resolve the conflicts:\n1. git fetch origin\n2. git checkout BRANCH && git merge origin/main\n3. Use read_file to see conflict markers, edit_file to resolve them\n4. git add . && git commit -m "merge main into BRANCH"\n5. git push origin BRANCH\n6. Call complete_phase with next_phase="build-passed" to retry the merge\n\nDo not advance to complete until the PR merges successfully. (devops desk left at build-passed.)`;
                 }
-                // CI failed: route the failure back to the dev for rework via the existing
-                // build-complete handoff (the same path ADO uses), instead of completing or
-                // arming a doomed merge. The story is NOT marked complete.
+                // CI failed: the deterministic build-gate driver owns routing the failure back to
+                // the dev for rework (POSTs /api/handoff/build-complete once per PR head SHA). The
+                // agent must NOT also post — that double-routed and, worse, the handler deduped a
+                // post originating from this very build-passed desk state, dropping it entirely
+                // (observed: PR #56 stranded red). Just report and leave the desk for the driver.
                 if (autoMerge.note.startsWith('BUILD-FAILED:')) {
-                    const prMatch = autoMerge.note.match(/PR #(\d+)/);
-                    const prId = prMatch ? Number(prMatch[1]) : NaN;
-                    if (Number.isFinite(prId)) {
-                        const serverUrl = process.env.SDLC_SERVER_URL || 'http://localhost:3001';
-                        try {
-                            await fetch(`${serverUrl}/api/handoff/build-complete`, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ prId, result: 'failed' }),
-                                signal: AbortSignal.timeout(20_000),
-                            });
-                        } catch (e) {
-                            console.warn('[build-gate] build-failed rework handoff failed:', e instanceof Error ? e.message : String(e));
-                        }
-                    }
-                    return `[build-gate] ${autoMerge.note.slice('BUILD-FAILED:'.length)} Routed back to the developer for rework. Story NOT marked complete. (devops desk left at build-passed.)`;
+                    return `[build-gate] ${autoMerge.note.slice('BUILD-FAILED:'.length)} The build-gate driver will route this to the developer for rework. Story NOT marked complete. (devops desk left at build-passed.)`;
                 }
                 return `[build-gate] Could not merge the PR: ${autoMerge.note}. Story NOT marked complete — resolve the merge, then re-run. (devops desk left at build-passed.)`;
             }

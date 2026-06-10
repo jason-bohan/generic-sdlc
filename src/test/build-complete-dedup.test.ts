@@ -2,7 +2,7 @@
 import { mkdtempSync, readFileSync, existsSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { buildCompleteNotifyKey, tryClaimBuildCompleteNotification } from '../server/build-complete-dedup';
+import { buildCompleteNotifyKey, tryClaimBuildCompleteNotification, tryClaimBuildRework } from '../server/build-complete-dedup';
 
 describe('build-complete Teams dedup', () => {
     let dir: string;
@@ -31,5 +31,36 @@ describe('build-complete Teams dedup', () => {
     it('different buildId for same PR can notify again', () => {
         expect(tryClaimBuildCompleteNotification(dir, 1, 100, 'passed')).toBe(true);
         expect(tryClaimBuildCompleteNotification(dir, 1, 101, 'passed')).toBe(true);
+    });
+});
+
+describe('CI-failure rework dedup (tryClaimBuildRework)', () => {
+    let dir: string;
+
+    beforeEach(() => {
+        dir = mkdtempSync(join(tmpdir(), 'sdlc-framework-rework-'));
+    });
+
+    it('routes once per PR head SHA, then dedups the same SHA', () => {
+        expect(tryClaimBuildRework(dir, 56, 'abc123')).toBe(true);
+        expect(tryClaimBuildRework(dir, 56, 'abc123')).toBe(false);
+        const file = join(dir, '.build-rework-claim.json');
+        expect(existsSync(file)).toBe(true);
+        expect(JSON.parse(readFileSync(file, 'utf-8'))).toContain('56:abc123');
+    });
+
+    it('re-routes when the owner pushes a fix (new head SHA)', () => {
+        expect(tryClaimBuildRework(dir, 56, 'abc123')).toBe(true);
+        expect(tryClaimBuildRework(dir, 56, 'def456')).toBe(true);
+    });
+
+    it('never claims without a head SHA (callers must not route blindly)', () => {
+        expect(tryClaimBuildRework(dir, 56, '')).toBe(false);
+        expect(existsSync(join(dir, '.build-rework-claim.json'))).toBe(false);
+    });
+
+    it('keeps separate claims per PR', () => {
+        expect(tryClaimBuildRework(dir, 56, 'sha')).toBe(true);
+        expect(tryClaimBuildRework(dir, 57, 'sha')).toBe(true);
     });
 });
