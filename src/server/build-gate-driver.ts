@@ -20,6 +20,7 @@ import { getSchedulerConfig } from './route-shared';
 import { getSchedulerWorkflowMode } from './schedulerMode';
 import { isGlobalStepMode, isAgentStepMode } from './stepMode';
 import { isLoopActive } from './loop-control';
+import { freeStoryAgents, storyNumberFromDesk } from './reset-agents';
 
 // Build-chain phases where devops is waiting on CI/merge and the driver may act.
 const DRIVE_PHASES = new Set(['pending-build', 'monitoring-build', 'build-passed']);
@@ -68,6 +69,11 @@ export function driveDevopsBuildGate(rootDir: string, configFile: string): { act
     if (!toComplete) desk.buildGateArmed = true;
     desk.events = [...(Array.isArray(desk.events) ? desk.events : []), { timestamp: new Date().toISOString(), type: 'success', message: `[build-gate-driver] ${message}` }].slice(-50);
     writeFileSync(devopsFile, JSON.stringify(desk, null, 2));
+    // On completion (merge landed), free the story owner + reviewer — this path bypasses the
+    // complete-phase route, so without this the owner stays "busy" and the next story stalls.
+    if (toComplete) {
+      try { const sn = storyNumberFromDesk(desk); if (sn) freeStoryAgents(rootDir, sn, info.id); } catch { /* best-effort */ }
+    }
   };
 
   // Already merged (e.g. an armed auto-merge fired) → finalize the desk.

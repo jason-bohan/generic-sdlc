@@ -44,6 +44,24 @@ function deskMatchesStory(raw: Record<string, unknown>, storyNumber: string, prI
  * contamination we hit: a stale reviewer desk from a prior PR derailing the next run). The
  * DB workflow item is the authoritative "complete" marker; this just releases the agents.
  */
+/**
+ * Pure: best-effort story number for an agent desk — its own storyNumber, else the assigned PR's
+ * storyNumber, else parsed from the PR branch (e.g. `backend-LOCAL-B-0064` → `LOCAL-B-0064`).
+ * Used to free the owner when a devops build completes with no story_number on the workflow item.
+ */
+export function storyNumberFromDesk(desk: { storyNumber?: unknown; assignedPR?: { storyNumber?: unknown; branch?: unknown } | null }): string {
+  if (typeof desk.storyNumber === 'string' && desk.storyNumber.trim()) return desk.storyNumber.trim();
+  const pr = desk.assignedPR;
+  if (pr) {
+    if (typeof pr.storyNumber === 'string' && pr.storyNumber.trim()) return pr.storyNumber.trim();
+    if (typeof pr.branch === 'string') {
+      const m = pr.branch.match(/([A-Z][A-Z0-9]*-(?:B-)?\d+)/);
+      if (m) return m[1];
+    }
+  }
+  return '';
+}
+
 export function freeStoryAgents(baseDir: string, storyNumber: string, prId?: number): { freed: string[] } {
     const isoNow = new Date().toISOString();
     const freed: string[] = [];

@@ -2,7 +2,8 @@ import { resolve } from 'path';
 import { getActiveProject } from '../project-config';
 import { spawnAgent } from '../spawn-agent';
 import { completePhase, startPhaseRun, superviseWorkflow } from '../orchestrator';
-import { freeStoryAgents } from '../reset-agents';
+import { freeStoryAgents, storyNumberFromDesk } from '../reset-agents';
+import { parseJsonUtf8File } from '../json-file';
 import {
     dbGetPhaseEvents,
     dbGetWorkflowItemByStory,
@@ -162,8 +163,22 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                         // the next run, and never wipes agents working other stories. Replaces
                         // the blunt global reset for the autonomous path.
                         try {
-                            const sn = typeof nextItem.story_number === 'string' ? nextItem.story_number.trim() : '';
-                            if (sn) freeStoryAgents(rootDir, sn);
+                            let sn = typeof nextItem.story_number === 'string' ? nextItem.story_number.trim() : '';
+                            let prId: number | undefined;
+                            // devops completes a PR-scoped build whose workflow item often has no
+                            // story_number — derive it (and the PR id) from the completing agent's
+                            // desk so the story owner + reviewer actually get freed and the
+                            // orchestrator can pick up the next story (otherwise the owner stays
+                            // "busy" at watching-reviews and back-to-back stalls).
+                            if (!sn && agentId) {
+                                try {
+                                    const desk = parseJsonUtf8File(resolve(rootDir, `.${agentId}-status.json`)) as { storyNumber?: string; assignedPR?: { storyNumber?: string; branch?: string; id?: number } | null };
+                                    sn = storyNumberFromDesk(desk);
+                                    const pid = desk.assignedPR?.id;
+                                    if (typeof pid === 'number') prId = pid;
+                                } catch { /* no desk to derive from */ }
+                            }
+                            if (sn) freeStoryAgents(rootDir, sn, prId);
                         } catch (e) { console.warn('[complete] freeStoryAgents failed:', e); }
                     } else if (nextItem.active_phase && nextItem.active_phase !== 'idle') {
                         try {
