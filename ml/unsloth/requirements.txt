@@ -10,7 +10,7 @@ trl==1.5.1
 bitsandbytes==0.49.2
 accelerate==1.13.0
 peft==0.19.1
-transformers==5.10.2
+transformers==5.11.0
 sentencepiece==0.2.1
 protobuf==7.35.0
 huggingface_hub==1.18.0
