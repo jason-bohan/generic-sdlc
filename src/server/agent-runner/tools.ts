@@ -1135,6 +1135,27 @@ export function devopsBuildChainNextPhase(phase: SdlcPhaseId): SdlcPhaseId | und
  * finalize through its own path (e.g. ADO pipeline auto-complete) and `merged:false, ok:true`
  * lets the story still advance to complete.
  */
+/**
+ * Pure: classify a GitHub PR's CI from its `statusCheckRollup`. `failed` if any check
+ * concluded in failure; `pending` if any is still running and none failed; `passed` if all
+ * completed successfully; `unknown` if there are no checks (don't block on absence).
+ */
+export function classifyCiRollup(rollup: Array<Record<string, unknown>>): 'failed' | 'pending' | 'passed' | 'unknown' {
+  if (!Array.isArray(rollup) || rollup.length === 0) return 'unknown';
+  let pending = false;
+  for (const c of rollup) {
+    const conclusion = String(c.conclusion ?? '').toUpperCase();
+    const state = String(c.state ?? '').toUpperCase();
+    const status = String(c.status ?? '').toUpperCase();
+    if (['FAILURE', 'TIMED_OUT', 'CANCELLED', 'ERROR', 'ACTION_REQUIRED', 'STARTUP_FAILURE'].includes(conclusion)) return 'failed';
+    if (['FAILURE', 'ERROR'].includes(state)) return 'failed';
+    if (['IN_PROGRESS', 'QUEUED', 'PENDING', 'WAITING', 'REQUESTED'].includes(status)) pending = true;
+    if (['PENDING', 'EXPECTED'].includes(state)) pending = true;
+    if (status && status !== 'COMPLETED' && !conclusion) pending = true;
+  }
+  return pending ? 'pending' : 'passed';
+}
+
 export function autoMergePr(frameworkDir: string, configPath: string): AutoMergeResult {
     const devopsFile = resolve(frameworkDir, '.devops-status.json');
     let pr: { id?: number; url?: string } | undefined;
@@ -1193,6 +1214,16 @@ export function autoMergePr(frameworkDir: string, configPath: string): AutoMerge
             note: `DIRTY:PR #${prId} in ${repo} (${headBranch} → ${baseBranch}) — resolve conflicts via: git fetch origin && git checkout ${headBranch} && git merge origin/${baseBranch}, resolve conflict markers in affected files, git add/commit, git push origin ${headBranch}, then retry complete_phase`,
         };
     }
+    // CI-gate: never merge or arm auto-merge on a PR whose checks have FAILED. Arming
+    // auto-merge on a red build creates a doomed merge that never fires — the chain "passes"
+    // but the PR sits open forever (observed: PR #53). Route it to rework instead.
+    const rollupRes = gh(['pr', 'view', String(prId), '-R', repo, '--json', 'statusCheckRollup']);
+    let ci: ReturnType<typeof classifyCiRollup> = 'unknown';
+    try { ci = classifyCiRollup((JSON.parse(rollupRes.out) as { statusCheckRollup?: Array<Record<string, unknown>> }).statusCheckRollup ?? []); } catch { /* unknown — fall through */ }
+    if (ci === 'failed') {
+        return { ok: false, merged: false, note: `BUILD-FAILED:PR #${prId} in ${repo} — CI checks failed; route to rework (do not merge).` };
+    }
+
     if (mergeState === 'BEHIND') {
         const upd = gh(['pr', 'update-branch', String(prId), '-R', repo]);
         if (!upd.ok && !/up to date|no new commits/i.test(upd.out)) {
@@ -1328,6 +1359,27 @@ async function toolCompletePhase(
                 const isDirty = autoMerge.note.startsWith('DIRTY:');
                 if (isDirty) {
                     return `[build-gate] ${autoMerge.note.slice(6)}\n\nYour workspace may have a different branch checked out. Use run_command to resolve the conflicts:\n1. git fetch origin\n2. git checkout BRANCH && git merge origin/main\n3. Use read_file to see conflict markers, edit_file to resolve them\n4. git add . && git commit -m "merge main into BRANCH"\n5. git push origin BRANCH\n6. Call complete_phase with next_phase="build-passed" to retry the merge\n\nDo not advance to complete until the PR merges successfully. (devops desk left at build-passed.)`;
+                }
+                // CI failed: route the failure back to the dev for rework via the existing
+                // build-complete handoff (the same path ADO uses), instead of completing or
+                // arming a doomed merge. The story is NOT marked complete.
+                if (autoMerge.note.startsWith('BUILD-FAILED:')) {
+                    const prMatch = autoMerge.note.match(/PR #(\d+)/);
+                    const prId = prMatch ? Number(prMatch[1]) : NaN;
+                    if (Number.isFinite(prId)) {
+                        const serverUrl = process.env.SDLC_SERVER_URL || 'http://localhost:3001';
+                        try {
+                            await fetch(`${serverUrl}/api/handoff/build-complete`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ prId, result: 'failed' }),
+                                signal: AbortSignal.timeout(20_000),
+                            });
+                        } catch (e) {
+                            console.warn('[build-gate] build-failed rework handoff failed:', e instanceof Error ? e.message : String(e));
+                        }
+                    }
+                    return `[build-gate] ${autoMerge.note.slice('BUILD-FAILED:'.length)} Routed back to the developer for rework. Story NOT marked complete. (devops desk left at build-passed.)`;
                 }
                 return `[build-gate] Could not merge the PR: ${autoMerge.note}. Story NOT marked complete — resolve the merge, then re-run. (devops desk left at build-passed.)`;
             }
