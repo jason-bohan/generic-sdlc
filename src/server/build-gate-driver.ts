@@ -15,7 +15,7 @@ import { resolve } from 'path';
 import { existsSync, writeFileSync } from 'fs';
 import { execFileSync } from 'child_process';
 import { parseJsonUtf8File } from './json-file';
-import { autoMergePr } from './agent-runner/tools';
+import { autoMergePr, classifyCiRollup } from './agent-runner/tools';
 import { getSchedulerConfig } from './route-shared';
 import { getSchedulerWorkflowMode } from './schedulerMode';
 import { isGlobalStepMode, isAgentStepMode } from './stepMode';
@@ -81,24 +81,14 @@ export function driveDevopsBuildGate(rootDir: string, configFile: string): { act
   try { state = execFileSync('gh', ['pr', 'view', String(info.id), '-R', info.repo, '--json', 'state', '-q', '.state'], { encoding: 'utf8', timeout: 30_000 }).trim(); } catch { /* gh unavailable — fall through */ }
   if (state === 'MERGED') { advance(`PR #${info.id} merged — desk advanced to complete`, true); return { acted: true, note: 'merged → complete' }; }
 
-  // Already armed on a prior pass — wait for the merge rather than re-running update-branch/arm.
-  if (desk.buildGateArmed === true) return { acted: false, note: 'auto-merge already armed; waiting for merge' };
-
-  const r = autoMergePr(rootDir, configFile);
-  if (r.ok && r.merged) { advance(r.note, true); return { acted: true, note: r.note }; }
-  if (r.ok) { advance(r.note, false); return { acted: true, note: r.note }; }
-
-  // CI failed: deterministically route the failure back to the owner for rework via the existing
-  // build-complete handoff — once per PR head SHA, so a re-pushed fix re-routes but unchanged red
-  // CI doesn't spam. Without this the desk strands at build-passed (auto-resume exhausts, stops)
-  // and the red PR sits open forever (observed: PR #56, double() util — test missing vitest import).
-  if (r.note.startsWith('BUILD-FAILED:')) {
+  // Deterministically route a CI failure back to the owner for rework via the existing build-complete
+  // handoff. The handler dedups per PR head SHA (a re-pushed fix re-routes, unchanged red CI doesn't
+  // spam) and owns the devops desk transition to build-failed — so we don't write the desk here.
+  // Without this, a red PR strands forever (observed: PR #56, double() util — test missing vitest import).
+  const routeRework = (): { acted: boolean; note: string } => {
     let sha = '';
     try { sha = execFileSync('gh', ['pr', 'view', String(info.id), '-R', info.repo, '--json', 'headRefOid', '-q', '.headRefOid'], { encoding: 'utf8', timeout: 30_000 }).trim(); } catch { /* sha unavailable */ }
     if (!sha) return { acted: false, note: `CI failed for PR #${info.id} but head SHA unavailable` };
-    // Post the head SHA so the build-complete handler dedups rework per-commit (single claimer there,
-    // so we don't claim here). The handler also flips devops → build-failed, which takes this desk out
-    // of the drive phases on the next tick — so at most ~1 redundant post before we stop.
     const serverUrl = process.env.SDLC_SERVER_URL || 'http://localhost:3001';
     void fetch(`${serverUrl}/api/handoff/build-complete`, {
       method: 'POST',
@@ -106,11 +96,30 @@ export function driveDevopsBuildGate(rootDir: string, configFile: string): { act
       body: JSON.stringify({ prId: info.id, result: 'failed', headSha: sha }),
       signal: AbortSignal.timeout(20_000),
     }).catch((e) => console.warn('[build-gate-driver] rework handoff failed:', e instanceof Error ? e.message : String(e)));
-    // Don't touch the devops desk here — the build-complete handler's applyBuildComplete owns the
-    // desk transition to build-failed (writing it here would race that). The SHA claim above already
-    // guarantees we post at most once per commit.
     return { acted: true, note: `CI failed — routed PR #${info.id} to rework` };
+  };
+
+  // Already armed on a prior pass. GitHub auto-merge only fires when required checks pass — so if CI
+  // has since gone red, the armed merge will NEVER fire and the PR strands permanently. Re-check CI:
+  // disarm + route to rework on failure; otherwise keep waiting for the merge.
+  if (desk.buildGateArmed === true) {
+    let ci: ReturnType<typeof classifyCiRollup> = 'unknown';
+    try {
+      const rollupRaw = execFileSync('gh', ['pr', 'view', String(info.id), '-R', info.repo, '--json', 'statusCheckRollup'], { encoding: 'utf8', timeout: 30_000 });
+      ci = classifyCiRollup((JSON.parse(rollupRaw) as { statusCheckRollup?: Array<Record<string, unknown>> }).statusCheckRollup ?? []);
+    } catch { /* unknown — keep waiting */ }
+    if (ci === 'failed') {
+      desk.buildGateArmed = false;
+      writeFileSync(devopsFile, JSON.stringify(desk, null, 2));
+      return routeRework();
+    }
+    return { acted: false, note: 'auto-merge already armed; waiting for merge' };
   }
+
+  const r = autoMergePr(rootDir, configFile);
+  if (r.ok && r.merged) { advance(r.note, true); return { acted: true, note: r.note }; }
+  if (r.ok) { advance(r.note, false); return { acted: true, note: r.note }; }
+  if (r.note.startsWith('BUILD-FAILED:')) return routeRework();
   return { acted: false, note: r.note }; // DIRTY/unmergeable — leave for rework
 }
 
