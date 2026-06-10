@@ -851,7 +851,20 @@ export function completePhase(input: CompletePhaseInput): OrchestratorResult<Wor
         return { ok: false, error: `Workflow item is in ${item.active_phase}, not ${input.phase}` };
     }
 
-    const outputValidation = validateSdlcPhaseOutput(input.phase, input.outputs);
+    // Defensive defaults for framework-derivable BOOKKEEPING outputs (auditEvent, branchPlan).
+    // A caller that bypasses the complete_phase tool's defaulting (e.g. the agent firing a raw
+    // http_request to this route) would otherwise 409 on these mechanical fields and re-spawn into
+    // a loop — the committing re-spawn loop that scribbled duplicate routes / 10 commits came from
+    // exactly this. Only these two non-judgment keys are filled; evidence fields stay required.
+    const outputs: Partial<Record<SdlcOutputKey, unknown>> = { ...input.outputs };
+    if (outputs.auditEvent == null) {
+        outputs.auditEvent = { action: `${input.phase}-complete`, agentId: input.agentId, phase: input.phase, nextPhase: input.nextPhase, storyNumber: item.story_number, timestamp: new Date().toISOString(), synthesized: true };
+    }
+    if (outputs.branchPlan == null) {
+        outputs.branchPlan = `fix/${item.story_number}-fix`;
+    }
+
+    const outputValidation = validateSdlcPhaseOutput(input.phase, outputs);
     if (!outputValidation.ok) {
         return { ok: false, error: `Phase ${input.phase} output contract is incomplete`, missing: outputValidation.missing };
     }
@@ -892,12 +905,12 @@ export function completePhase(input: CompletePhaseInput): OrchestratorResult<Wor
             agentId: input.agentId,
             phase: input.phase,
             eventType: 'phase-completed',
-            outputs: input.outputs,
+            outputs,
             message: [input.message, guardNote].filter(Boolean).join(' | ') || null,
         });
 
-        const taskIds = Array.isArray(input.outputs.taskIds) ? input.outputs.taskIds.map(id => String(id)) : [];
-        const tasks = Array.isArray(input.outputs.tasks) ? input.outputs.tasks : [];
+        const taskIds = Array.isArray(outputs.taskIds) ? outputs.taskIds.map(id => String(id)) : [];
+        const tasks = Array.isArray(outputs.tasks) ? outputs.tasks : [];
         tasks.forEach((task, index) => {
             const taskRecord: Record<string, unknown> = task && typeof task === 'object' ? task as Record<string, unknown> : { value: task };
             const key = String(taskRecord.number ?? taskRecord.id ?? taskIds[index] ?? `task-${index + 1}`);

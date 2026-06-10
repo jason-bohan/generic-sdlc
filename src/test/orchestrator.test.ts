@@ -94,7 +94,37 @@ describe('orchestrator-lite', () => {
         });
 
         expect(result.ok).toBe(false);
-        expect(result.missing).toEqual(expect.arrayContaining(['branchPlan', 'testMatrix', 'risks', 'openQuestions', 'auditEvent']));
+        // Judgment/evidence outputs are still required...
+        expect(result.missing).toEqual(expect.arrayContaining(['testMatrix', 'risks', 'openQuestions']));
+        // ...but the framework-derivable bookkeeping fields are auto-filled, so they're never "missing".
+        expect(result.missing).not.toContain('branchPlan');
+        expect(result.missing).not.toContain('auditEvent');
+    });
+
+    it('auto-fills branchPlan + auditEvent so a complete-phase call cannot loop on bookkeeping (committing fix)', () => {
+        const started = startWorkflow({ externalMode: 'mock', story: { number: 'B-17031', backend: 'Add route' } });
+        const item = started.value!.item;
+        // advance to committing the legitimate way
+        completePhase({
+            workflowItemId: item.id, agentId: 'backend', phase: 'reading-story', nextPhase: 'analyzing',
+            outputs: { tasks: [{ name: 't' }], taskIds: ['TK-1'], testMatrix: { unit: true }, risks: [], openQuestions: [] },
+        });
+        completePhase({
+            workflowItemId: item.id, agentId: 'backend', phase: 'analyzing', nextPhase: 'generating-code',
+            outputs: { codeChanges: 'x', testMatrix: { unit: true }, risks: [], openQuestions: [] },
+        });
+        completePhase({
+            workflowItemId: item.id, agentId: 'backend', phase: 'generating-code', nextPhase: 'committing',
+            outputs: { codeChanges: 'x', testMatrix: { unit: true } },
+        });
+        // committing requires branchPlan + auditEvent — but a caller that omits them (raw POST) must
+        // NOT 409-loop; the framework fills them and the phase advances.
+        const result = completePhase({
+            workflowItemId: item.id, agentId: 'backend', phase: 'committing', nextPhase: 'creating-pr',
+            outputs: { codeChanges: 'x' },
+        });
+        expect(result.ok).toBe(true);
+        expect(result.value?.active_phase).toBe('creating-pr');
     });
 
     it('transitions when the phase output contract and role graph allow it', () => {
