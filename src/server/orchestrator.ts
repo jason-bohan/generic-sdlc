@@ -598,6 +598,28 @@ function hasWork(value: string | null | undefined): boolean {
 }
 
 export function classifyStory(story: StoryForOrchestration): AssignmentDecision {
+    // Force-route BENCH- work items by affectedRepo (for benchmarking)
+    if (story.number?.startsWith('BENCH-')) {
+        const repo = story.affectedRepo?.toLowerCase();
+        if (repo === 'frontend') {
+            return {
+                classification: 'frontend',
+                primaryAgent: 'frontend',
+                collaboratorAgents: [],
+                startPhase: getSdlcWorkflow('frontend').start,
+                affectedRepo: 'frontend',
+            };
+        } else if (repo === 'backend') {
+            return {
+                classification: 'backend',
+                primaryAgent: 'backend',
+                collaboratorAgents: [],
+                startPhase: getSdlcWorkflow('backend').start,
+                affectedRepo: 'backend',
+            };
+        }
+    }
+    
     const hasFrontend = hasWork(story.frontend);
     const hasBackend = hasWork(story.backend);
     const hasQa = hasWork(story.qa);

@@ -294,6 +294,198 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
         res.statusCode = 405; res.end('Method not allowed');
     });
 
+    // ── /api/providers ─────────────────────────────────────────────────────
+    use('/api/providers', async (req, res) => {
+        cors(res, 'GET, PUT, OPTIONS');
+        if (req.method === 'OPTIONS') { res.statusCode = 204; res.end(); return; }
+        
+        const { readLoopProviderConfig: readLp, readLoopProviderToggles, detectLoopProvider, DEFAULT_LOOP_PROVIDER_TOGGLES } = await import('../agent-runner/provider');
+        const providerToggles = readLoopProviderToggles(configFile);
+        const lp = readLp(configFile);
+        
+        // ── helpers ──────────────────────────────────────────
+        async function probeProvider(def: {
+            id: string; name: string; baseUrl: string; enabled: boolean;
+            apiKey?: string; envHost?: string; defaultPort?: string; isCustom?: boolean;
+        }) {
+            const usedKey = def.apiKey;
+            if (!def.enabled) {
+                return { id: def.id, name: def.name, enabled: false, healthy: false,
+                    error: 'Disabled in config', models: [], baseUrl: def.baseUrl,
+                    modelCount: 0, selectedModel: null, envHost: def.envHost ?? null,
+                    defaultPort: def.defaultPort ?? null, isCustom: def.isCustom ?? false };
+            }
+            let healthy = false, error: string | null = null, models: Array<{ id: string; label: string }> = [];
+            try {
+                const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+                if (usedKey) headers['Authorization'] = `Bearer ${usedKey}`;
+                const modelRes = await fetch(`${def.baseUrl}/models`, { headers, signal: AbortSignal.timeout(5_000) });
+                if (modelRes.ok) {
+                    healthy = true;
+                    const data = await modelRes.json() as { data?: Array<{ id: string; name?: string }>; models?: Array<{ id: string; name?: string }> };
+                    const list = data.data ?? data.models ?? [];
+                    models = list.slice(0, 100).map((m: { id: string; name?: string }) => ({ id: m.id, label: m.name ?? m.id }));
+                } else error = `HTTP ${modelRes.status}: ${modelRes.statusText}`;
+            } catch (e: unknown) { error = e instanceof Error ? e.message : String(e); }
+            const currentProvider = detectLoopProvider(lp.baseUrl);
+            const isActive = currentProvider === def.id || (!['mlx','ollama','meshllm','openrouter'].includes(def.id) && lp.baseUrl === def.baseUrl);
+            const selectedModel = isActive ? lp.model : null;
+            return { id: def.id, name: def.name, enabled: def.enabled, healthy, error, models,
+                baseUrl: def.baseUrl, modelCount: models.length, selectedModel, isActive,
+                envHost: def.envHost ?? null, defaultPort: def.defaultPort ?? null, isCustom: def.isCustom ?? false };
+        }
+
+        function readCustomProviders(cfg: Record<string, unknown>): Array<{
+            id: string; name: string; baseUrl: string; apiKey?: string; model?: string;
+        }> {
+            const scheduler = cfg.scheduler as Record<string, unknown> | undefined;
+            const custom = scheduler?.customProviders as Array<Record<string, unknown>> | undefined;
+            return (custom ?? []).map((c, i) => ({
+                id: `custom-${i}`,
+                name: (c.name as string) ?? `Custom ${i + 1}`,
+                baseUrl: (c.baseUrl as string) ?? '',
+                apiKey: c.apiKey as string | undefined,
+                model: c.model as string | undefined,
+            }));
+        }
+
+        // ── PUT: switch/connect/toggle/remove ─────────────────────
+        if (req.method === 'PUT') {
+            try {
+                const body = await readBody(req);
+                const parsed = JSON.parse(body) as Record<string, unknown>;
+                const cfg = existsSync(configFile) ? parseJsonUtf8File(configFile) : {};
+                if (!cfg.scheduler) cfg.scheduler = { agents: {} };
+                if (!cfg.scheduler.loopProvider) cfg.scheduler.loopProvider = {};
+                const lpCfg = cfg.scheduler.loopProvider as Record<string, unknown>;
+
+                // Handle toggle updates
+                const toggle = parsed.toggle as Record<string, boolean> | undefined;
+                if (toggle) {
+                    if (!lpCfg.providerEnabled) lpCfg.providerEnabled = { ...DEFAULT_LOOP_PROVIDER_TOGGLES };
+                    const pe = lpCfg.providerEnabled as Record<string, unknown>;
+                    for (const [id, enabled] of Object.entries(toggle)) pe[id] = enabled;
+                }
+
+                // Handle addProvider
+                const addProvider = parsed.addProvider as Record<string, unknown> | undefined;
+                if (addProvider) {
+                    if (!cfg.scheduler.customProviders) cfg.scheduler.customProviders = [];
+                    const arr = cfg.scheduler.customProviders as Array<Record<string, unknown>>;
+                    const entry: Record<string, unknown> = {
+                        name: addProvider.name ?? 'Custom',
+                        baseUrl: (addProvider.baseUrl as string ?? '').replace(/\/$/, ''),
+                    };
+                    if (addProvider.apiKey) entry.apiKey = addProvider.apiKey;
+                    if (addProvider.model) entry.model = addProvider.model;
+                    arr.push(entry);
+                }
+
+                // Handle removeProvider
+                const removeProvider = parsed.removeProvider as string | undefined;
+                if (removeProvider && cfg.scheduler.customProviders) {
+                    const arr = cfg.scheduler.customProviders as Array<Record<string, unknown>>;
+                    cfg.scheduler.customProviders = arr.filter((c) => (c.name as string) !== removeProvider);
+                }
+
+                // Handle provider switch
+                const provider = parsed.provider as string | undefined;
+                if (provider) {
+                    const apiKey = parsed.apiKey as string | undefined | null;
+                    const model = parsed.model as string | undefined | null;
+                    switch (provider) {
+                        case 'mlx': {
+                            const mlxHost = process.env.MLX_HOST || 'http://localhost:8082';
+                            lpCfg.baseUrl = `${mlxHost.replace(/\/$/, '')}/v1`;
+                            if (apiKey !== undefined) lpCfg.apiKey = apiKey || undefined;
+                            if (model !== undefined) lpCfg.model = model || undefined;
+                            else if (!lpCfg.model) lpCfg.model = 'auto';
+                            break;
+                        }
+                        case 'ollama': {
+                            const ollamaHost = process.env.OLLAMA_HOST || 'http://localhost:11434';
+                            lpCfg.baseUrl = `${ollamaHost.replace(/\/$/, '')}/v1`;
+                            if (apiKey !== undefined) lpCfg.apiKey = apiKey || undefined;
+                            if (model !== undefined) lpCfg.model = model || undefined;
+                            else if (!lpCfg.model) lpCfg.model = 'auto';
+                            break;
+                        }
+                        case 'meshllm': {
+                            const meshHost = process.env.MESHLLM_HOST || 'http://localhost:9337';
+                            lpCfg.baseUrl = `${meshHost.replace(/\/$/, '')}/v1`;
+                            if (apiKey !== undefined) lpCfg.apiKey = apiKey || undefined;
+                            if (model !== undefined) lpCfg.model = model || undefined;
+                            else if (!lpCfg.model) lpCfg.model = 'auto';
+                            break;
+                        }
+                        case 'openrouter': {
+                            lpCfg.baseUrl = 'https://openrouter.ai/api/v1';
+                            if (apiKey !== undefined) lpCfg.apiKey = apiKey || undefined;
+                            if (model !== undefined) lpCfg.model = model || undefined;
+                            else if (!lpCfg.model) lpCfg.model = 'deepseek/deepseek-v3.2';
+                            break;
+                        }
+                        default: {
+                            // Custom provider — look up by id or name
+                            const customProv = readCustomProviders(cfg).find(c => c.id === provider || c.name === provider);
+                            if (customProv) {
+                                lpCfg.baseUrl = customProv.baseUrl;
+                                if (apiKey !== undefined) lpCfg.apiKey = apiKey || customProv.apiKey || undefined;
+                                else if (customProv.apiKey) lpCfg.apiKey = customProv.apiKey;
+                                if (model !== undefined) lpCfg.model = model || customProv.model || undefined;
+                                else if (customProv.model) lpCfg.model = customProv.model;
+                                else if (!lpCfg.model) lpCfg.model = 'auto';
+                            } else {
+                                json(res, { error: `Unknown provider: ${provider}` }, 400);
+                                return;
+                            }
+                        }
+                    }
+                    if (apiKey === null) delete lpCfg.apiKey;
+                    if (model === null) delete lpCfg.model;
+                }
+
+                writeFileSync(configFile, JSON.stringify(cfg, null, 2));
+                bustModelCache();
+                json(res, { ok: true });
+            } catch (e: unknown) {
+                json(res, { error: e instanceof Error ? e.message : String(e) }, 500);
+            }
+            return;
+        }
+
+        // ── GET: probe all providers ────────────────────────────────────
+        if (req.method !== 'GET') { res.statusCode = 405; res.end('Method not allowed'); return; }
+
+        const builtInDefs = [
+            { id: 'mlx', name: 'MLX', baseUrl: process.env.MLX_HOST ? `${process.env.MLX_HOST.replace(/\/$/, '')}/v1` : 'http://localhost:8082/v1', enabled: providerToggles.mlx, envHost: 'MLX_HOST', defaultPort: '8082' },
+            { id: 'ollama', name: 'Ollama', baseUrl: process.env.OLLAMA_HOST ? `${process.env.OLLAMA_HOST.replace(/\/$/, '')}/v1` : 'http://localhost:11434/v1', enabled: providerToggles.ollama, envHost: 'OLLAMA_HOST', defaultPort: '11434' },
+            { id: 'meshllm', name: 'MeshLLM', baseUrl: process.env.MESHLLM_HOST ? `${process.env.MESHLLM_HOST.replace(/\/$/, '')}/v1` : 'http://localhost:9337/v1', enabled: providerToggles.meshllm, envHost: 'MESHLLM_HOST', defaultPort: '9337' },
+            { id: 'openrouter', name: 'OpenRouter', baseUrl: 'https://openrouter.ai/api/v1', enabled: providerToggles.openrouter },
+        ];
+
+        const cfg = existsSync(configFile) ? parseJsonUtf8File(configFile) : {};
+        const customDefs = readCustomProviders(cfg).map(c => ({
+            id: c.id, name: c.name, baseUrl: c.baseUrl,
+            enabled: true, apiKey: c.apiKey, isCustom: true,
+        }));
+
+        const results = await Promise.all(
+            [...builtInDefs.map(d => probeProvider({ ...d, apiKey: d.id === 'openrouter' ? (process.env.OPENROUTER_API_KEY || lp.apiKey) : undefined })),
+             ...customDefs.map(d => probeProvider(d))]
+        );
+        
+        const { resolveSmartModel } = await import('../brainModel');
+        const brainModel = (() => { try { return resolveSmartModel(configFile); } catch { return null; } })();
+        
+        json(res, {
+            providers: results,
+            activeProvider: detectLoopProvider(lp.baseUrl),
+            activeModel: lp.model,
+            brainModel: brainModel ? { source: (brainModel as any).source ?? 'unknown', model: (brainModel as any).model ?? null, baseUrl: (brainModel as any).baseUrl ?? null } : null,
+        });
+    });
+
     // ── /api/scheduler-mode ──────────────────────────────────────────────────
     use('/api/scheduler-mode', async (req, res) => {
         cors(res, 'GET, PUT, OPTIONS');
