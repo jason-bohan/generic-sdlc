@@ -70,6 +70,12 @@ export interface CompletePhaseInput {
     outputs: Partial<Record<SdlcOutputKey, unknown>>;
     nextPhase: SdlcPhaseId;
     message?: string | null;
+    /**
+     * Authoritative verdict from the framework's own run_validation (read off the agent desk by the
+     * route), independent of what the model copied into its outputs. Lets the forward-progress guard
+     * coerce a PASSED validating forward even when an indecisive model omits "PASSED" from its report.
+     */
+    validationPassed?: boolean;
 }
 
 export interface BuildPhasePromptInput {
@@ -895,7 +901,13 @@ export function completePhase(input: CompletePhaseInput): OrchestratorResult<Wor
     let effectiveNextPhase = input.nextPhase;
     let guardNote: string | null = null;
     let guardLabel: string | null = null;
-    if (input.phase === 'validating' && REWORK_PHASES.has(input.nextPhase) && validationEvidencePassed(input.outputs)) {
+    // Trust the framework's own run_validation verdict (input.validationPassed, read off the desk by
+    // the route) OR the model's self-reported PASSED evidence. The authoritative verdict is what stops
+    // a capable-but-indecisive model from bouncing a green validation back to generating-code forever
+    // (observed: Mistral wrote correct, passing code but kept choosing generating-code without copying
+    // "PASSED" into its outputs, so the model-evidence-only guard stayed blind and it looped to the cap).
+    if (input.phase === 'validating' && REWORK_PHASES.has(input.nextPhase)
+        && (input.validationPassed === true || validationEvidencePassed(input.outputs))) {
         effectiveNextPhase = 'committing';
         guardLabel = 'forward-progress guard';
         guardNote = `Forward-progress guard: validation reported PASSED, so '${input.phase}' was not allowed to return to '${input.nextPhase}'. Advanced to '${effectiveNextPhase}'.`;

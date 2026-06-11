@@ -743,6 +743,13 @@ function persistValidationFailure(frameworkDir: string, agentId: string, failure
         const s = parseJsonUtf8File(statusFile) as Record<string, unknown>;
         if (failure) s.lastValidationFailure = failure;
         else delete s.lastValidationFailure;
+        // Positive, authoritative verdict from the framework's own run_validation. The
+        // forward-progress guard reads this so a capable-but-indecisive model that bounces a
+        // PASSED validation back to generating-code (without copying "PASSED" into its outputs)
+        // is still coerced forward. `lastValidationFailure` absence alone is ambiguous (passed
+        // vs never-ran), so we record the verdict explicitly.
+        s.lastValidationResult = failure ? 'failed' : 'passed';
+        s.lastValidationAt = new Date().toISOString();
         writeFileSync(statusFile, JSON.stringify(s, null, 2));
     } catch { /* non-fatal — feedback is best-effort */ }
 }

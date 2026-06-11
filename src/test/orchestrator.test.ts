@@ -127,6 +127,44 @@ describe('orchestrator-lite', () => {
         expect(result.value?.active_phase).toBe('creating-pr');
     });
 
+    it('forward-progress guard trusts the authoritative run_validation verdict over the model self-report', () => {
+        const started = startWorkflow({ externalMode: 'mock', story: { number: 'B-17099', backend: 'Add util' } });
+        const item = started.value!.item;
+        completePhase({ workflowItemId: item.id, agentId: 'backend', phase: 'reading-story', nextPhase: 'analyzing',
+            outputs: { tasks: [{ name: 't' }], taskIds: ['TK-1'], testMatrix: { unit: true }, risks: [], openQuestions: [] } });
+        completePhase({ workflowItemId: item.id, agentId: 'backend', phase: 'analyzing', nextPhase: 'generating-code',
+            outputs: { codeChanges: 'x', testMatrix: { unit: true }, risks: [], openQuestions: [] } });
+        completePhase({ workflowItemId: item.id, agentId: 'backend', phase: 'generating-code', nextPhase: 'validating',
+            outputs: { codeChanges: 'x', testMatrix: { unit: true } } });
+        // The model bounces validating → generating-code WITHOUT writing "PASSED" into its evidence
+        // (what Mistral did), but the framework's run_validation verdict says it passed → coerce forward.
+        const result = completePhase({
+            workflowItemId: item.id, agentId: 'backend', phase: 'validating', nextPhase: 'generating-code',
+            outputs: { validationResults: 'ran the checks', staticAnalysis: 'ok', testResults: 'ran', risks: ['wants more polish'] },
+            validationPassed: true,
+        });
+        expect(result.ok).toBe(true);
+        expect(result.value?.active_phase).toBe('committing');
+    });
+
+    it('does NOT coerce when the authoritative verdict is FAILED — genuine rework still routes back', () => {
+        const started = startWorkflow({ externalMode: 'mock', story: { number: 'B-17098', backend: 'Add util' } });
+        const item = started.value!.item;
+        completePhase({ workflowItemId: item.id, agentId: 'backend', phase: 'reading-story', nextPhase: 'analyzing',
+            outputs: { tasks: [{ name: 't' }], taskIds: ['TK-1'], testMatrix: { unit: true }, risks: [], openQuestions: [] } });
+        completePhase({ workflowItemId: item.id, agentId: 'backend', phase: 'analyzing', nextPhase: 'generating-code',
+            outputs: { codeChanges: 'x', testMatrix: { unit: true }, risks: [], openQuestions: [] } });
+        completePhase({ workflowItemId: item.id, agentId: 'backend', phase: 'generating-code', nextPhase: 'validating',
+            outputs: { codeChanges: 'x', testMatrix: { unit: true } } });
+        const result = completePhase({
+            workflowItemId: item.id, agentId: 'backend', phase: 'validating', nextPhase: 'generating-code',
+            outputs: { validationResults: 'tsc FAILED', staticAnalysis: 'errors', testResults: 'red', risks: ['type errors'] },
+            validationPassed: false,
+        });
+        expect(result.ok).toBe(true);
+        expect(result.value?.active_phase).toBe('generating-code');
+    });
+
     it('transitions when the phase output contract and role graph allow it', () => {
         const started = startWorkflow({
             externalMode: 'mock',
