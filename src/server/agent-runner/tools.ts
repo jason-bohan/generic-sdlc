@@ -20,6 +20,8 @@ import { getSdlcPhaseContract, type SdlcPhaseId } from '../../shared/sdlcContrac
 import type { ToolDefinition } from './types';
 import { parseJsonUtf8File } from '../json-file';
 import { createWorkerPool } from '../workerPool';
+import { isLocalStoryNumber, updateLocalStoryStatus } from '../local-planning';
+import { findStoryOwnerByPrId } from '../handoff';
 
 // ---------------------------------------------------------------------------
 // Tool definitions (sent to the LLM)
@@ -1376,6 +1378,27 @@ async function toolCompletePhase(
                     return `[build-gate] ${autoMerge.note.slice('BUILD-FAILED:'.length)} The build-gate driver will route this to the developer for rework. Story NOT marked complete. (devops desk left at build-passed.)`;
                 }
                 return `[build-gate] Could not merge the PR: ${autoMerge.note}. Story NOT marked complete — resolve the merge, then re-run. (devops desk left at build-passed.)`;
+            }
+            // Close local story automatically after successful merge
+            if (autoMerge.ok) {
+                let closeStoryNumber = storyNumber;
+                if (!isLocalStoryNumber(closeStoryNumber)) {
+                    try {
+                        const ds = parseJsonUtf8File(resolve(frameworkDir, '.devops-status.json')) as Record<string, unknown>;
+                        const prDesk = ds.assignedPR as { id?: number; storyNumber?: string } | undefined;
+                        if (prDesk?.id) {
+                            const owner = findStoryOwnerByPrId(frameworkDir, prDesk.id);
+                            if (owner && typeof (owner.status as Record<string, unknown>)?.storyNumber === 'string') {
+                                closeStoryNumber = String((owner.status as Record<string, unknown>).storyNumber);
+                            }
+                        }
+                    } catch { /* fallback failed */ }
+                }
+                if (isLocalStoryNumber(closeStoryNumber)) {
+                    try {
+                        updateLocalStoryStatus(frameworkDir, closeStoryNumber, 'Closed');
+                    } catch { /* non-critical */ }
+                }
             }
         }
     }

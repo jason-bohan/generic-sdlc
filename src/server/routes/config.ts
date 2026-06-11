@@ -426,7 +426,6 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                             break;
                         }
                         default: {
-                            // Custom provider — look up by id or name
                             const customProv = readCustomProviders(cfg).find(c => c.id === provider || c.name === provider);
                             if (customProv) {
                                 lpCfg.baseUrl = customProv.baseUrl;
@@ -484,6 +483,77 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
             activeModel: lp.model,
             brainModel: brainModel ? { source: (brainModel as any).source ?? 'unknown', model: (brainModel as any).model ?? null, baseUrl: (brainModel as any).baseUrl ?? null } : null,
         });
+    });
+
+    // ── /api/providers/github-device-flow ─────────────────────────────────────
+    use('/api/providers/github-device-flow', async (req, res) => {
+        cors(res, 'POST, OPTIONS');
+        if (req.method === 'OPTIONS') { res.statusCode = 204; res.end(); return; }
+        if (req.method !== 'POST') { res.statusCode = 405; res.end('Method not allowed'); return; }
+
+        const body = await readBody(req);
+        try {
+            const parsed = JSON.parse(body);
+            const { action } = parsed;
+            const { initiateDeviceCode, pollForToken, validateAccessToken } = await import('../agent-runner/github-device-flow');
+
+            if (action === 'initiate') {
+                const deviceCodeResponse = await initiateDeviceCode('gist');
+                json(res, {
+                    deviceCode: deviceCodeResponse.device_code,
+                    userCode: deviceCodeResponse.user_code,
+                    verificationUri: deviceCodeResponse.verification_uri,
+                    expiresIn: deviceCodeResponse.expires_in,
+                    interval: deviceCodeResponse.interval,
+                });
+                return;
+            }
+
+            if (action === 'poll') {
+                const { deviceCode, interval, expiresIn } = parsed;
+                if (!deviceCode || !interval || !expiresIn) {
+                    json(res, { error: 'Missing deviceCode, interval, or expiresIn' }, 400);
+                    return;
+                }
+                const tokenResponse = await pollForToken(deviceCode, interval, expiresIn);
+                const userInfo = await validateAccessToken(tokenResponse.access_token);
+                if (!userInfo) {
+                    json(res, { error: 'Failed to validate access token' }, 400);
+                    return;
+                }
+                const cfg = existsSync(configFile) ? parseJsonUtf8File(configFile) as Record<string, any> : {};
+                if (!cfg.scheduler) cfg.scheduler = {};
+                if (!cfg.scheduler.customProviders) cfg.scheduler.customProviders = [];
+                const copilotIndex = cfg.scheduler.customProviders.findIndex((p: any) => p.name === 'GitHub Copilot');
+                const copilotProvider = {
+                    name: 'GitHub Copilot',
+                    baseUrl: 'https://api.github.com/copilot_internal/v2/token',
+                    apiKey: tokenResponse.access_token,
+                    model: 'github-copilot/claude-haiku-4.5',
+                    githubLogin: userInfo.login,
+                };
+                if (copilotIndex >= 0) {
+                    cfg.scheduler.customProviders[copilotIndex] = copilotProvider;
+                } else {
+                    cfg.scheduler.customProviders.push(copilotProvider);
+                }
+                writeFileSync(configFile, JSON.stringify(cfg, null, 2));
+                bustModelCache();
+                json(res, {
+                    ok: true,
+                    provider: {
+                        name: copilotProvider.name,
+                        model: copilotProvider.model,
+                        login: userInfo.login,
+                    },
+                });
+                return;
+            }
+
+            json(res, { error: 'Invalid action' }, 400);
+        } catch (e: unknown) {
+            json(res, { error: e instanceof Error ? e.message : String(e) }, 500);
+        }
     });
 
     // ── /api/scheduler-mode ──────────────────────────────────────────────────

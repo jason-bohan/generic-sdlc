@@ -496,6 +496,23 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
         } catch (e: unknown) { json(res, { error: e instanceof Error ? e.message : String(e) }, 500); }
     });
 
+    // ── /api/stories/:project/:number — alias for /api/planning/story?number=  ─
+    use('/api/stories', async (req, res) => {
+        const match = req.url?.match(/^\/api\/stories\/([^/]+)\/([^/]+)(?:\?|$)/);
+        if (!match) { res.statusCode = 404; res.end(); return; }
+        const [, , number] = match;
+        cors(res, 'GET, OPTIONS');
+        if (req.method === 'OPTIONS') { res.statusCode = 204; res.end(); return; }
+        if (req.method !== 'GET') { res.statusCode = 405; res.end('Method not allowed'); return; }
+        if (isLocalStoryNumber(number)) {
+            const story = findLocalStory(rootDir, number);
+            if (!story) { json(res, { error: `Local story ${number} not found` }, 404); return; }
+            json(res, { ...story, project: story.scope, url: `local-planning://${story.number}`, source: 'local' });
+            return;
+        }
+        json(res, { error: `Story ${number} not found` }, 404);
+    });
+
     // ── /api/planning/delete-story ────────────────────────────────────────────
     use('/api/planning/delete-story', async (req, res) => {
         cors(res, 'POST, OPTIONS');
