@@ -26,6 +26,36 @@ const NEVER_AUTO_CONTINUE_PHASES = new Set([
     'approved', 'changes-requested',
 ]);
 
+// Hard cap on consecutive auto-continues for the same (agent, phase, story). The loop driver
+// auto-resumes in-process with a cap of 3; subprocess drivers (claude-code, opencode, aider, …)
+// rely on this status-bus path, which had NO cap — so a fast-exiting subprocess gets re-spawned in
+// a tight loop. Observed live: a claude-code worker exited instantly and was re-spawned 1,143× on
+// "reading-story", cascading the workflow to a false "complete" with zero artifacts. The key
+// includes the phase, so healthy phase-to-phase progress resets naturally; only a same-phase storm
+// trips the cap.
+export const AUTO_CONTINUE_CAP = 5;
+const autoContinueCounts = new Map<string, number>();
+
+/**
+ * Record an auto-continue attempt for (agent, phase, story) and report whether it's within the cap.
+ * Returns false once the cap is exceeded — the caller must then stop re-spawning. Exported for tests.
+ */
+export function withinAutoContinueCap(agentId: string, phase: string, storyNumber: string): boolean {
+    if (autoContinueCounts.size > 1000) autoContinueCounts.clear(); // bound memory; stale keys are harmless
+    const key = `${agentId}:${phase}:${storyNumber}`;
+    const n = (autoContinueCounts.get(key) ?? 0) + 1;
+    autoContinueCounts.set(key, n);
+    return n <= AUTO_CONTINUE_CAP;
+}
+
+/** Clear the auto-continue counter for an agent's phase (e.g. on a clean manual reset). Exported for tests. */
+export function resetAutoContinueCap(agentId?: string): void {
+    if (!agentId) { autoContinueCounts.clear(); return; }
+    for (const key of autoContinueCounts.keys()) {
+        if (key.startsWith(`${agentId}:`)) autoContinueCounts.delete(key);
+    }
+}
+
 /**
  * Single guarded auto-continue path, shared by the status-bus handler and the
  * process-exit hook. Reads the agent's current phase from its status file (the
@@ -64,6 +94,13 @@ export function maybeAutoContinueAgent(rootDir: string, port: number, configFile
 
     // Step mode: user wants to review before proceeding.
     if (isAgentStepMode(agentId, configFile)) return;
+
+    // Hard cap: stop re-spawning a subprocess driver that keeps exiting on the same phase, instead
+    // of storming (the loop driver caps at 3 internally; subprocess drivers had no cap until here).
+    if (!withinAutoContinueCap(agentId, phase, String(status.storyNumber))) {
+        log.warn(`[auto-continue] ${agentId} hit the auto-continue cap (${AUTO_CONTINUE_CAP}) on phase "${phase}" for ${status.storyNumber} — stopping. The subprocess driver keeps exiting without advancing; needs a human or a clean re-kick.`);
+        return;
+    }
 
     log.info(`[auto-continue] ${agentId} idle on phase "${phase}" — auto-continuing`);
     void fetch(`http://localhost:${port}/api/agent/continue`, {
