@@ -1,4 +1,5 @@
 import { resolve } from 'path';
+import { existsSync } from 'fs';
 import { getActiveProject } from '../project-config';
 import { spawnAgent } from '../spawn-agent';
 import { completePhase, startPhaseRun, superviseWorkflow } from '../orchestrator';
@@ -142,6 +143,20 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                 const sdlcAgentId = asSdlcAgentId((agentId as string).trim())!;
                 const sdlcPhase = asSdlcPhaseId((phase as string).trim())!;
                 const sdlcNextPhase = asSdlcPhaseId((nextPhase as string).trim())!;
+                // Authoritative validation verdict: the framework's own run_validation records
+                // lastValidationResult on the agent desk. Read it here so the forward-progress guard
+                // can trust it over what the model copied (or forgot to copy) into its outputs.
+                let validationPassed: boolean | undefined;
+                if (sdlcPhase === 'validating') {
+                    try {
+                        const deskFile = resolve(rootDir, `.${sdlcAgentId}-status.json`);
+                        if (existsSync(deskFile)) {
+                            const desk = parseJsonUtf8File(deskFile) as Record<string, unknown>;
+                            if (desk.lastValidationResult === 'passed') validationPassed = true;
+                            else if (desk.lastValidationResult === 'failed') validationPassed = false;
+                        }
+                    } catch { /* best-effort; fall back to model-reported evidence */ }
+                }
                 const result = completePhase({
                     workflowItemId: idNum,
                     agentId: sdlcAgentId,
@@ -149,6 +164,7 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                     outputs: outputs && typeof outputs === 'object' ? outputs as Record<string, unknown> : {},
                     nextPhase: sdlcNextPhase,
                     message: typeof message === 'string' ? message : null,
+                    validationPassed,
                 });
                 if (!result.ok) {
                     json(res, { error: result.error, missing: result.missing }, 409);
