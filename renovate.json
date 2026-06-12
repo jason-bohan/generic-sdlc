@@ -2,5 +2,12 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
     "config:recommended"
+  ],
+  "packageRules": [
+    {
+      "description": "Pin Python to 3.12 — the ML training target (CUDA 13.1 / RTX 3500 Ada, see ml/unsloth/requirements.txt). CI must mirror that runtime, so never auto-bump the python version.",
+      "matchPackageNames": ["python"],
+      "enabled": false
+    }
   ]
 }
