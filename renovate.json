@@ -2,5 +2,24 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
     "config:recommended"
+  ],
+  "packageRules": [
+    {
+      "description": "Pin Python to 3.12 — the ML training target (CUDA 13.1 / RTX 3500 Ada, see ml/unsloth/requirements.txt). CI must mirror that runtime, so never auto-bump the python version.",
+      "matchPackageNames": ["python"],
+      "enabled": false
+    },
+    {
+      "description": "Stay on Node.js 24.x — package.json engines is >=24.0.0 <25.0.0 and the preinstall guard rejects v25+. Block major node bumps.",
+      "matchPackageNames": ["node"],
+      "matchUpdateTypes": ["major"],
+      "enabled": false
+    },
+    {
+      "description": "Stay on nvidia/cuda v12.x for the meshllm docker base image (docker/Dockerfile.meshllm-cuda) — v13 is too aggressive for now.",
+      "matchPackageNames": ["nvidia/cuda"],
+      "matchUpdateTypes": ["major"],
+      "enabled": false
+    }
   ]
 }
