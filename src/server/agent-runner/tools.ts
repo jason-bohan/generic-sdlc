@@ -1343,15 +1343,30 @@ async function toolCompletePhase(
         const prMeta = (autoPr.ok ? (autoPr.pr ?? autoPr.mockPr) : undefined) as { number?: number; url?: string; title?: string; branch?: string } | undefined;
         if (prMeta && typeof prMeta.number === 'number' && prMeta.number > 0) {
             const serverUrl = process.env.SDLC_SERVER_URL || 'http://localhost:3001';
-            try {
-                await fetch(`${serverUrl}/api/pr/created`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ agentId, prId: prMeta.number, prTitle: prMeta.title || changeTitle, prUrl: prMeta.url, storyNumber, branch: prMeta.branch }),
-                    signal: AbortSignal.timeout(20_000),
-                });
-            } catch (e) {
-                console.warn('[creating-pr] reviewer handoff (/api/pr/created) failed:', e instanceof Error ? e.message : String(e));
+            const payload = JSON.stringify({ agentId, prId: prMeta.number, prTitle: prMeta.title || changeTitle, prUrl: prMeta.url, storyNumber, branch: prMeta.branch });
+            // Retry with backoff: a single transient "fetch failed" (server mid-tick,
+            // momentary refusal) used to permanently strand the PR unreviewed — the
+            // story then sits in watching-reviews forever. Also treat a non-2xx as a
+            // failed handoff, not a silent success.
+            const MAX = 4;
+            let handed = false;
+            for (let attempt = 1; attempt <= MAX && !handed; attempt++) {
+                try {
+                    const res = await fetch(`${serverUrl}/api/pr/created`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: payload,
+                        signal: AbortSignal.timeout(20_000),
+                    });
+                    if (res.ok) { handed = true; break; }
+                    console.warn(`[creating-pr] reviewer handoff attempt ${attempt}/${MAX} → HTTP ${res.status}`);
+                } catch (e) {
+                    console.warn(`[creating-pr] reviewer handoff attempt ${attempt}/${MAX} failed:`, e instanceof Error ? e.message : String(e));
+                }
+                if (!handed && attempt < MAX) await new Promise((r) => setTimeout(r, attempt * 1000));
+            }
+            if (!handed) {
+                console.error(`[creating-pr] reviewer handoff FAILED after ${MAX} attempts for PR #${prMeta.number} — it will sit unreviewed. Re-trigger with POST ${serverUrl}/api/pr/created or Pick Up on the reviewer desk.`);
             }
         }
     }
