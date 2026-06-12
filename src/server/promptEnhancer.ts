@@ -5,41 +5,52 @@
 import { existsSync, readFileSync, readdirSync } from 'fs';
 import { resolve } from 'path';
 
-// ─── Anti-pattern constraints ────────────────────────────────────────────
+// ─── Role guidance: intent + invariants, not procedural "don't" rules ──────
+//
+// Earlier these were rigid prohibitions ("do NOT modify existing route files";
+// "create standalone files"). For a task like "Add GET /api/ping/random" that
+// guidance backfired: a weak model obeyed literally — spun up a parallel router
+// file and repointed the import — dropping every existing route. Procedural rules
+// can't anticipate the task; they mislead weak models and box in strong ones.
+//
+// Instead, encode the INTENT (extend the module that already owns this concern)
+// and the INVARIANTS (don't break what exists; wire in what you add). That guides
+// a weak model toward the right shape while leaving a strong model free to act.
+// The hard guarantees are enforced by the rails (validation on the real worktree),
+// not by hoping the model obeys a prohibition.
 
 const ROLE_CONSTRAINTS: Record<string, string[]> = {
   backend: [
-    'Do NOT create new API endpoints or route handlers unless the task explicitly asks for an endpoint.',
-    'Do NOT modify existing route files (routes/, controllers/, handlers/) unless the task specifically refers to them.',
-    'Do NOT add dependencies to package.json without being told to.',
-    'Create standalone files in the locations specified by the task — do not embed logic inside existing functions.',
+    'To add an endpoint, add the route to the router/module that already serves that path prefix. Do not create a parallel router or repoint imports — extend the existing one.',
+    'Whatever you add must stay wired in and must not remove or break existing routes; all current tests must still pass.',
+    'Add a dependency only if the task cannot be done with what is already in package.json.',
   ],
   frontend: [
-    'Do NOT modify configuration files (webpack.config, tsconfig, vite.config, etc.) unless explicitly requested.',
-    'Do NOT add new npm dependencies without being told to.',
-    'Keep changes scoped to the component or file the task mentions.',
+    'Make the change in the component/file the task targets; reuse existing components and styles rather than recreating them.',
+    'Touch build/config files (vite, tsconfig, webpack) only when the task genuinely requires it.',
+    'Add a dependency only if the task cannot be done with what is already installed.',
   ],
   qa: [
-    'Do NOT test files that were not changed in this story.',
-    'Write assertions that verify behavior, not implementation details.',
+    'Test the behavior this story changed; assert on observable behavior, not implementation details.',
+    'Reuse the existing test setup/harness rather than introducing a parallel one.',
   ],
   reviewer: [
-    'Review only the code changed in this PR. Do not request changes on pre-existing code outside the diff.',
-    'Each review comment must reference a specific line or block in the diff — avoid vague general feedback.',
-    'If the code is functionally correct and follows the project conventions, approve it.',
+    'Review the diff; cite a specific line or block for each comment — no vague general feedback.',
+    'Approve when the change is functionally correct, wired in, and follows project conventions; do not request changes on pre-existing code outside the diff.',
   ],
   devops: [
-    'Do NOT modify application source code. Only modify CI config, pipeline files, and deployment manifests.',
+    'Keep changes to CI, pipeline, and deployment config; leave application source to the dev roles.',
   ],
 };
 
 /**
- * Generic constraints applied to every agent role.
+ * Generic guidance applied to every agent role — intent + invariants.
  */
 const GENERIC_CONSTRAINTS = [
-  'Read the task carefully. Produce exactly what is asked — no more, no less.',
-  'If the task asks for a new file, create it. Do not try to reuse or modify existing files to dodge the task.',
-  'Keep diffs minimal. Change only what is needed to satisfy the task.',
+  'Do exactly what the task asks — no more, no less.',
+  'Prefer extending the existing module that already owns this concern; create a new file only when none fits. Anything you create must be imported/registered so it actually runs.',
+  'Do not break existing behavior: keep the project building and its tests passing.',
+  'Keep the diff minimal — change only what the task needs.',
 ];
 
 /**
