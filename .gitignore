@@ -49,7 +49,7 @@ tools/openrouter-proxy/
 
 # ML training artifacts
 ml/unsloth/.venv/
-ml/unsloth/output/
+ml/unsloth/output
 ml/unsloth/unsloth_compiled_cache/
 .aider*
 
