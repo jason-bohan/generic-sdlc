@@ -3,6 +3,16 @@
   "extends": [
     "config:recommended"
   ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Track the pinned mesh-llm release (ARG MESHLLM_VERSION) — the Dockerfile manager only sees the FROM base image, not the curl'd GitHub release.",
+      "managerFilePatterns": ["/docker/Dockerfile.meshllm-cuda/"],
+      "matchStrings": ["ARG MESHLLM_VERSION=(?<currentValue>v?[\\d.]+)"],
+      "depNameTemplate": "Mesh-LLM/mesh-llm",
+      "datasourceTemplate": "github-releases"
+    }
+  ],
   "packageRules": [
     {
       "description": "Pin Python to 3.12 — the ML training target (CUDA 13.1 / RTX 3500 Ada, see ml/unsloth/requirements.txt). CI must mirror that runtime, so never auto-bump the python version.",
@@ -16,7 +26,7 @@
       "enabled": false
     },
     {
-      "description": "Stay on nvidia/cuda v12.x for the meshllm docker base image (docker/Dockerfile.meshllm-cuda) — v13 is too aggressive for now.",
+      "description": "Stay on nvidia/cuda 13.x for the meshllm docker base image (docker/Dockerfile.meshllm-cuda, currently 13.3.0; ML target is CUDA 13.1 per ml/unsloth/requirements.txt) — block major bumps to v14.",
       "matchPackageNames": ["nvidia/cuda"],
       "matchUpdateTypes": ["major"],
       "enabled": false
