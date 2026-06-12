@@ -1,5 +1,6 @@
 import { resolve } from 'path';
 import { existsSync } from 'fs';
+import { execFileSync } from 'child_process';
 import { getActiveProject } from '../project-config';
 import { spawnAgent } from '../spawn-agent';
 import { completePhase, startPhaseRun, superviseWorkflow } from '../orchestrator';
@@ -156,6 +157,34 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                             else if (desk.lastValidationResult === 'failed') validationPassed = false;
                         }
                     } catch { /* best-effort; fall back to model-reported evidence */ }
+                }
+                // Rail: generating-code must produce real file changes. Codestral sometimes
+                // reads/searches then completes the phase empty, which advances (or, after the
+                // per-phase auto-resume cap, stalls) with no implementation. Reject when the
+                // story worktree has no changes so the loop retries instead. The agent's
+                // create_file/edit_file tools materialize the worktree on first write, so an
+                // absent or clean worktree means nothing was written. Skipped for self-dev
+                // (workspace === framework root) where there is no target worktree.
+                if (sdlcPhase === 'generating-code') {
+                    const storyNum = dbGetWorkflowItem(idNum)?.story_number?.trim();
+                    const workspaceDir = getActiveProject(configFile)?.workspacePath;
+                    if (storyNum && workspaceDir && workspaceDir !== rootDir) {
+                        const wt = resolve(workspaceDir, '.claude', 'worktrees', `${sdlcAgentId}-${storyNum}`);
+                        let hasChanges = false;
+                        if (existsSync(wt)) {
+                            try {
+                                const out = execFileSync('git', ['-C', wt, 'status', '--porcelain'], { encoding: 'utf8', timeout: 10_000 });
+                                hasChanges = out.split('\n').some(l => l.trim() && !l.includes('node_modules/'));
+                            } catch { hasChanges = true; /* git check failed — fail open, don't block */ }
+                        }
+                        if (!hasChanges) {
+                            json(res, {
+                                error: `generating-code cannot complete for ${storyNum}: no file changes in the worktree. Use create_file/edit_file to write the implementation (and its test) before calling complete_phase — do not just read or search files.`,
+                                missing: ['code-changes'],
+                            }, 409);
+                            return;
+                        }
+                    }
                 }
                 const result = completePhase({
                     workflowItemId: idNum,
