@@ -18,6 +18,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libssl3 \
     && rm -rf /var/lib/apt/lists/*
 
+# As of v0.66+ the bundle ships a single self-contained mesh-llm binary; the
+# standalone rpc-server-cuda / llama-server-cuda binaries (and the *-cuda glob)
+# are gone — their functionality is folded into `mesh-llm` subcommands. So we
+# install whatever binaries the bundle ships as 0755 rather than naming specific
+# ones, then assert the mesh-llm entrypoint actually landed. A future bundle
+# restructure that drops mesh-llm fails the `test -x` instead of building a
+# broken image.
 RUN set -eux; \
     curl -L "https://github.com/Mesh-LLM/mesh-llm/releases/download/${MESHLLM_VERSION}/mesh-llm-${MESHLLM_ARCH}.tar.gz" \
       -o /tmp/mesh-llm.tar.gz; \
@@ -25,10 +32,8 @@ RUN set -eux; \
     tar -xzf /tmp/mesh-llm.tar.gz -C /tmp/mesh-llm; \
     find /tmp/mesh-llm -type f -maxdepth 3 -print; \
     cp -R /tmp/mesh-llm/* /opt/mesh-llm/; \
-    find /opt/mesh-llm -type f -maxdepth 3 -exec cp {} /usr/local/bin/ \;; \
-    chmod +x /usr/local/bin/mesh-llm /usr/local/bin/*-cuda; \
-    ln -sf /usr/local/bin/rpc-server-cuda /usr/local/bin/rpc-server; \
-    ln -sf /usr/local/bin/llama-server-cuda /usr/local/bin/llama-server; \
+    find /opt/mesh-llm -type f -maxdepth 3 -exec install -m 0755 {} /usr/local/bin/ \;; \
+    test -x /usr/local/bin/mesh-llm; \
     rm -rf /tmp/mesh-llm /tmp/mesh-llm.tar.gz
 
 EXPOSE 3131 9337
