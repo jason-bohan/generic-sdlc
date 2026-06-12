@@ -12,6 +12,6 @@ accelerate==1.14.0
 peft==0.19.1
 transformers==5.11.0
 sentencepiece==0.2.1
-protobuf==7.35.0
+protobuf==7.35.1
 huggingface_hub==1.19.0
 safetensors==0.8.0
