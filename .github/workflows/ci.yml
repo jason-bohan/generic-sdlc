@@ -55,3 +55,19 @@ jobs:
       # stack pulls a CPU torch transitively — enough to validate resolution + imports.
       - run: pip install -r requirements.txt
       - run: python -c "import datasets, transformers, huggingface_hub, safetensors; print('python deps import OK')"
+
+  meshllm-image:
+    name: Docker build (meshllm CUDA image)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      # Build only — no GPU, no run. The build pulls the nvidia/cuda base image,
+      # downloads the pinned mesh-llm release tarball, and chmod/ln -sf the expected
+      # binaries (mesh-llm, *-cuda). Those steps fail loudly if the FROM tag, the
+      # MESHLLM_VERSION pin, or the release asset naming drift — e.g. the v0.65.1 →
+      # v0.71.0 bump where the asset went -cuda → -cuda-13. No GPU is needed to
+      # validate that, only to run the binaries. Keeps nvidia/cuda + mesh-llm bumps
+      # from merging unbuilt.
+      - run: docker build -f docker/Dockerfile.meshllm-cuda -t meshllm-cuda:ci .
