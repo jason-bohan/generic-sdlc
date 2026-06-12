@@ -3,7 +3,11 @@
 # published Linux CUDA release bundle so `mesh-llm serve --model/--gguf` can
 # load the embedded llama.cpp runtime.
 
-FROM nvidia/cuda:13.3.0-runtime-ubuntu22.04
+# ubuntu24.04 (not 22.04): the mesh-llm v0.71.0 binary requires GLIBC_2.39, which
+# 22.04 (glibc 2.35) does not provide — it builds fine but fails at launch with
+# "version `GLIBC_2.39' not found". 24.04 ships glibc 2.39 and the same CUDA 13
+# runtime libs (libcudart.so.13 / libcublas.so.13) the binary links against.
+FROM nvidia/cuda:13.3.0-runtime-ubuntu24.04
 
 # As of v0.66 upstream splits the CUDA bundle into -cuda-12 / -cuda-13 variants;
 # match the cuda-13 variant to the nvidia/cuda:13.x base image above.
@@ -15,7 +19,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     libdbus-1-3 \
     libgomp1 \
-    libssl3 \
+    libssl3t64 \
     && rm -rf /var/lib/apt/lists/*
 
 # As of v0.66+ the bundle ships a single self-contained mesh-llm binary; the
@@ -35,6 +39,18 @@ RUN set -eux; \
     find /opt/mesh-llm -type f -maxdepth 3 -exec install -m 0755 {} /usr/local/bin/ \;; \
     test -x /usr/local/bin/mesh-llm; \
     rm -rf /tmp/mesh-llm /tmp/mesh-llm.tar.gz
+
+# GPU-free runtime guard. The build never executes mesh-llm, so a binary that
+# needs a newer glibc than the base image builds clean but dies at launch with
+# "version `GLIBC_x.y' not found" (exactly what v0.71.0 + ubuntu22.04 did). ldd
+# resolves the binary against the image's libs and surfaces that mismatch without
+# a GPU. libcuda.so.1 (the driver, injected at runtime) shows as "not found" — a
+# different message — so it does not false-trip this check.
+RUN if ldd /usr/local/bin/mesh-llm 2>&1 | grep -q 'GLIBC_.*not found'; then \
+      echo 'ERROR: base image glibc too old for mesh-llm:'; \
+      ldd /usr/local/bin/mesh-llm; \
+      exit 1; \
+    fi
 
 EXPOSE 3131 9337
 ENTRYPOINT ["mesh-llm"]
