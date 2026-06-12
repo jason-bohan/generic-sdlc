@@ -701,11 +701,24 @@ function toolRunCommand(
 }
 
 /** Pick the worktree to validate: explicit arg → newest `.claude/worktrees/*` dir → workspace root. */
-function resolveValidationCwd(args: Record<string, unknown>, workspaceDir: string, frameworkDir: string): string {
+function resolveValidationCwd(args: Record<string, unknown>, workspaceDir: string, frameworkDir: string, agentId: string): string {
     if (args.path) {
         const check = safePath(String(args.path), workspaceDir, [workspaceDir, frameworkDir]);
         if (check.ok && existsSync(check.resolved)) return check.resolved;
     }
+    // Deterministically validate THIS agent's story worktree. Reading the newest
+    // worktree by mtime (below) is a guess: with another story's worktree present —
+    // or the framework touching a dir more recently — validation can run against the
+    // wrong tree and report PASSED while the story's actual (broken) code never ran.
+    // That gap let a route-breaking change through with green validation.
+    try {
+        const desk = parseJsonUtf8File(resolve(frameworkDir, `.${agentId}-status.json`)) as { storyNumber?: unknown };
+        const story = String(desk.storyNumber ?? '').trim();
+        if (story) {
+            const wt = resolve(workspaceDir, '.claude/worktrees', `${agentId}-${story}`);
+            if (existsSync(wt)) return wt;
+        }
+    } catch { /* fall through to heuristics */ }
     const wtRoot = resolve(workspaceDir, '.claude/worktrees');
     if (existsSync(wtRoot)) {
         const dirs = readdirSync(wtRoot)
@@ -757,7 +770,7 @@ function persistValidationFailure(frameworkDir: string, agentId: string, failure
 }
 
 async function toolRunValidation(args: Record<string, unknown>, workspaceDir: string, frameworkDir: string, agentId: string): Promise<string> {
-    const cwd = resolveValidationCwd(args, workspaceDir, frameworkDir);
+    const cwd = resolveValidationCwd(args, workspaceDir, frameworkDir, agentId);
     let scripts: Record<string, string> = {};
     let hasPackageJson = false;
     try {
