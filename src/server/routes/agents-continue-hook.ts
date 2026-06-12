@@ -506,7 +506,14 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                 try {
                     const workflow = dbGetWorkflowItemByStory(storyNum, agentId);
                     if (workflow) {
-                        resumeCount = dbGetPhaseEvents(workflow.id)
+                        // Count phase-starts for the CURRENT assignment only. Workflow items are
+                        // reused on re-assignment, so an old run's phase-starts stay in phase_events;
+                        // counting all-time would trip the cap on entry and refuse to spawn the
+                        // worker at all (e.g. LOCAL-B-0063 had 5 banked generating-code starts from
+                        // a prior run, so the new run never launched). Mirrors the dev-loop fix.
+                        const events = dbGetPhaseEvents(workflow.id);
+                        const since = events.map(e => e.event_type).lastIndexOf('assigned') + 1;
+                        resumeCount = events.slice(since)
                             .filter(e => e.phase === phase && e.event_type === 'phase-started').length;
                     }
                 } catch { /* proceed */ }
