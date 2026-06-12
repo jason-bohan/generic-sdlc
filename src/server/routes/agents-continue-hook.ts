@@ -474,7 +474,14 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                 try {
                     const workflow = dbGetWorkflowItemByStory(storyNum, agentId);
                     if (workflow) {
-                        const devLoopStarts = dbGetPhaseEvents(workflow.id)
+                        // Count dev-loop starts for the CURRENT assignment only. Workflow items
+                        // are reused when a story is re-assigned, so an old run's thrash stays in
+                        // phase_events; counting all-time would pre-emptively pause a fresh run
+                        // (e.g. LOCAL-B-0063 re-assigned with 9 banked starts paused before its
+                        // first validation). Reset the count at the latest assignment event.
+                        const phaseEvents = dbGetPhaseEvents(workflow.id);
+                        const lastAssignIdx = phaseEvents.map(e => e.event_type).lastIndexOf('assigned');
+                        const devLoopStarts = phaseEvents.slice(lastAssignIdx + 1)
                             .filter(e => e.event_type === 'phase-started' && DEV_LOOP_PHASES.has(e.phase)).length;
                         const action = devLoopAction(devLoopStarts);
                         if (action === 'pause-human') {
