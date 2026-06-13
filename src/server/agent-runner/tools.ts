@@ -7,7 +7,8 @@
     statSync,
 } from 'fs';
 import { resolve, dirname, relative, sep, basename } from 'path';
-import { execFile, execFileSync } from 'child_process';
+import { execFile, execFileSync, spawn } from 'child_process';
+import { getActiveProject } from '../project-config';
 import { authorizeToolCall } from '../gateway/tool-authz';
 import { isMockExternalMode } from '../external-mode';
 import { isGlobalStepMode, isAgentStepMode } from '../stepMode';
@@ -769,6 +770,109 @@ function persistValidationFailure(frameworkDir: string, agentId: string, failure
     } catch { /* non-fatal — feedback is best-effort */ }
 }
 
+interface BehaviorGateConfig {
+    /** Command to start the app (PORT is injected via env). e.g. "npx tsx src/server/index.ts". */
+    start: string;
+    /** Optional build step run before start. e.g. "npm run build". */
+    build?: string;
+    /** Port to boot on (a free, non-default one). */
+    port?: number;
+    /** Path polled until the app is reachable. Default "/health". */
+    healthPath?: string;
+}
+
+/** Pull {METHOD, path} routes a story names, so the gate can probe the real thing. */
+function extractStoryRoutes(text: string): Array<{ method: string; path: string }> {
+    const routes: Array<{ method: string; path: string }> = [];
+    const seen = new Set<string>();
+    const add = (method: string, path: string) => {
+        const key = `${method} ${path}`;
+        if (!seen.has(key)) { seen.add(key); routes.push({ method, path }); }
+    };
+    // "GET /api/ping/random", "POST /users", etc.
+    for (const m of text.matchAll(/\b(GET|POST|PUT|PATCH|DELETE)\s+(\/[A-Za-z0-9/_:.-]+)/gi)) {
+        add(m[1].toUpperCase(), m[2]);
+    }
+    // Bare "/api/..." paths (assume GET) when no method was attached.
+    if (routes.length === 0) {
+        for (const m of text.matchAll(/(?:^|\s)(\/api\/[A-Za-z0-9/_:.-]+)/g)) add('GET', m[1]);
+    }
+    return routes;
+}
+
+function httpProbe(url: string, method: string, timeoutMs: number): Promise<number | null> {
+    return fetch(url, { method, signal: AbortSignal.timeout(timeoutMs) })
+        .then(r => r.status)
+        .catch(() => null);
+}
+
+/**
+ * Real-behavior gate: boot the app and actually hit the story's endpoint(s). tsc + the
+ * project's tests only prove the code is self-consistent — a hermetic/orphan route (a new
+ * file wired into nothing) passes those yet returns 404 in the running app. Probing the live
+ * endpoint catches that. Config-driven (project.behaviorGate) and fail-safe: returns null
+ * (skip) when there's no config or the story names no route, so it never blocks a legit run.
+ */
+async function runBehaviorGate(
+    cwd: string,
+    configPath: string,
+    agentId: string,
+    frameworkDir: string,
+): Promise<{ ok: boolean; out: string } | null> {
+    let gate: BehaviorGateConfig | undefined;
+    try { gate = (getActiveProject(configPath) as { behaviorGate?: BehaviorGateConfig }).behaviorGate; }
+    catch { return null; }
+    if (!gate?.start) return null;
+
+    let storyText = '';
+    try {
+        const desk = parseJsonUtf8File(resolve(frameworkDir, `.${agentId}-status.json`)) as { storyName?: unknown; storyDescription?: unknown };
+        storyText = `${String(desk.storyName ?? '')}\n${String(desk.storyDescription ?? '')}`;
+    } catch { /* no desk — skip */ }
+    const routes = extractStoryRoutes(storyText);
+    if (routes.length === 0) return null; // not an endpoint story
+
+    if (gate.build) {
+        const b = await runOne(gate.build, cwd);
+        if (!b.ok) return { ok: false, out: `build for behavior gate failed:\n${b.out.slice(-400)}` };
+    }
+
+    const port = gate.port ?? 8099;
+    const base = `http://127.0.0.1:${port}`;
+    const healthUrl = `${base}${gate.healthPath ?? '/health'}`;
+    const child = spawn(gate.start, { cwd, shell: true, detached: true, env: { ...process.env, PORT: String(port) } });
+    let serverOut = '';
+    child.stdout?.on('data', d => { serverOut += String(d); });
+    child.stderr?.on('data', d => { serverOut += String(d); });
+    const kill = () => { try { if (child.pid) process.kill(-child.pid, 'SIGKILL'); } catch { /* */ } try { child.kill('SIGKILL'); } catch { /* */ } };
+    try {
+        // Wait until reachable: health endpoint, or fall back to the first story route.
+        const deadline = Date.now() + 25_000;
+        let ready = false;
+        while (Date.now() < deadline) {
+            await new Promise(r => setTimeout(r, 700));
+            if (child.exitCode !== null) return { ok: false, out: `app exited (code ${child.exitCode}) before becoming reachable:\n${serverOut.slice(-500)}` };
+            const hs = await httpProbe(healthUrl, 'GET', 2000);
+            const rs = hs === null ? await httpProbe(`${base}${routes[0].path}`, routes[0].method, 2000) : hs;
+            if (rs !== null) { ready = true; break; }
+        }
+        if (!ready) return { ok: false, out: `app did not become reachable on :${port} within 25s:\n${serverOut.slice(-500)}` };
+
+        const failures: string[] = [];
+        for (const r of routes) {
+            const status = await httpProbe(`${base}${r.path}`, r.method, 8000);
+            if (status === null) failures.push(`${r.method} ${r.path} — no response from the running app`);
+            else if (status === 404) failures.push(`${r.method} ${r.path} — 404: the route is NOT wired into the running app (defined but never registered?)`);
+            else if (status >= 500) failures.push(`${r.method} ${r.path} — ${status}: the handler throws at runtime`);
+        }
+        return failures.length
+            ? { ok: false, out: failures.join('\n') }
+            : { ok: true, out: `probed ${routes.length} live route(s) — all reachable: ${routes.map(r => `${r.method} ${r.path}`).join(', ')}` };
+    } finally {
+        kill();
+    }
+}
+
 async function toolRunValidation(args: Record<string, unknown>, workspaceDir: string, frameworkDir: string, agentId: string): Promise<string> {
     const cwd = resolveValidationCwd(args, workspaceDir, frameworkDir, agentId);
     let scripts: Record<string, string> = {};
@@ -806,6 +910,21 @@ async function toolRunValidation(args: Record<string, unknown>, workspaceDir: st
         if (!r.ok) allPassed = false;
         lines.push(`- ${check.key} (${check.label}): ${r.ok ? 'PASSED' : `FAILED (exit ${r.code})`}`);
         if (!r.ok && r.out) lines.push(`    ${r.out.slice(-400).replace(/\n/g, '\n    ')}`);
+    }
+    // Real-behavior gate: only once the static checks pass (a broken build won't boot).
+    // Boots the app and hits the story's endpoint — catches hermetic/orphan routes that
+    // pass tsc + self-written tests but 404 in the running app.
+    if (allPassed) {
+        try {
+            const behavior = await runBehaviorGate(cwd, resolve(frameworkDir, '.sdlc-framework.config.json'), agentId, frameworkDir);
+            if (behavior) {
+                if (!behavior.ok) allPassed = false;
+                lines.push(`- behavior (live endpoint probe): ${behavior.ok ? 'PASSED' : 'FAILED'}`);
+                lines.push(`    ${behavior.out.slice(-600).replace(/\n/g, '\n    ')}`);
+            }
+        } catch (e) {
+            lines.push(`- behavior (live endpoint probe): SKIPPED (${e instanceof Error ? e.message : String(e)})`);
+        }
     }
     lines.push(`OVERALL: ${allPassed ? 'PASSED' : 'FAILED'}`);
     lines.push(allPassed
