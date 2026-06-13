@@ -358,7 +358,12 @@ function phaseSpecificInstructions(item: WorkflowItemRow, serverBaseUrl: string,
         // The plan made in analyzing (read-broadly → file:change list). Execute it instead of
         // re-researching from scratch — and crucially, edit EVERY file it names (incl. the test),
         // which is the fix for the 8B's narrow-execution failure (changes the route, forgets the test).
-        const planBlock = analysisPlan && analysisPlan.trim()
+        // Only on the FIRST generating-code attempt: execute the plan from scratch.
+        // On a re-entry after failed validation (priorValidationFailure set), the plan
+        // is already applied to the worktree — re-issuing "edit EVERY file" makes the
+        // model re-add code it already wrote (duplicate routes/imports). The
+        // priorFailureBlock takes over there with idempotent fix-only guidance.
+        const planBlock = analysisPlan && analysisPlan.trim() && !priorValidationFailure
             ? [
                 '📋 EXECUTE THE PLAN YOU MADE IN ANALYZING — edit EVERY file it lists, including the test:',
                 '```',
@@ -372,14 +377,17 @@ function phaseSpecificInstructions(item: WorkflowItemRow, serverBaseUrl: string,
             : [];
         const priorFailureBlock = priorValidationFailure
             ? [
-                '⚠️ YOUR PREVIOUS ATTEMPT FAILED VALIDATION. Fix EXACTLY these errors:',
+                '⚠️ YOUR PREVIOUS ATTEMPT IS ALREADY IN THE WORKTREE and FAILED VALIDATION. Fix EXACTLY these errors:',
                 '```',
                 priorValidationFailure.trim(),
                 '```',
-                'Make the MINIMAL change needed to resolve the errors above — they are usually a',
-                'missing import or a typo, NOT a reason to rewrite working code. In particular, every',
-                'name you reference (e.g. readFileSync) MUST be imported at the top of the file; if an',
-                'error says a name is not defined, add it to the existing import from its module.',
+                'Your earlier edits are already saved on disk. READ the current contents of each file before',
+                'changing it, and do NOT re-create files or re-add routes/handlers/imports you already added —',
+                'that produces duplicates (e.g. the same route registered twice). Make the MINIMAL change needed',
+                'to resolve the errors above — they are usually a missing import or a typo, NOT a reason to rewrite',
+                'or re-append working code. Every name you reference (e.g. readFileSync) MUST be imported at the top',
+                'of the file; if an error says a name is not defined, add it to the existing import from its module.',
+                'Do not touch package.json or tsconfig unless an error explicitly names them.',
                 'After editing, call run_validation again to confirm the errors are gone.',
                 '',
             ]
