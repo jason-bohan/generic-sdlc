@@ -2,7 +2,7 @@ import { resolve } from 'path';
 import { existsSync } from 'fs';
 import { execFileSync } from 'child_process';
 import { getActiveProject } from '../project-config';
-import { deskRailFlags } from '../railFlags';
+import { deskRailFlags, recordRunOutcome } from '../railFlags';
 import { spawnAgent } from '../spawn-agent';
 import { completePhase, startPhaseRun, superviseWorkflow } from '../orchestrator';
 import { freeStoryAgents, storyNumberFromDesk } from '../reset-agents';
@@ -227,7 +227,24 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                                     if (typeof pid === 'number') prId = pid;
                                 } catch { /* no desk to derive from */ }
                             }
-                            if (sn) freeStoryAgents(rootDir, sn, prId);
+                            if (sn) {
+                                // Phase 3: record a clean completion for each impl agent that owned
+                                // this story (attributed to its worker model), BEFORE the desks are
+                                // freed, so a successful model earns a better learned strength.
+                                try {
+                                    for (const impl of ['frontend', 'backend', 'qa', 'ux']) {
+                                        const wf = dbGetWorkflowItemByStory(sn, impl);
+                                        if (!wf) continue;
+                                        let wm: unknown;
+                                        try { wm = (parseJsonUtf8File(resolve(rootDir, `.${impl}-status.json`)) as { workerModel?: unknown }).workerModel; } catch { /* no desk */ }
+                                        const events = dbGetPhaseEvents(wf.id);
+                                        const since = events.map(e => e.event_type).lastIndexOf('assigned') + 1;
+                                        const devLoopStarts = events.slice(since).filter(e => e.event_type === 'phase-started' && ['analyzing', 'generating-code', 'validating'].includes(e.phase)).length;
+                                        recordRunOutcome(rootDir, typeof wm === 'string' ? wm : undefined, { stalled: false, devLoopStarts });
+                                    }
+                                } catch { /* non-fatal — learning is best-effort */ }
+                                freeStoryAgents(rootDir, sn, prId);
+                            }
                         } catch (e) { console.warn('[complete] freeStoryAgents failed:', e); }
                     } else if (nextItem.active_phase && nextItem.active_phase !== 'idle') {
                         try {

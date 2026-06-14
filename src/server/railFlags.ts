@@ -13,6 +13,7 @@
  * Phase 3 learns strength from historical success rates.
  */
 import { resolve } from 'path';
+import { writeFileSync } from 'fs';
 import { parseJsonUtf8File } from './json-file';
 
 export type Strength = 'weak' | 'mid' | 'strong';
@@ -93,4 +94,67 @@ export function deskRailFlags(agentId: string, rootDir: string): Set<RailFlag> {
         }
     } catch { /* no desk → weak */ }
     return new Set(computeRailFlags('weak'));
+}
+
+// ─── Phase 3: learned strength from a model's track record ──────────────────
+
+export interface ModelStats {
+    runs: number;
+    cleanRuns: number;       // reached complete without pausing for a human
+    stalledRuns: number;     // paused/stuck
+    devLoopStartsTotal: number;
+}
+
+const MODEL_STATS_FILE = '.sdlc-framework/model-stats.json';
+/** Minimum completed runs before a model's history is trusted over the config prior. */
+export const LEARNED_STRENGTH_MIN_SAMPLES = 5;
+
+const EMPTY_STATS: ModelStats = { runs: 0, cleanRuns: 0, stalledRuns: 0, devLoopStartsTotal: 0 };
+
+/**
+ * Derive a strength tier from a model's history, or undefined when there isn't enough
+ * data yet (caller falls back to the config prior). A model that finishes cleanly with
+ * little bouncing earns 'strong'; a decent record earns 'mid'; a poor one 'weak'.
+ */
+export function learnedStrengthFrom(stats: ModelStats): Strength | undefined {
+    if (stats.runs < LEARNED_STRENGTH_MIN_SAMPLES) return undefined;
+    const cleanRate = stats.cleanRuns / stats.runs;
+    const avgBounce = stats.devLoopStartsTotal / stats.runs;
+    if (cleanRate >= 0.8 && avgBounce <= 1) return 'strong';
+    if (cleanRate >= 0.5) return 'mid';
+    return 'weak';
+}
+
+export function readModelStats(rootDir: string, model: string): ModelStats {
+    try {
+        const all = parseJsonUtf8File(resolve(rootDir, MODEL_STATS_FILE)) as Record<string, Partial<ModelStats>>;
+        const s = all?.[model];
+        if (s) return { ...EMPTY_STATS, ...s };
+    } catch { /* no stats yet */ }
+    return { ...EMPTY_STATS };
+}
+
+/** Record a terminal run outcome for a model (best-effort; never throws). */
+export function recordRunOutcome(rootDir: string, model: string | undefined, outcome: { stalled: boolean; devLoopStarts: number }): void {
+    if (!model) return;
+    try {
+        const path = resolve(rootDir, MODEL_STATS_FILE);
+        let all: Record<string, Partial<ModelStats>> = {};
+        try { all = parseJsonUtf8File(path) as Record<string, Partial<ModelStats>>; } catch { /* first write */ }
+        const s = { ...EMPTY_STATS, ...(all[model] ?? {}) };
+        s.runs += 1;
+        if (outcome.stalled) s.stalledRuns += 1; else s.cleanRuns += 1;
+        s.devLoopStartsTotal += Math.max(0, outcome.devLoopStarts | 0);
+        all[model] = s;
+        writeFileSync(path, JSON.stringify(all, null, 2));
+    } catch { /* non-fatal — learning is best-effort */ }
+}
+
+/**
+ * Base strength for a run: a model's learned strength once it has enough history,
+ * otherwise the configured prior (which itself falls back to 'weak'). Phase 2 decay
+ * then applies on top of this during the run.
+ */
+export function resolveBaseStrength(model: string, configPath: string, rootDir: string): Strength {
+    return learnedStrengthFrom(readModelStats(rootDir, model)) ?? strengthForModel(model, configPath);
 }

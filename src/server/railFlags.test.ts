@@ -1,8 +1,54 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'fs';
 import { tmpdir } from 'os';
 import { resolve } from 'path';
-import { computeRailFlags, strengthForModel, deskRailFlags, decayStrength } from './railFlags';
+import {
+    computeRailFlags, strengthForModel, deskRailFlags, decayStrength,
+    learnedStrengthFrom, recordRunOutcome, readModelStats, resolveBaseStrength, LEARNED_STRENGTH_MIN_SAMPLES,
+} from './railFlags';
+
+describe('learnedStrengthFrom (Phase 3)', () => {
+    it('returns undefined below the sample threshold', () => {
+        expect(learnedStrengthFrom({ runs: LEARNED_STRENGTH_MIN_SAMPLES - 1, cleanRuns: 4, stalledRuns: 0, devLoopStartsTotal: 0 })).toBeUndefined();
+    });
+    it('clean record with little bouncing → strong', () => {
+        expect(learnedStrengthFrom({ runs: 10, cleanRuns: 9, stalledRuns: 1, devLoopStartsTotal: 5 })).toBe('strong');
+    });
+    it('decent record → mid', () => {
+        expect(learnedStrengthFrom({ runs: 10, cleanRuns: 6, stalledRuns: 4, devLoopStartsTotal: 40 })).toBe('mid');
+    });
+    it('poor record → weak', () => {
+        expect(learnedStrengthFrom({ runs: 10, cleanRuns: 2, stalledRuns: 8, devLoopStartsTotal: 70 })).toBe('weak');
+    });
+});
+
+describe('recordRunOutcome / readModelStats / resolveBaseStrength (Phase 3, file-backed)', () => {
+    let dir: string;
+    beforeEach(() => { dir = mkdtempSync(resolve(tmpdir(), 'modelstats-')); mkdirSync(resolve(dir, '.sdlc-framework')); });
+    afterEach(() => { rmSync(dir, { recursive: true, force: true }); });
+
+    it('accumulates outcomes per model', () => {
+        recordRunOutcome(dir, 'm1', { stalled: false, devLoopStarts: 1 });
+        recordRunOutcome(dir, 'm1', { stalled: true, devLoopStarts: 9 });
+        const s = readModelStats(dir, 'm1');
+        expect(s).toEqual({ runs: 2, cleanRuns: 1, stalledRuns: 1, devLoopStartsTotal: 10 });
+    });
+    it('no model → no-op', () => {
+        recordRunOutcome(dir, undefined, { stalled: true, devLoopStarts: 5 });
+        expect(readModelStats(dir, 'whatever').runs).toBe(0);
+    });
+    it('resolveBaseStrength prefers learned history over the config prior', () => {
+        writeFileSync(resolve(dir, 'config.json'), JSON.stringify({ agentStrength: { m2: 'strong' } }));
+        // m2 is configured strong, but a poor track record demotes it once there's enough data
+        for (let i = 0; i < 6; i++) recordRunOutcome(dir, 'm2', { stalled: true, devLoopStarts: 9 });
+        expect(resolveBaseStrength('m2', resolve(dir, 'config.json'), dir)).toBe('weak');
+    });
+    it('resolveBaseStrength falls back to config when history is thin', () => {
+        writeFileSync(resolve(dir, 'config.json'), JSON.stringify({ agentStrength: { m3: 'mid' } }));
+        recordRunOutcome(dir, 'm3', { stalled: false, devLoopStarts: 0 }); // 1 run < threshold
+        expect(resolveBaseStrength('m3', resolve(dir, 'config.json'), dir)).toBe('mid');
+    });
+});
 
 describe('decayStrength (Phase 2)', () => {
     it('keeps strength below the first threshold', () => {
