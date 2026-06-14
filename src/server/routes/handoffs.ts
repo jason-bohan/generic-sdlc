@@ -4,7 +4,6 @@ import { resolve } from 'path';
 import { findStoryOwnerByPrId, applyReviewComplete, applyBuildComplete, applyDesignReady, applyDesignReviewComplete, loadReviewerCommentsAsReviewComments, wrapUpDeskRequestId } from '../handoff';
 import type { ReviewComment } from '../handoff';
 import { tryClaimBuildCompleteNotification, tryClaimBuildRework } from '../build-complete-dedup';
-import { voteOnPr } from '../ado-bridge';
 import { getProjectProfile } from '../project-config';
 import { cleanupStoryWorktrees, resolveWorktreeRepoRoots } from '../worktree-cleanup';
 import { spawnAgent } from '../spawn-agent';
@@ -148,9 +147,8 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                 // finalize the (rejected → fix) training example captured at changes-requested
                 // time — the high-value contrastive pair for fine-tuning the local model.
                 try { completeReviewTrainingData(rootDir, configFile, prIdNum, typeof branch === 'string' ? branch : undefined); } catch (e) { console.warn('[handoff] completeReviewTrainingData failed:', e); }
-                if (!isMockExternalMode(configFile)) {
-                    voteOnPr(prId, 'Approved', undefined, statusProjectKey).catch(e => console.error('[handoff] ADO vote failed:', e));
-                }
+                // (ADO PR approval vote removed — the GitHub flow merges via the devops
+                //  build-gate; ADO-specific voting belongs behind the provider, not here.)
                 if (result.target === 'devops' && !result.alreadyDispatched && !storyOwnerInStepMode && !isAgentStepMode('devops', rootDir)) {
                     await notify(rootDir, { title: `PR #${prId} Approved`, body: `**${resolveAgentDisplayName('reviewer', rootDir)}** approved ${prLink}${storyNumber ? ` (story ${storyNumber})` : ''}. Handing off to **${resolveAgentDisplayName('devops', rootDir)}** for CI build.`, color: '22c55e' });
                     await notify(rootDir, { title: `${resolveAgentDisplayName('devops', rootDir)}: build gate — PR #${prId}`, body: `**${resolveAgentDisplayName('devops', rootDir)}** — \`.devops-status.json\` is **pending-build**. Run Pipeline Workflow Mode B.`, color: '06b6d4' });
