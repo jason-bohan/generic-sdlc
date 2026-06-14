@@ -1604,6 +1604,28 @@ async function toolCompletePhase(
     putIfProvided('pr', args.pr);
     putIfProvided('mockPr', args.mock_pr);
 
+    // Validating phase: when a loop driver omits the structured outputs (it 409s on the
+    // contract and loops), fill them from the AUTHORITATIVE run_validation verdict the
+    // framework already recorded on the desk — never a fabricated pass. Truthful: if
+    // validation FAILED this reports passed:false, so validationEvidencePassed() won't
+    // coerce the failure forward (honest gate, #229). Only fills when run_validation
+    // actually ran (lastValidationResult present); with no verdict it stays unset and the
+    // contract 409s, which is the honest outcome (the driver must run validation).
+    if (currentPhase === 'validating' && outputs.validationResults === undefined) {
+        try {
+            const s = parseJsonUtf8File(statusFile) as { lastValidationResult?: unknown; lastValidationFailure?: unknown };
+            if (s.lastValidationResult === 'passed' || s.lastValidationResult === 'failed') {
+                const passed = s.lastValidationResult === 'passed';
+                const detail = passed
+                    ? 'run_validation reported OVERALL: PASSED'
+                    : (typeof s.lastValidationFailure === 'string' && s.lastValidationFailure.trim() ? s.lastValidationFailure : 'run_validation reported OVERALL: FAILED');
+                outputs.validationResults = { passed, source: 'run_validation', details: detail };
+                if (outputs.testResults === undefined) outputs.testResults = passed ? 'run_validation: checks passed' : 'run_validation: checks failed — see validationResults';
+                if (outputs.staticAnalysis === undefined) outputs.staticAnalysis = passed ? 'run_validation: no blocking issues' : 'run_validation: failures present — see validationResults';
+            }
+        } catch { /* no recorded verdict — leave unset; contract 409s honestly */ }
+    }
+
     // Build-chain outputs are mechanical: the devops phases (pending-build,
     // monitoring-build, build-passed) require a `build` (and monitoring also
     // produces testResults) output, but the local loop has no real CI poller and
