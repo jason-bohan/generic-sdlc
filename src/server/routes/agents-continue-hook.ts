@@ -20,6 +20,7 @@ import { buildContextPreamble } from '../contextLoader';
 import { startPhaseRun } from '../orchestrator';
 import { dbGetWorkflowItemByStory, dbGetPhaseEvents } from '../db';
 import { devLoopAction, markDevLoopStuck, isReworkStuck, escalatedRespawnModel } from '../rework-cap';
+import { asStrength, decayStrength, computeRailFlags } from '../railFlags';
 import { notify } from '../providers';
 import { getActiveProject } from '../project-config';
 import { resolve as pathResolve } from 'path';
@@ -483,6 +484,27 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                         const lastAssignIdx = phaseEvents.map(e => e.event_type).lastIndexOf('assigned');
                         const devLoopStarts = phaseEvents.slice(lastAssignIdx + 1)
                             .filter(e => e.event_type === 'phase-started' && DEV_LOOP_PHASES.has(e.phase)).length;
+                        // Phase 2: decay effective strength as the run struggles → tighten rails
+                        // mid-run. A strong agent that starts bouncing gets demoted (mid at 3,
+                        // weak at 6), switching code-quality rails on. Monotonic within a run, so
+                        // rails only tighten. Rewrite the desk's railFlags when the set changes.
+                        try {
+                            const sd = parseJsonUtf8File(statusFile) as Record<string, unknown>;
+                            const base = asStrength(sd.agentStrength) ?? 'weak';
+                            const eff = decayStrength(base, devLoopStarts);
+                            const newFlags = computeRailFlags(eff);
+                            const curLen = Array.isArray(sd.railFlags) ? (sd.railFlags as unknown[]).length : -1;
+                            if (newFlags.length !== curLen) {
+                                sd.railFlags = newFlags;
+                                sd.effectiveStrength = eff;
+                                if (!Array.isArray(sd.events)) sd.events = [];
+                                (sd.events as Array<{ timestamp: string; type: string; message: string }>).push({
+                                    timestamp: new Date().toISOString(), type: 'info',
+                                    message: `Agent strength ${base}→${eff} after ${devLoopStarts} dev-loop attempt(s); rails: [${newFlags.join(', ')}]`,
+                                });
+                                writeFileSync(statusFile, JSON.stringify(sd, null, 2));
+                            }
+                        } catch { /* non-fatal — decay is best-effort */ }
                         const action = devLoopAction(devLoopStarts);
                         if (action === 'pause-human') {
                             markDevLoopStuck(rootDir, agentId, storyNum, devLoopStarts);
