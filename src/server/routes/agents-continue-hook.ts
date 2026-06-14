@@ -20,7 +20,7 @@ import { buildContextPreamble } from '../contextLoader';
 import { startPhaseRun } from '../orchestrator';
 import { dbGetWorkflowItemByStory, dbGetPhaseEvents } from '../db';
 import { devLoopAction, markDevLoopStuck, isReworkStuck, escalatedRespawnModel } from '../rework-cap';
-import { asStrength, decayStrength, computeRailFlags } from '../railFlags';
+import { asStrength, decayStrength, computeRailFlags, recordRunOutcome } from '../railFlags';
 import { notify } from '../providers';
 import { getActiveProject } from '../project-config';
 import { resolve as pathResolve } from 'path';
@@ -508,6 +508,12 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                         const action = devLoopAction(devLoopStarts);
                         if (action === 'pause-human') {
                             markDevLoopStuck(rootDir, agentId, storyNum, devLoopStarts);
+                            // Phase 3: record the stall against the worker model so its learned
+                            // strength reflects a poor track record on future runs.
+                            try {
+                                const wm = (parseJsonUtf8File(statusFile) as { workerModel?: unknown }).workerModel;
+                                recordRunOutcome(rootDir, typeof wm === 'string' ? wm : undefined, { stalled: true, devLoopStarts });
+                            } catch { /* non-fatal */ }
                             void notify(rootDir, { title: `🚧 ${storyNum} stuck in validation`, body: `**${agentId}** can't pass validation after ${devLoopStarts} dev-loop attempts (incl. a cloud-brain attempt). Paused for human review.`, color: 'b91c1c' });
                             console.warn(`[validating-loop] ${agentId} on ${storyNum}: ${devLoopStarts} dev-loop starts — pausing for human`);
                             return;
