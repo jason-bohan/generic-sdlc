@@ -76,6 +76,11 @@ export interface CompletePhaseInput {
      * coerce a PASSED validating forward even when an indecisive model omits "PASSED" from its report.
      */
     validationPassed?: boolean;
+    /**
+     * Strength-flagged rail: whether to coerce a PASSED validating away from a backward route.
+     * Off for strong agents (trusted to route themselves). Defaults to true when omitted (fail safe).
+     */
+    forwardProgressCoerce?: boolean;
 }
 
 export interface BuildPhasePromptInput {
@@ -285,7 +290,9 @@ function buildOutputsSkeleton(contract: SdlcPhaseContract): Record<string, strin
     }));
 }
 
-function phaseSpecificInstructions(item: WorkflowItemRow, serverBaseUrl: string, priorValidationFailure?: string, reviewFeedback?: string, analysisPlan?: string): string {
+function phaseSpecificInstructions(item: WorkflowItemRow, serverBaseUrl: string, priorValidationFailure?: string, reviewFeedback?: string, analysisPlan?: string, railFlags?: Set<string>): string {
+    // Strength-flagged rails: undefined flags (legacy/no desk) → on (weak/safe); a set → exact membership.
+    const railOn = (f: string): boolean => (railFlags ? railFlags.has(f) : true);
     if (item.active_phase === 'addressing-feedback') {
         return [
             ...(reviewFeedback ? [
@@ -363,7 +370,10 @@ function phaseSpecificInstructions(item: WorkflowItemRow, serverBaseUrl: string,
         // is already applied to the worktree — re-issuing "edit EVERY file" makes the
         // model re-add code it already wrote (duplicate routes/imports). The
         // priorFailureBlock takes over there with idempotent fix-only guidance.
-        const planBlock = analysisPlan && analysisPlan.trim() && !priorValidationFailure
+        // suppressPlanOnReentry rail: on a post-failure re-entry, drop "execute the plan"
+        // (already applied) so a weaker model doesn't re-add it. Strong agents skip this.
+        const suppressPlan = priorValidationFailure !== undefined && railOn('suppressPlanOnReentry');
+        const planBlock = analysisPlan && analysisPlan.trim() && !suppressPlan
             ? [
                 '📋 EXECUTE THE PLAN YOU MADE IN ANALYZING — edit EVERY file it lists, including the test:',
                 '```',
@@ -375,23 +385,33 @@ function phaseSpecificInstructions(item: WorkflowItemRow, serverBaseUrl: string,
                 '',
             ]
             : [];
-        const priorFailureBlock = priorValidationFailure
-            ? [
-                '⚠️ YOUR PREVIOUS ATTEMPT IS ALREADY IN THE WORKTREE and FAILED VALIDATION. Fix EXACTLY these errors:',
-                '```',
-                priorValidationFailure.trim(),
-                '```',
-                'Your earlier edits are already saved on disk. READ the current contents of each file before',
-                'changing it, and do NOT re-create files or re-add routes/handlers/imports you already added —',
-                'that produces duplicates (e.g. the same route registered twice). Make the MINIMAL change needed',
-                'to resolve the errors above — they are usually a missing import or a typo, NOT a reason to rewrite',
-                'or re-append working code. Every name you reference (e.g. readFileSync) MUST be imported at the top',
-                'of the file; if an error says a name is not defined, add it to the existing import from its module.',
-                'Do not touch package.json or tsconfig unless an error explicitly names them.',
-                'After editing, call run_validation again to confirm the errors are gone.',
-                '',
-            ]
-            : [];
+        // idempotentFixPrompt rail: weaker models re-add code on a bounce, so spell out
+        // "already on disk, fix-only, don't re-append". Strong agents get just the errors.
+        const priorFailureBlock = !priorValidationFailure
+            ? []
+            : railOn('idempotentFixPrompt')
+                ? [
+                    '⚠️ YOUR PREVIOUS ATTEMPT IS ALREADY IN THE WORKTREE and FAILED VALIDATION. Fix EXACTLY these errors:',
+                    '```',
+                    priorValidationFailure.trim(),
+                    '```',
+                    'Your earlier edits are already saved on disk. READ the current contents of each file before',
+                    'changing it, and do NOT re-create files or re-add routes/handlers/imports you already added —',
+                    'that produces duplicates (e.g. the same route registered twice). Make the MINIMAL change needed',
+                    'to resolve the errors above — they are usually a missing import or a typo, NOT a reason to rewrite',
+                    'or re-append working code. Every name you reference (e.g. readFileSync) MUST be imported at the top',
+                    'of the file; if an error says a name is not defined, add it to the existing import from its module.',
+                    'Do not touch package.json or tsconfig unless an error explicitly names them.',
+                    'After editing, call run_validation again to confirm the errors are gone.',
+                    '',
+                ]
+                : [
+                    '⚠️ Previous attempt failed validation. Fix these errors, then re-run validation:',
+                    '```',
+                    priorValidationFailure.trim(),
+                    '```',
+                    '',
+                ];
         const storyContract = item.story_name
             ? [
                 '🎯 IMPLEMENT EXACTLY WHAT THE STORY ASKS — this is the contract the reviewer grades you on:',
@@ -507,6 +527,9 @@ export function buildPhaseRunPrompt(input: BuildPhasePromptInput): OrchestratorR
     // blindly regenerating the same broken code.
     let priorValidationFailure: string | undefined;
     let analysisPlan: string | undefined;
+    // Strength-flagged rails for this run (written to the desk at assignment). Undefined →
+    // phaseSpecificInstructions treats rails as on (weak/safe).
+    let railFlags: Set<string> | undefined;
     if (phase === 'generating-code') {
         try {
             const sfPath = isAbsolute(statusFile) ? statusFile : resolve(process.cwd(), statusFile);
@@ -519,7 +542,10 @@ export function buildPhaseRunPrompt(input: BuildPhasePromptInput): OrchestratorR
             if (typeof s.analysisPlan === 'string' && s.analysisPlan.trim()) {
                 analysisPlan = s.analysisPlan;
             }
-        } catch { /* no prior failure / plan recorded — first attempt */ }
+            if (Array.isArray(s.railFlags)) {
+                railFlags = new Set((s.railFlags as unknown[]).filter((f): f is string => typeof f === 'string'));
+            }
+        } catch { /* no prior failure / plan / flags recorded — first attempt */ }
     }
     // On a rework after the reviewer requested changes, surface the open review
     // comments (applyReviewComplete stored them in status.requests) so the dev fixes
@@ -571,7 +597,7 @@ export function buildPhaseRunPrompt(input: BuildPhasePromptInput): OrchestratorR
         'Gates before completing the phase:',
         formatKeyList(contract.gates),
         '',
-        phaseSpecificInstructions(item, serverBaseUrl, priorValidationFailure, reviewFeedback, analysisPlan),
+        phaseSpecificInstructions(item, serverBaseUrl, priorValidationFailure, reviewFeedback, analysisPlan, railFlags),
         '',
         'When the phase is complete, POST this contract payload:',
         `${serverBaseUrl}/api/workflows/complete-phase`,
@@ -915,6 +941,7 @@ export function completePhase(input: CompletePhaseInput): OrchestratorResult<Wor
     // (observed: Mistral wrote correct, passing code but kept choosing generating-code without copying
     // "PASSED" into its outputs, so the model-evidence-only guard stayed blind and it looped to the cap).
     if (input.phase === 'validating' && REWORK_PHASES.has(input.nextPhase)
+        && input.forwardProgressCoerce !== false
         && (input.validationPassed === true || validationEvidencePassed(input.outputs))) {
         effectiveNextPhase = 'committing';
         guardLabel = 'forward-progress guard';

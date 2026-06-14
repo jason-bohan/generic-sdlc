@@ -12,6 +12,7 @@ import { notify, resolveProjectTracker } from '../providers';
 import { skillSubdirForAgentId } from '../../shared/agentSkillDirs';
 import { resolveAgentDisplayName } from '../agent-display-names';
 import { dbGetWorkflowItemByStory } from '../db';
+import { strengthForModel, computeRailFlags } from '../railFlags';
 import { readBody, json } from '../router';
 import { buildContextPreamble } from '../contextLoader';
 import { taskIdentityKey, dedupeTasksPreserveOrder, type RawTask, asSdlcAgentId } from '../status-normalize';
@@ -458,12 +459,22 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
             const { phase, startedAt } = resolveAgentAssignmentPhase(getSchedulerWorkflowMode(config), agentConfig?.autoStart ?? false);
             const immediate = phase === 'reading-story';
             const statusFile = resolve(rootDir, `.${agentId}-status.json`);
+            // Strength-flagged rails: the worker's configured strength decides which rails
+            // are live for this run (a strong agent runs unburdened; a weak one is fully
+            // railed). Computed once here and stored on the desk so every rail reads it.
+            const workerModel = getAgentModel(agentId, rootDir);
+            const agentStrength = strengthForModel(workerModel, configFile);
+            const railFlags = computeRailFlags(agentStrength);
             const status = {
                 projectKey: getActiveProjectName(configFile), storyNumber, storyName: storyName || null, storyDescription: storyDescription ?? null,
                 teamId: teamId || null, environment: environment || null, currentPhase: phase, currentTask: null, startedAt,
                 executionMode: getExecMode(configFile), tokens: defaultTokenState(), tasks: [] as RawTask[], prs: [],
+                agentStrength, railFlags,
                 cypress: { lastRun: null, total: 0, passed: 0, failed: 0, skipped: 0, failures: [] },
-                events: [{ timestamp: new Date().toISOString(), type: immediate ? 'success' : 'info', message: immediate ? `Story ${storyNumber} assigned. Starting workflow.` : `Story ${storyNumber} assigned. Awaiting approval to start.` }] };
+                events: [
+                    { timestamp: new Date().toISOString(), type: immediate ? 'success' : 'info', message: immediate ? `Story ${storyNumber} assigned. Starting workflow.` : `Story ${storyNumber} assigned. Awaiting approval to start.` },
+                    { timestamp: new Date().toISOString(), type: 'info', message: `Rails configured: agent strength=${agentStrength} (${workerModel}) → [${railFlags.join(', ')}]` },
+                ] };
             try {
                 const inheritedTasks = await loadPlanningTasksForStory(rootDir, configFile, storyNumber);
                 if (inheritedTasks.length > 0) {

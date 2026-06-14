@@ -2,6 +2,7 @@ import { resolve } from 'path';
 import { existsSync } from 'fs';
 import { execFileSync } from 'child_process';
 import { getActiveProject } from '../project-config';
+import { deskRailFlags } from '../railFlags';
 import { spawnAgent } from '../spawn-agent';
 import { completePhase, startPhaseRun, superviseWorkflow } from '../orchestrator';
 import { freeStoryAgents, storyNumberFromDesk } from '../reset-agents';
@@ -144,6 +145,8 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                 const sdlcAgentId = asSdlcAgentId((agentId as string).trim())!;
                 const sdlcPhase = asSdlcPhaseId((phase as string).trim())!;
                 const sdlcNextPhase = asSdlcPhaseId((nextPhase as string).trim())!;
+                // Strength-flagged rails for this agent's run (written to the desk at assignment).
+                const railFlags = deskRailFlags(sdlcAgentId, rootDir);
                 // Authoritative validation verdict: the framework's own run_validation records
                 // lastValidationResult on the agent desk. Read it here so the forward-progress guard
                 // can trust it over what the model copied (or forgot to copy) into its outputs.
@@ -165,7 +168,7 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                 // create_file/edit_file tools materialize the worktree on first write, so an
                 // absent or clean worktree means nothing was written. Skipped for self-dev
                 // (workspace === framework root) where there is no target worktree.
-                if (sdlcPhase === 'generating-code') {
+                if (sdlcPhase === 'generating-code' && railFlags.has('emptyCodeGenGate')) {
                     const storyNum = dbGetWorkflowItem(idNum)?.story_number?.trim();
                     const workspaceDir = getActiveProject(configFile)?.workspacePath;
                     if (storyNum && workspaceDir && workspaceDir !== rootDir) {
@@ -194,6 +197,7 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                     nextPhase: sdlcNextPhase,
                     message: typeof message === 'string' ? message : null,
                     validationPassed,
+                    forwardProgressCoerce: railFlags.has('forwardProgressCoerce'),
                 });
                 if (!result.ok) {
                     json(res, { error: result.error, missing: result.missing }, 409);
