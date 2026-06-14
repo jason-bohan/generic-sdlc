@@ -116,9 +116,14 @@ server.listen(PORT, () => {
     log.success(`SDLC Framework API server → ${chalk.bold(`http://localhost:${PORT}`)}`);
     if (mock) log.warn('External mode: MOCK — ADO/Agility calls are simulated');
 
-    // Cypress docker sets VITEST=1 to skip Ollama, but mock E2E still needs the ADO bridge
-    // (reviewer changes-requested → review-complete handoff, PR automation, etc.).
-    if (!process.env.VITEST || mock) {
+    // The (legacy) ADO/status-watcher bridge only matters on an ADO host or in mock-E2E
+    // mode (cypress relies on it to drive PR/review/build). On a GitHub+Linear stack the
+    // autonomous loop path handles automation, so don't even attempt it — startAdoBridge
+    // already self-disables without a PAT, but gating here makes ADO-off explicit and
+    // skips the misleading "bridge disabled" startup log.
+    const adoConfigured = !!(process.env.AZURE_DEVOPS_PAT || process.env.AZURE_DEVOPS_EXT_PAT || process.env.VSS_PAT)
+        || (process.env.PM_PROVIDER ?? '').toLowerCase() === 'azure';
+    if ((adoConfigured && !process.env.VITEST) || mock) {
         bootAdoBridge();
     }
     // Reschedule any orchestrator limit-retries that were pending across this restart
