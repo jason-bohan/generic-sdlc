@@ -61,6 +61,39 @@ describe('agent runner complete_phase tool', () => {
         expect(outputs.build).toBeUndefined();
     });
 
+    it('fills validating outputs from the recorded run_validation PASS verdict (not fabricated)', async () => {
+        writeFileSync(STATUS_FILE, JSON.stringify({
+            workflowItemId: 123, storyNumber: 'B-123', currentPhase: 'validating',
+            tasks: [{ id: 'T-001', name: 'Validate' }],
+            lastValidationResult: 'passed',
+        }, null, 2));
+        let payload: Record<string, unknown> | null = null;
+        vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {
+            payload = JSON.parse(String(init?.body));
+            return new Response(JSON.stringify({ ok: true }), { status: 200 });
+        }));
+        await executeToolCall('complete_phase', { next_phase: 'committing', summary: 'done' }, TMP, TMP, 'frontend', resolve(TMP, '.sdlc-framework.config.json'));
+        const outputs = (payload as unknown as { outputs: Record<string, unknown> }).outputs;
+        expect(outputs.validationResults).toMatchObject({ passed: true, source: 'run_validation' });
+    });
+
+    it('reports passed:false when run_validation recorded a FAIL — never fabricates a pass', async () => {
+        writeFileSync(STATUS_FILE, JSON.stringify({
+            workflowItemId: 123, storyNumber: 'B-123', currentPhase: 'validating',
+            tasks: [{ id: 'T-001', name: 'Validate' }],
+            lastValidationResult: 'failed', lastValidationFailure: 'tsc: error TS2304',
+        }, null, 2));
+        let payload: Record<string, unknown> | null = null;
+        vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {
+            payload = JSON.parse(String(init?.body));
+            return new Response(JSON.stringify({ ok: true }), { status: 200 });
+        }));
+        await executeToolCall('complete_phase', { next_phase: 'committing', summary: 'done' }, TMP, TMP, 'frontend', resolve(TMP, '.sdlc-framework.config.json'));
+        const outputs = (payload as unknown as { outputs: Record<string, unknown> }).outputs;
+        expect(outputs.validationResults).toMatchObject({ passed: false });
+        expect(JSON.stringify(outputs.validationResults)).toContain('TS2304');
+    });
+
     it('updates status currentPhase only after complete-phase succeeds', async () => {
         writeFileSync(STATUS_FILE, JSON.stringify({
             workflowItemId: 123,
