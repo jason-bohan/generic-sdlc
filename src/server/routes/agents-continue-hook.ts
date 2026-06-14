@@ -601,9 +601,17 @@ function buildContinuePrompt(
         }
     } catch { /* fall through to generic */ }
 
+    const phaseHint = phase === 'generating-code'
+        ? 'Read the status file and skill, then write the actual code files. Do NOT just read files — implement the changes now, call run_validation, then call complete_phase.'
+        : phase === 'validating'
+        ? 'Read the status file and skill, check the validation results from run_validation, then call complete_phase with the validation outputs.'
+        : phase === 'addressing-feedback'
+        ? 'Read the status file for reviewer feedback, apply the requested fixes to the code, then call complete_phase.'
+        : 'Read the status file and skill, then execute the next step of this phase.';
+
     return (
         buildContextPreamble(rootDir) +
         `Continue as ${agentId}. Read .${agentId}-status.json (currently in phase '${phase}'${storyNum ? `, story ${storyNum}` : ''}) ` +
-        `and skills/${skillSubdirForAgentId(agentId)}/SKILL.md. Execute the next phase.${scopeSuffix}${phaseHintClause}`
+        `and skills/${skillSubdirForAgentId(agentId)}/SKILL.md. Execute the next phase.\n\n${phaseHint}${scopeSuffix}${phaseHintClause}`
     );
 }

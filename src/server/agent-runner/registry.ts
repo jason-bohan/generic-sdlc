@@ -1,5 +1,5 @@
 ﻿import { resolve } from 'path';
-import { existsSync, writeFileSync, appendFileSync, mkdirSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync, appendFileSync, mkdirSync } from 'fs';
 import { spawn } from 'child_process';
 import { EventEmitter } from 'events';
 import { AgentRunner } from './AgentRunner';
@@ -204,13 +204,20 @@ export function startRunner(
     stopRunner(agentId);
 
     const modelOverride = model && model !== 'auto' && model !== 'local' && model !== 'cloud' ? model : undefined;
-    // The reviewer is a "brain" role (see brainModel.ts): review is judgment-heavy and the
-    // local 14B can't drive it, so escalate to the cloud brain (OpenRouter, e.g. deepseek-v3.2)
-    // via resolveSmartModel — a direct OpenAI-compatible call, no opencode subprocess. Falls
-    // back to the local loop provider automatically when no cloud key is set. Every other agent
-    // stays on the local loopProvider — UNLESS spawned with model='cloud' (the rework-cap
-    // escalation: a dev that has looped against the reviewer gets one cloud-brain attempt).
-    const useBrain = agentId === 'reviewer' || model === 'cloud';
+    // The reviewer is a "brain" role by default (see brainModel.ts): review is
+    // judgment-heavy and the local 14B can't drive it, so escalate to the cloud brain
+    // (OpenRouter, e.g. deepseek-v3.2) via resolveSmartModel. Falls back to the local loop
+    // provider automatically when no cloud key is set. Every other agent stays on the local
+    // loopProvider — UNLESS spawned with model='cloud' (the rework-cap escalation: a dev that
+    // has looped against the reviewer gets one cloud-brain attempt).
+    // When the reviewer is explicitly configured with the loop driver, skip the brain
+    // escalation and use the loop provider (e.g. Mistral codestral) directly.
+    let reviewerDriverType: string | undefined;
+    try {
+        const cfg = existsSync(configPath) ? JSON.parse(readFileSync(configPath, 'utf-8')) : {};
+        reviewerDriverType = cfg.scheduler?.agents?.reviewer?.driver as string | undefined;
+    } catch { /* not found */ }
+    const useBrain = (agentId === 'reviewer' && reviewerDriverType !== 'loop') || model === 'cloud';
     const providerConfig = useBrain
         ? (() => { const sm = resolveSmartModel(configPath); return { baseUrl: sm.baseUrl, model: sm.model, apiKey: sm.apiKey, maxTokens: 4096 }; })()
         : readLoopProviderConfig(configPath, modelOverride);
