@@ -2,7 +2,23 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { resolve } from 'path';
-import { computeRailFlags, strengthForModel, deskRailFlags } from './railFlags';
+import { computeRailFlags, strengthForModel, deskRailFlags, decayStrength } from './railFlags';
+
+describe('decayStrength (Phase 2)', () => {
+    it('keeps strength below the first threshold', () => {
+        expect(decayStrength('strong', 0)).toBe('strong');
+        expect(decayStrength('strong', 2)).toBe('strong');
+    });
+    it('demotes one tier at 3 dev-loop starts, two at 6', () => {
+        expect(decayStrength('strong', 3)).toBe('mid');
+        expect(decayStrength('strong', 6)).toBe('weak');
+        expect(decayStrength('mid', 3)).toBe('weak');
+    });
+    it('clamps at weak and only tightens', () => {
+        expect(decayStrength('weak', 99)).toBe('weak');
+        expect(decayStrength('mid', 6)).toBe('weak');
+    });
+});
 
 describe('computeRailFlags', () => {
     it('strong → only the always-on rails', () => {

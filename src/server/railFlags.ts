@@ -41,8 +41,27 @@ const RAIL_MAX: Record<RailFlag, number> = {
 
 export const ALL_RAIL_FLAGS = Object.keys(RAIL_MAX) as RailFlag[];
 
-function asStrength(v: unknown): Strength | undefined {
+export function asStrength(v: unknown): Strength | undefined {
     return v === 'weak' || v === 'mid' || v === 'strong' ? v : undefined;
+}
+
+const STRENGTH_BY_LEVEL: Strength[] = ['weak', 'mid', 'strong']; // index === level
+
+/** Dev-loop phases whose re-entries signal a struggling run (drives decay). */
+export const DEV_LOOP_PHASES: ReadonlySet<string> = new Set(['analyzing', 'generating-code', 'validating']);
+
+/**
+ * Phase 2 — effective strength as a run struggles. Demote tiers by accumulated dev-loop
+ * starts (bounces) so a strong agent that *starts* misbehaving gets rails switched on
+ * mid-run. Monotonic within an assignment (the count only grows) → rails only tighten,
+ * never loosen. Thresholds align with the dev-loop ladder (escalate-cloud at 6):
+ * mid at 3, weak at 6.
+ */
+export function decayStrength(base: Strength, devLoopStarts: number): Strength {
+    let level = LEVEL[base];
+    if (devLoopStarts >= 6) level -= 2;
+    else if (devLoopStarts >= 3) level -= 1;
+    return STRENGTH_BY_LEVEL[Math.max(0, level)];
 }
 
 /** Look up a model's configured strength. Unknown model / no config → 'weak' (fail safe). */
