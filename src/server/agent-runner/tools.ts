@@ -1215,6 +1215,19 @@ export function autoCreatePr(
         return { mockPr, handoff: `${agentId}: opened mock PR for ${branch}`, note: `mock mode — synthesized mockPr for ${branch}`, ok: true };
     }
 
+    // Empty-PR gate: refuse to open a PR with no diff vs the base. Prevents false
+    // "build passed" PRs that auto-merge with zero changes (observed: devops PR #75).
+    // Best-effort: if the base ref can't be read, fall through — autoMergePr backstops it.
+    const baseRef = sh('git', ['symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD']).out || 'origin/main';
+    const changed = sh('git', ['diff', '--name-only', `${baseRef}...HEAD`]);
+    if (changed.ok && changed.out.trim() === '') {
+        return {
+            handoff: `${agentId}: refusing to open an empty PR for ${branch} (no changes vs ${baseRef})`,
+            note: `empty diff vs ${baseRef} — no PR created for ${branch}`,
+            ok: false,
+        };
+    }
+
     // Live mode: push, then reuse an existing open PR or create a new one.
     const push = sh('git', ['-C', wt, 'push', '-u', 'origin', branch]);
     const existing = sh('gh', ['pr', 'list', '--head', branch, '--state', 'open', '--json', 'number,url', '--limit', '1']);
@@ -1297,6 +1310,14 @@ export function classifyCiRollup(rollup: Array<Record<string, unknown>>): 'faile
   return pending ? 'pending' : 'passed';
 }
 
+/**
+ * A PR with no additions, deletions, and changed files is empty — a false completion
+ * (e.g. a devops "build passed" branch that committed nothing). Never create or merge one.
+ */
+export function prIsEmpty(stat: { additions?: number; deletions?: number; changedFiles?: number }): boolean {
+    return (stat.additions ?? 0) === 0 && (stat.deletions ?? 0) === 0 && (stat.changedFiles ?? 0) === 0;
+}
+
 export function autoMergePr(frameworkDir: string, configPath: string): AutoMergeResult {
     const devopsFile = resolve(frameworkDir, '.devops-status.json');
     let pr: { id?: number; url?: string } | undefined;
@@ -1327,6 +1348,20 @@ export function autoMergePr(frameworkDir: string, configPath: string): AutoMerge
         try { return { ok: true, out: execFileSync('gh', args, { encoding: 'utf8', timeout: 60_000 }).trim() }; }
         catch (e) { const err = e as { stdout?: string; stderr?: string; message?: string }; return { ok: false, out: `${err.stdout ?? ''}${err.stderr ?? err.message ?? ''}`.trim() }; }
     };
+
+    // Empty-PR gate: never merge a PR with no file changes. A zero-diff PR (e.g. a devops
+    // "build passed" branch that committed nothing) is a false completion — refuse it so it
+    // can't auto-merge and mark the story done with no work (observed: PR #75). Only blocks on
+    // a positively-empty stat; a read/parse failure falls through (don't strand a real PR).
+    const statRes = gh(['pr', 'view', String(prId), '-R', repo, '--json', 'additions,deletions,changedFiles']);
+    if (statRes.ok) {
+        try {
+            const stat = JSON.parse(statRes.out) as { additions?: number; deletions?: number; changedFiles?: number };
+            if (prIsEmpty(stat)) {
+                return { ok: false, merged: false, note: `EMPTY-PR:PR #${prId} in ${repo} has no file changes — refusing to merge (false completion).` };
+            }
+        } catch { /* couldn't parse — fall through, don't block a real PR on a read error */ }
+    }
 
     // Protection-aware merge. A protected base (e.g. flowboard's main: strict + required
     // "Tests & type check") refuses a one-shot merge when the branch is BEHIND or checks are

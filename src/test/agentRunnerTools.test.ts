@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { resolve } from 'path';
 import { execFileSync } from 'child_process';
-import { executeToolCall, rewriteWorktreeAddOnCollision, parseWorktreeAddPath, parseWorktreeAddBranch, parseWorktreeList, autoCommitWorktree, findStoryWorktree, autoCreatePr } from '../server/agent-runner/tools';
+import { executeToolCall, rewriteWorktreeAddOnCollision, parseWorktreeAddPath, parseWorktreeAddBranch, parseWorktreeList, autoCommitWorktree, findStoryWorktree, autoCreatePr, prIsEmpty } from '../server/agent-runner/tools';
 
 const TMP = resolve(__dirname, '.agent-runner-tools-tmp');
 const STATUS_FILE = resolve(TMP, '.frontend-status.json');
@@ -397,6 +397,18 @@ describe('framework-driven creating-pr (autoCreatePr)', () => {
         const r = autoCreatePr(resolve(PTMP, 'nope'), 'backend', 'MISSING', 't', 'b', MOCK_CFG);
         expect(r.ok).toBe(false);
         expect(r.note).toContain('no worktree found');
+    });
+});
+
+describe('prIsEmpty (empty-PR guard)', () => {
+    it('flags a zero-diff PR as empty (the PR #75 class of false completion)', () => {
+        expect(prIsEmpty({ additions: 0, deletions: 0, changedFiles: 0 })).toBe(true);
+        expect(prIsEmpty({})).toBe(true);
+    });
+    it('treats any change as non-empty', () => {
+        expect(prIsEmpty({ additions: 1, deletions: 0, changedFiles: 1 })).toBe(false);
+        expect(prIsEmpty({ additions: 0, deletions: 3, changedFiles: 1 })).toBe(false);
+        expect(prIsEmpty({ additions: 0, deletions: 0, changedFiles: 2 })).toBe(false);
     });
 });
 
