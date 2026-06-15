@@ -22,6 +22,7 @@ import {
     type WorkflowItemRow,
 } from './db';
 import { resolve, isAbsolute } from 'path';
+import { existsSync, writeFileSync } from 'fs';
 import { parseJsonUtf8File } from './json-file';
 import { asSdlcAgentId } from './status-normalize';
 import { serverLog as log } from './logger';
@@ -631,6 +632,22 @@ export function startPhaseRun(input: BuildPhasePromptInput): OrchestratorResult<
         outputs: { auditEvent: { promptContract: true } },
         message: `Started ${plan.value.item.active_agent_id}/${plan.value.item.active_phase}`,
     });
+    // Sync the agent desk to the phase being started. The HTTP complete-phase path (used by
+    // the claude-code subprocess driver) advances the DB and spawns the next phase but, without
+    // this, never updates .{agent}-status.json — so auto-continue reads the stale OLD phase and
+    // re-spawns it while the DB races ahead (observed: claude-code stuck re-running reading-story
+    // to the cap while the DB reached generating-code). Read-modify-write preserves the desk's
+    // storyNumber/railFlags/workerModel; only currentPhase changes.
+    if (input.statusFile) {
+        try {
+            const sfPath = isAbsolute(input.statusFile) ? input.statusFile : resolve(process.cwd(), input.statusFile);
+            if (existsSync(sfPath)) {
+                const desk = parseJsonUtf8File(sfPath) as Record<string, unknown>;
+                desk.currentPhase = plan.value.item.active_phase;
+                writeFileSync(sfPath, JSON.stringify(desk, null, 2));
+            }
+        } catch { /* best-effort desk sync — never block the phase run on it */ }
+    }
     return plan;
 }
 
