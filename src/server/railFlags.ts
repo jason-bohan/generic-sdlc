@@ -71,10 +71,34 @@ export function strengthForModel(model: string, configPath: string): Strength {
         const cfg = parseJsonUtf8File(configPath) as { agentStrength?: Record<string, unknown> };
         const map = cfg.agentStrength;
         if (map && typeof map === 'object') {
-            return asStrength(map[model]) ?? asStrength(map._default) ?? 'weak';
+            // Exact match first, then tolerate a provider variant suffix so e.g.
+            // 'openai/gpt-oss-120b:free' matches the key 'openai/gpt-oss-120b'.
+            const base = model.replace(/:[^:/]+$/, '');
+            return asStrength(map[model])
+                ?? (base !== model ? asStrength(map[base]) : undefined)
+                ?? asStrength(map._default)
+                ?? 'weak';
         }
     } catch { /* no/unreadable config → weak */ }
     return 'weak';
+}
+
+/**
+ * Resolve a possibly-symbolic agent model id ('auto' / 'default' / empty) to the concrete
+ * model the loop driver actually runs, read from scheduler.loopProvider.model. A concrete
+ * id is returned unchanged. Strength scoring + Phase-3 learning go through this so they key
+ * on the real model instead of the literal 'auto' (which always fell through to 'weak').
+ */
+export function resolveModelId(model: string | undefined, configPath: string): string {
+    const m = (model ?? '').trim();
+    const symbolic = m === '' || m.toLowerCase() === 'auto' || m.toLowerCase() === 'default';
+    if (!symbolic) return m;
+    try {
+        const cfg = parseJsonUtf8File(configPath) as { scheduler?: { loopProvider?: { model?: unknown } } };
+        const loopModel = cfg.scheduler?.loopProvider?.model;
+        if (typeof loopModel === 'string' && loopModel.trim()) return loopModel.trim();
+    } catch { /* fall through to the original token */ }
+    return m || 'auto';
 }
 
 /** The rails active for a strength tier. */
@@ -156,5 +180,6 @@ export function recordRunOutcome(rootDir: string, model: string | undefined, out
  * then applies on top of this during the run.
  */
 export function resolveBaseStrength(model: string, configPath: string, rootDir: string): Strength {
-    return learnedStrengthFrom(readModelStats(rootDir, model)) ?? strengthForModel(model, configPath);
+    const resolved = resolveModelId(model, configPath);
+    return learnedStrengthFrom(readModelStats(rootDir, resolved)) ?? strengthForModel(resolved, configPath);
 }
