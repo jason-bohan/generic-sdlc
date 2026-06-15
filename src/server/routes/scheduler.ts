@@ -12,7 +12,7 @@ import { notify, resolveProjectTracker } from '../providers';
 import { skillSubdirForAgentId } from '../../shared/agentSkillDirs';
 import { resolveAgentDisplayName } from '../agent-display-names';
 import { dbGetWorkflowItemByStory } from '../db';
-import { resolveBaseStrength, computeRailFlags } from '../railFlags';
+import { resolveBaseStrength, computeRailFlags, resolveModelId } from '../railFlags';
 import { readBody, json } from '../router';
 import { buildContextPreamble } from '../contextLoader';
 import { taskIdentityKey, dedupeTasksPreserveOrder, type RawTask, asSdlcAgentId } from '../status-normalize';
@@ -462,7 +462,9 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
             // Strength-flagged rails: the worker's configured strength decides which rails
             // are live for this run (a strong agent runs unburdened; a weak one is fully
             // railed). Computed once here and stored on the desk so every rail reads it.
-            const workerModel = getAgentModel(agentId, rootDir);
+            // Resolve 'auto' to the concrete loop-provider model so strength scoring, the
+            // desk record, and Phase-3 learning all key on the real model (not 'auto').
+            const workerModel = resolveModelId(getAgentModel(agentId, rootDir), configFile);
             // Base strength = learned (from the model's track record, Phase 3) once there's
             // enough history, else the configured prior. Phase 2 decay applies on top per-run.
             const agentStrength = resolveBaseStrength(workerModel, configFile, rootDir);

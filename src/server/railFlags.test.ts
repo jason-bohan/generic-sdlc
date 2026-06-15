@@ -4,7 +4,7 @@ import { tmpdir } from 'os';
 import { resolve } from 'path';
 import {
     computeRailFlags, strengthForModel, deskRailFlags, decayStrength,
-    learnedStrengthFrom, recordRunOutcome, readModelStats, resolveBaseStrength, LEARNED_STRENGTH_MIN_SAMPLES,
+    learnedStrengthFrom, recordRunOutcome, readModelStats, resolveBaseStrength, resolveModelId, LEARNED_STRENGTH_MIN_SAMPLES,
 } from './railFlags';
 
 describe('learnedStrengthFrom (Phase 3)', () => {
@@ -47,6 +47,38 @@ describe('recordRunOutcome / readModelStats / resolveBaseStrength (Phase 3, file
         writeFileSync(resolve(dir, 'config.json'), JSON.stringify({ agentStrength: { m3: 'mid' } }));
         recordRunOutcome(dir, 'm3', { stalled: false, devLoopStarts: 0 }); // 1 run < threshold
         expect(resolveBaseStrength('m3', resolve(dir, 'config.json'), dir)).toBe('mid');
+    });
+});
+
+describe('resolveModelId (auto → concrete loop-provider model)', () => {
+    let dir: string;
+    beforeEach(() => { dir = mkdtempSync(resolve(tmpdir(), 'resolvemodel-')); });
+    afterEach(() => { rmSync(dir, { recursive: true, force: true }); });
+    const writeConfig = (obj: unknown) => writeFileSync(resolve(dir, 'config.json'), JSON.stringify(obj));
+
+    it("resolves 'auto'/'default'/'' to scheduler.loopProvider.model", () => {
+        writeConfig({ scheduler: { loopProvider: { model: 'openai/gpt-oss-120b:free' } } });
+        const cfg = resolve(dir, 'config.json');
+        expect(resolveModelId('auto', cfg)).toBe('openai/gpt-oss-120b:free');
+        expect(resolveModelId('Default', cfg)).toBe('openai/gpt-oss-120b:free');
+        expect(resolveModelId('', cfg)).toBe('openai/gpt-oss-120b:free');
+    });
+    it('leaves a concrete model id unchanged', () => {
+        writeConfig({ scheduler: { loopProvider: { model: 'x' } } });
+        expect(resolveModelId('mistral-large-latest', resolve(dir, 'config.json'))).toBe('mistral-large-latest');
+    });
+    it("returns 'auto' when no loopProvider model is configured", () => {
+        writeConfig({});
+        expect(resolveModelId('auto', resolve(dir, 'config.json'))).toBe('auto');
+    });
+    it("resolveBaseStrength scores an 'auto' agent at the loop-provider model's tier (not weak)", () => {
+        // The original bug: 'auto' fell through to _default ('weak'). Now it resolves
+        // 'auto' → 'openai/gpt-oss-120b:free' → (suffix-tolerant) → 'mid'.
+        writeConfig({
+            agentStrength: { 'openai/gpt-oss-120b': 'mid', _default: 'weak' },
+            scheduler: { loopProvider: { model: 'openai/gpt-oss-120b:free' } },
+        });
+        expect(resolveBaseStrength('auto', resolve(dir, 'config.json'), dir)).toBe('mid');
     });
 });
 
@@ -102,6 +134,10 @@ describe('strengthForModel + deskRailFlags (file-backed)', () => {
         expect(strengthForModel('x', resolve(dir, 'missing.json'))).toBe('weak');
         writeConfig({});
         expect(strengthForModel('x', resolve(dir, 'config.json'))).toBe('weak');
+    });
+    it('tolerates a provider variant suffix (e.g. :free)', () => {
+        writeConfig({ agentStrength: { 'openai/gpt-oss-120b': 'mid', _default: 'weak' } });
+        expect(strengthForModel('openai/gpt-oss-120b:free', resolve(dir, 'config.json'))).toBe('mid');
     });
 
     it('deskRailFlags reads the flags written on the desk', () => {
