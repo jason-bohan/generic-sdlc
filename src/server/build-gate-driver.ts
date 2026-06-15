@@ -21,6 +21,7 @@ import { getSchedulerWorkflowMode } from './schedulerMode';
 import { isGlobalStepMode, isAgentStepMode } from './stepMode';
 import { isLoopActive } from './loop-control';
 import { freeStoryAgents, storyNumberFromDesk } from './reset-agents';
+import { serverLog as log } from './logger';
 
 // Build-chain phases where devops is waiting on CI/merge and the driver may act.
 const DRIVE_PHASES = new Set(['pending-build', 'monitoring-build', 'build-passed']);
@@ -95,7 +96,7 @@ export function driveDevopsBuildGate(rootDir: string, configFile: string): { act
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ prId: info.id, result: 'failed', headSha: sha }),
       signal: AbortSignal.timeout(20_000),
-    }).catch((e) => console.warn('[build-gate-driver] rework handoff failed:', e instanceof Error ? e.message : String(e)));
+    }).catch((e) => log.warn(`[build-gate-driver] rework handoff failed: ${e instanceof Error ? e.message : String(e)}`));
     return { acted: true, note: `CI failed — routed PR #${info.id} to rework` };
   };
 
@@ -128,6 +129,6 @@ export function startBuildGateDriver(rootDir: string, configFile: string): void 
   const POLL_MS = 30_000;
   setInterval(() => {
     try { driveDevopsBuildGate(rootDir, configFile); }
-    catch (e) { console.warn('[build-gate-driver]', e instanceof Error ? e.message : String(e)); }
+    catch (e) { log.warn(`[build-gate-driver] ${e instanceof Error ? e.message : String(e)}`); }
   }, POLL_MS);
 }

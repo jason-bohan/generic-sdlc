@@ -1,4 +1,4 @@
-﻿import { spawn } from 'child_process';
+import { spawn } from 'child_process';
 import { existsSync, writeFileSync, appendFileSync, mkdirSync } from 'fs';
 import { resolve } from 'path';
 import { getMockModeSafetyDirective } from './test-safety';
@@ -12,6 +12,7 @@ import { dbCreateAgentSession, dbUpdateAgentSession } from './db';
 import { enhancePrompt } from './promptEnhancer';
 import { parseJsonUtf8File } from './json-file';
 import { getActiveProject } from './project-config';
+import { serverLog as log } from './logger';
 
 export interface SpawnResult {
     spawned: boolean;
@@ -135,7 +136,7 @@ export function spawnAgent(
             } catch { /* non-critical */ }
         }
         startRunner(agentId, effectivePrompt, workspaceDir, agentWorkspace, configPath, model, { showTerminal: true });
-        console.log(`[spawn-agent] ${agentId} started via loop driver`);
+        log.info(`[spawn-agent] ${agentId} started via loop driver`);
         return { spawned: true };
     }
 
@@ -143,7 +144,7 @@ export function spawnAgent(
         if (driverConfig.type === 'aider' && spec.error.includes('Aider not found')) {
             appendFileSync(resolve(workspaceDir, '.agent-spawns.log'), `${new Date().toISOString()} | ${agentId} | FALLBACK | Aider not found, using loop driver\n`);
             startRunner(agentId, effectivePrompt, workspaceDir, agentWorkspace, configPath, model, { showTerminal: true });
-            console.warn(`[spawn-agent] ${agentId}: Aider not found, using loop driver`);
+            log.warn(`[spawn-agent] ${agentId}: Aider not found, using loop driver`);
             return { spawned: true, reason: 'Aider not found, using loop driver' };
         }
         // Try fallback drivers before giving up (not when model='local' — goose is explicit)
@@ -151,7 +152,7 @@ export function spawnAgent(
             const fallback = _buildFallbackSpec(driverConfig.type, agentId, effectivePrompt, workspaceDir, promptFilePath, model, outputDir, isCursorAiEnabled(configPath), isClaudeEnabled(configPath), isOpenCodeEnabled(configPath));
             if (fallback) {
                 const msg = `primary driver '${driverConfig.type}' failed (${spec.error}), falling back to '${fallback.usedDriver}'`;
-                console.warn(`[spawn-agent] ${agentId}: ${msg}`);
+                log.warn(`[spawn-agent] ${agentId}: ${msg}`);
                 appendFileSync(resolve(workspaceDir, '.agent-spawns.log'), `${new Date().toISOString()} | ${agentId} | FALLBACK | ${msg}\n`);
                 return _doSpawn(fallback.spec, agentId, effectivePrompt, workspaceDir, statusFile, logFile, promptFilePath, model, fallback.usedDriver);
             }
@@ -255,7 +256,7 @@ function _doSpawn(
             pid });
 
         child.on('error', (err: Error) => {
-            console.error(`[spawn-agent] ${agentId} error: ${err.message}`);
+            log.error(`[spawn-agent] ${agentId} error: ${err.message}`);
             appendFileSync(logFile, `\n[error] ${err.message} at ${new Date().toISOString()}\n`);
             if (sessionId) _finishDurableSession(sessionId, 'failed', { error: err.message });
             activeAgents.delete(agentId);
@@ -288,6 +289,7 @@ function _doSpawn(
                 const s = parseJsonUtf8File(statusFile);
                 s.handoffDispatched = true;
                 s.spawnedPid = pid;
+                s.lastHeartbeat = new Date().toISOString();
                 if (sessionId) {
                     s.sessionId = sessionId;
                     s.activeSessionId = sessionId;
@@ -296,11 +298,11 @@ function _doSpawn(
             } catch { /* non-critical */ }
         }
 
-        console.log(`[spawn-agent] ${agentId} spawned as PID ${pid}${modelTag}${sessionTag}`);
+        log.info(`[spawn-agent] ${agentId} spawned as PID ${pid}${modelTag}${sessionTag}`);
         return { spawned: true, pid, sessionId };
     } catch (err: unknown) {
         const msg = `Failed to spawn ${agentId}: ${err instanceof Error ? err.message : String(err)}`;
-        console.error(`[spawn-agent] ${msg}`);
+        log.error(`[spawn-agent] ${msg}`);
         appendFileSync(resolve(workspaceDir, '.agent-spawns.log'), `${new Date().toISOString()} | ${agentId} | FAILED | ${err instanceof Error ? err.message : String(err)}\n`);
         return { spawned: false, reason: msg };
     }
@@ -377,7 +379,7 @@ function _createDurableSession(params: {
         return session.id;
     } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        console.warn(`[spawn-agent] ${params.agentId}: durable session unavailable: ${message}`);
+        log.warn(`[spawn-agent] ${params.agentId}: durable session unavailable: ${message}`);
         return undefined;
     }
 }
@@ -390,6 +392,6 @@ function _finishDurableSession(sessionId: string, status: 'completed' | 'failed'
             metadata });
     } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        console.warn(`[spawn-agent] ${sessionId}: durable session update failed: ${message}`);
+        log.warn(`[spawn-agent] ${sessionId}: durable session update failed: ${message}`);
     }
 }

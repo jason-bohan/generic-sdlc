@@ -8,19 +8,24 @@
 import { resolve } from 'path';
 import { existsSync } from 'fs';
 import type { LocalPlanningStory } from './local-planning';
+import { serverLog as log } from './logger';
 import { loadLocalPlanningState, updateLocalStoryStatus } from './local-planning';
 import { resolveStoryAgent, type StoryForOrchestration } from './orchestrator';
 import { isRunnerActive } from './agent-runner/registry';
+import { isAgentActive } from './spawn-agent';
 import { getSchedulerWorkflowMode } from './schedulerMode';
 import { getSchedulerConfig } from './route-shared';
 import { isLoopActive, getLoopState } from './loop-control';
 import { getActiveProjectName } from './project-config';
 import { parseJsonUtf8File } from './json-file';
+import { writeFileSync } from 'fs';
 import type { SdlcAgentId } from '../shared/sdlcContracts';
 
 const BACKLOG_STATUSES = new Set(['backlog']);
 // An agent is free when its desk is at one of these (or has no live story).
 const FREE_PHASES = new Set(['idle', 'complete', 'error', '']);
+// How long without a heartbeat before a non-running agent is considered stalled.
+const HEARTBEAT_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 
 export interface AssignmentPlanItem {
   storyNumber: string;
@@ -87,15 +92,66 @@ export async function planAssignments(
   return { assigned, skipped };
 }
 
-/** Is an agent occupied? Active in-process runner, or its desk holds a live story. */
-export function isAgentBusy(agentId: SdlcAgentId, rootDir: string): boolean {
-  if (isRunnerActive(agentId)) return true;
+/**
+ * Release a stalled agent's assignment: reset the status file to idle and
+ * mark the story back to backlog so the orchestrator can reassign it.
+ * Returns true when recovery was performed.
+ */
+export function recoverStalledAgent(agentId: string, rootDir: string): boolean {
   const file = resolve(rootDir, `.${agentId}-status.json`);
   if (!existsSync(file)) return false;
   try {
     const s = parseJsonUtf8File(file) as Record<string, unknown>;
     const phase = String(s.currentPhase ?? 'idle').trim().toLowerCase();
-    return !FREE_PHASES.has(phase) && !!s.storyNumber;
+    const storyNum = String(s.storyNumber ?? '').trim();
+    if (FREE_PHASES.has(phase) || !storyNum) return false;
+
+    const isoNow = new Date().toISOString();
+    const events = Array.isArray(s.events) ? [...s.events] : [];
+    events.push({ timestamp: isoNow, type: 'info', message: `Agent ${agentId} stalled (process dead, heartbeat stale) — assignment released for story ${storyNum}.` });
+
+    writeFileSync(file, JSON.stringify({
+      ...s,
+      currentPhase: 'idle',
+      storyNumber: null,
+      storyName: null,
+      storyDescription: null,
+      handoffDispatched: false,
+      lastHeartbeat: isoNow,
+      spawnedPid: null,
+      events,
+    }, null, 2));
+
+    try { updateLocalStoryStatus(rootDir, storyNum, 'backlog'); } catch { /* non-critical */ }
+
+    log.warn(`[stall-recovery] ${agentId} on ${storyNum}: reset to idle, story returned to backlog`);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Is an agent occupied? Active in-process runner, its subprocess is alive, or its desk holds a live story. */
+export function isAgentBusy(agentId: SdlcAgentId, rootDir: string): boolean {
+  if (isRunnerActive(agentId)) return true;
+  if (isAgentActive(agentId)) return true;
+  const file = resolve(rootDir, `.${agentId}-status.json`);
+  if (!existsSync(file)) return false;
+  try {
+    const s = parseJsonUtf8File(file) as Record<string, unknown>;
+    const phase = String(s.currentPhase ?? 'idle').trim().toLowerCase();
+    if (FREE_PHASES.has(phase) || !s.storyNumber) return false;
+    // Agent desk says busy, but check if the process is dead with a stale heartbeat.
+    const heartbeat = s.lastHeartbeat;
+    if (typeof heartbeat === 'string') {
+      const elapsed = Date.now() - new Date(heartbeat).getTime();
+      if (elapsed > HEARTBEAT_TIMEOUT_MS) {
+        // Process is not tracked as active and heartbeat is stale — treat as stalled.
+        recoverStalledAgent(agentId, rootDir);
+        return false;
+      }
+    }
+    return true;
   } catch {
     return false;
   }
