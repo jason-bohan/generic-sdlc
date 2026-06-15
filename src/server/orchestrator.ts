@@ -24,6 +24,7 @@ import {
 import { resolve, isAbsolute } from 'path';
 import { parseJsonUtf8File } from './json-file';
 import { asSdlcAgentId } from './status-normalize';
+import { serverLog as log } from './logger';
 
 export type StoryClassification =
     | 'frontend'
@@ -948,7 +949,7 @@ export function completePhase(input: CompletePhaseInput): OrchestratorResult<Wor
         effectiveNextPhase = 'committing';
         guardLabel = 'forward-progress guard';
         guardNote = `Forward-progress guard: validation reported PASSED, so '${input.phase}' was not allowed to return to '${input.nextPhase}'. Advanced to '${effectiveNextPhase}'.`;
-        console.warn(`[forward-progress] ${input.agentId}: validating PASSED but next_phase='${input.nextPhase}' — coerced to '${effectiveNextPhase}'`);
+        log.warn(`[forward-progress] ${input.agentId}: validating PASSED but next_phase='${input.nextPhase}' — coerced to '${effectiveNextPhase}'`);
     }
 
     // Anti-error-escape guard: an implementation agent may not self-terminate an early
@@ -962,7 +963,7 @@ export function completePhase(input: CompletePhaseInput): OrchestratorResult<Wor
             effectiveNextPhase = forward;
             guardLabel = 'anti-error guard';
             guardNote = `Anti-error guard: '${input.agentId}' tried to fail '${input.phase}' to 'error'; coerced forward to '${forward}'.`;
-            console.warn(`[anti-error] ${input.agentId}: next_phase='error' from '${input.phase}' — coerced to '${forward}'`);
+            log.warn(`[anti-error] ${input.agentId}: next_phase='error' from '${input.phase}' — coerced to '${forward}'`);
         }
     }
 

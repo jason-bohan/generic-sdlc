@@ -8,6 +8,7 @@
 import { execFileSync } from 'child_process';
 import { existsSync } from 'fs';
 import { resolve } from 'path';
+import { serverLog as log } from './logger';
 import { detectLoopProvider } from './agent-runner/provider';
 import { parseJsonUtf8File } from './json-file';
 
@@ -113,7 +114,7 @@ export class WorkerPool {
 
   private fallback(task: string, reason: string): string {
     if (!this.allowStub) throw new Error(`Worker pool: ${task} failed (${reason})`);
-    console.warn(`[workerPool] ${task} failed — ${reason}. Using stub.`);
+    log.warn(`[workerPool] ${task} failed — ${reason}. Using stub.`);
     return '';
   }
 

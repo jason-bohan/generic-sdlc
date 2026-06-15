@@ -1,4 +1,4 @@
-﻿import { resolve } from 'path';
+import { resolve } from 'path';
 import { existsSync, readFileSync, writeFileSync, appendFileSync, mkdirSync } from 'fs';
 import { spawn } from 'child_process';
 import { EventEmitter } from 'events';
@@ -17,6 +17,7 @@ import {
 import type { Message } from './types';
 import { parseJsonUtf8File } from '../json-file';
 import { AGENT_STEP_MODE_PHASES } from '../../shared/agentPhases';
+import { serverLog as log } from '../logger';
 
 /** Generic phase progression for agents without a role-specific list. */
 const GENERIC_PHASE_ORDER = ['analyzing', 'generating-code', 'committing', 'validating', 'creating-pr'];
@@ -239,7 +240,7 @@ export function startRunner(
                 sessionId = existing.id;
                 initialMessages = parsedMessages;
                 isResume = true;
-                console.log(`[agent-runner:${agentId}] resuming session ${sessionId} (${parsedMessages.length} messages)`);
+                log.info(`[agent-runner:${agentId}] resuming session ${sessionId} (${parsedMessages.length} messages)`);
             }
         }
     } catch { /* non-critical — start fresh if session lookup fails */ }
@@ -281,7 +282,7 @@ export function startRunner(
     const spawnLog = resolve(frameworkDir, '.agent-spawns.log');
     appendFileSync(spawnLog, `${new Date().toISOString()} | ${agentId} | loop | session=${sessionId} model=${providerConfig.model} | "${prompt.slice(0, 120)}"\n`);
 
-    // Update status file: isRunning, sessionId, driver
+    // Update status file: isRunning, sessionId, driver, heartbeat
     if (existsSync(statusFile)) {
         try {
             const s = parseJsonUtf8File(statusFile) as Record<string, unknown>;
@@ -290,19 +291,31 @@ export function startRunner(
             s.sessionId = sessionId;
             s.spawnedPid = null;
             s.startedAt = new Date().toISOString();
+            s.lastHeartbeat = new Date().toISOString();
             writeFileSync(statusFile, JSON.stringify(s, null, 2));
         } catch { /* non-critical */ }
     }
+
+    // Periodic heartbeat: update lastHeartbeat every 60s while the runner is active.
+    const heartbeatInterval = setInterval(() => {
+        if (existsSync(statusFile)) {
+            try {
+                const s = parseJsonUtf8File(statusFile) as Record<string, unknown>;
+                s.lastHeartbeat = new Date().toISOString();
+                writeFileSync(statusFile, JSON.stringify(s, null, 2));
+            } catch { /* non-critical */ }
+        }
+    }, 60_000);
 
     runner.on('event', (ev) => {
         const { type, data } = ev as { type: string; data?: { message?: string; name?: string; content?: string; outputLength?: number; usage?: { input: number; output: number } } };
         const evTs = new Date().toISOString();
         if (type === 'error') {
-            console.error(`[agent-runner:${agentId}] error:`, data?.message);
+            log.error(`[agent-runner:${agentId}] error: ${data?.message}`);
             appendFileSync(logFile, `[error] ${evTs} ${data?.message}\n`);
             appendFileSync(spawnLog, `${evTs} | ${agentId} | loop | ERROR: ${data?.message}\n`);
         } else if (type === 'tool_call') {
-            console.log(`[agent-runner:${agentId}] tool: ${data?.name}`);
+            log.info(`[agent-runner:${agentId}] tool: ${data?.name}`);
             appendFileSync(logFile, `[tool] ${evTs} ${data?.name}\n`);
         } else if (type === 'tool_result') {
             appendFileSync(logFile, `[result] ${evTs} ${data?.name} → ${data?.outputLength ?? 0}b\n`);
@@ -310,13 +323,13 @@ export function startRunner(
             appendFileSync(logFile, `[message] ${evTs} ${String(data?.content ?? '').slice(0, 500)}\n`);
         } else if (type === 'phase_complete') {
             const nextPhase = (data as { nextPhase?: string })?.nextPhase ?? '?';
-            console.log(`[agent-runner:${agentId}] phase complete → ${nextPhase}`);
+            log.info(`[agent-runner:${agentId}] phase complete → ${nextPhase}`);
             appendFileSync(logFile, `[phase_complete] ${evTs} → ${nextPhase}\n`);
             appendFileSync(spawnLog, `${evTs} | ${agentId} | loop | session=${sessionId} PHASE_COMPLETE → ${nextPhase}\n`);
         } else if (type === 'injection') {
             appendFileSync(logFile, `[btw] ${evTs} injected\n`);
         } else if (type === 'complete') {
-            console.log(`[agent-runner:${agentId}] complete`);
+            log.info(`[agent-runner:${agentId}] complete`);
             appendFileSync(logFile, `[exit] ${evTs} COMPLETE\n`);
             appendFileSync(spawnLog, `${evTs} | ${agentId} | loop | session=${sessionId} COMPLETE\n`);
             // Record token usage to the ledger. The in-process loop driver is the
@@ -340,6 +353,7 @@ export function startRunner(
     });
 
     const cleanup = (status: 'complete' | 'error') => {
+        clearInterval(heartbeatInterval);
         runners.delete(agentId);
         try { dbEndSession(sessionId!, status); } catch { /* non-critical */ }
         let stoppedPhase: string | null = null;
