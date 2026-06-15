@@ -147,7 +147,10 @@ nvs use 22
 npm run setup       # installs deps, creates .env/config, checks optional tools
 ```
 
-The setup script will prompt for **workspace paths** — where your project repos live on disk. These are critical: agents use them to read coding standards, browse project structure, and run tests.
+The setup script is **interactive** and configures the framework for *your* stack:
+
+- **Pick your stack** — choose a project tracker (GitHub · Linear · Azure DevOps · Agility · Mock), a code host for PRs (GitHub · Azure DevOps), and chat notifications (None · Slack · Teams). Setup composes `.mcp.json` with the right MCP servers, sets the `PM_PROVIDER`/`NOTIFY_PROVIDER` selectors in `.env`, installs any package an MCP needs (e.g. `linear-mcp`), and lists the credentials you still need to fill in. No custom code — it just wires the existing MCPs/APIs/CLIs for what you chose. Adding a new product later is a single entry in the `STACK_CATALOG` in `scripts/setup.cjs`.
+- **Workspace paths** — where your project repos live on disk. These are critical: agents use them to read coding standards, browse project structure, and run tests.
 
 ### Run
 

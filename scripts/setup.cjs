@@ -320,46 +320,212 @@ function printToolStatus(name, installHint) {
   }
 }
 
+// ─── Stack catalog ─────────────────────────────────────────────────────────────
+//
+// One entry = one supported product. To add a new tracker / code host / chat tool,
+// add an object to the matching list below — the interactive prompt, the .mcp.json
+// composition, the .env selectors, and the "keys you still need" summary all read
+// from this catalog. No other code changes are required.
+//
+// Fields:
+//   id          stable key (printed under --yes / scripting)
+//   label       menu text
+//   env         { ENV_VAR: value } written into .env  (e.g. PM_PROVIDER selector)
+//   mcp         { "Server Name": {command,args,env} } merged into .mcp.json
+//   install     { cmd, args, label } optional package the MCP needs (e.g. linear-mcp)
+//   requiredEnv [ENV_VAR, …] keys the user must fill in .env for this choice to work
+//   requiredConfig [dotted.path, …] values that live in .sdlc-framework.config.json
+//   note        one-line hint printed after selection
+//
+// The literal token <your-ado-org> in any mcp args triggers a one-time org prompt.
+const ADO_MCP = { command: 'npx', args: ['-y', '@azure-devops/mcp', '<your-ado-org>'] };
+
+const STACK_CATALOG = {
+  tracker: {
+    label: 'Project tracker (stories & tasks)',
+    options: [
+      { id: 'github', label: 'GitHub Issues / Projects', env: { PM_PROVIDER: 'github' },
+        requiredEnv: ['GITHUB_TOKEN'], note: 'Tracker reads/writes via the gh CLI + GitHub API (no extra MCP).' },
+      { id: 'linear', label: 'Linear', env: { PM_PROVIDER: 'linear' },
+        mcp: { linear: { command: 'sh', args: ['-c', 'set -a && . .env && set +a && node $(npm root -g)/linear-mcp/build/index.js'] } },
+        install: { cmd: 'npm', args: ['install', '-g', 'linear-mcp'], label: 'linear-mcp (global)' },
+        requiredEnv: ['LINEAR_API_KEY', 'LINEAR_TEAM_ID'] },
+      { id: 'azure-devops', label: 'Azure DevOps Boards', env: { PM_PROVIDER: 'azure' },
+        mcp: { 'Azure DevOps': ADO_MCP }, requiredEnv: ['AZURE_DEVOPS_PAT'] },
+      { id: 'agility', label: 'Agility (Digital.ai / VersionOne)', env: { PM_PROVIDER: 'agility' },
+        mcp: { Agility: { command: 'node', args: ['tools/mcp-agility/index.js'],
+          env: { AGILITY_API_KEY: '${AGILITY_API_KEY}', AGILITY_BASE_URL: '${AGILITY_BASE_URL}' } } },
+        requiredEnv: ['AGILITY_API_KEY', 'AGILITY_BASE_URL'] },
+      { id: 'mock', label: 'Mock (no external tracker — local testing)', env: { PM_PROVIDER: 'mock' } },
+    ],
+  },
+  codeHost: {
+    label: 'Code host (pull requests)',
+    options: [
+      { id: 'github', label: 'GitHub', requiredEnv: ['GITHUB_TOKEN'],
+        note: 'PRs via the gh CLI (already used by the loop).' },
+      { id: 'azure-devops', label: 'Azure DevOps Repos', mcp: { 'Azure DevOps': ADO_MCP },
+        requiredEnv: ['AZURE_DEVOPS_PAT'], note: 'PRs via the Azure DevOps MCP (shared with the tracker).' },
+    ],
+  },
+  chat: {
+    label: 'Chat notifications',
+    options: [
+      { id: 'none', label: 'None', env: { NOTIFY_PROVIDER: 'mock' } },
+      { id: 'slack', label: 'Slack', env: { NOTIFY_PROVIDER: 'slack' }, requiredEnv: ['SLACK_WEBHOOK_URL'] },
+      { id: 'teams', label: 'Microsoft Teams', env: { NOTIFY_PROVIDER: 'teams' },
+        requiredConfig: ['notifications.teams.webhookUrl'] },
+    ],
+  },
+};
+
+// The framework's own MCP is always available regardless of stack.
+const FRAMEWORK_MCP = { 'sdlc-framework': { command: 'node', args: ['tools/mcp-sdlc-framework/index.js'] } };
+
+/** Server names this catalog manages, so a re-run can replace them without clobbering user-added servers. */
+function catalogServerNames() {
+  const names = new Set(Object.keys(FRAMEWORK_MCP));
+  for (const category of Object.values(STACK_CATALOG)) {
+    for (const opt of category.options) {
+      for (const name of Object.keys(opt.mcp || {})) names.add(name);
+    }
+  }
+  return names;
+}
+
+async function selectOption(prompt, category) {
+  console.log(color('cyan', `  ${category.label}:`));
+  category.options.forEach((opt, i) => {
+    console.log(`    ${i + 1}) ${opt.label}${i === 0 ? color('dim', ' (default)') : ''}`);
+  });
+  const answer = await prompt.ask('  Choose a number', '1');
+  const opt = category.options[Number(answer) - 1] || category.options[0];
+  console.log(color('green', `  → ${opt.label}`));
+  if (opt.note) console.log(color('dim', `    ${opt.note}`));
+  return opt;
+}
+
+/** Set or append KEY=value lines in .env without disturbing other lines. */
+function patchEnvVars(updates) {
+  const envFile = path.join(root, '.env');
+  if (!fs.existsSync(envFile)) return;
+  const lines = fs.readFileSync(envFile, 'utf8').split('\n');
+  for (const [key, value] of Object.entries(updates)) {
+    const idx = lines.findIndex((l) => l.startsWith(`${key}=`));
+    if (idx >= 0) lines[idx] = `${key}=${value}`;
+    else lines.push(`${key}=${value}`);
+  }
+  fs.writeFileSync(envFile, lines.join('\n'), 'utf8');
+}
+
+function envValue(key) {
+  const envFile = path.join(root, '.env');
+  if (!fs.existsSync(envFile)) return '';
+  const line = fs.readFileSync(envFile, 'utf8').split('\n').find((l) => l.startsWith(`${key}=`));
+  return line ? line.slice(key.length + 1).trim() : '';
+}
+
+/** Replace managed servers in .mcp.json with the freshly selected set; preserve user-added ones. */
+function writeMcpServers(servers) {
+  const mcpFile = path.join(root, '.mcp.json');
+  let current = {};
+  if (fs.existsSync(mcpFile)) {
+    try { current = readJson(mcpFile); } catch { backupFile(mcpFile, 'invalid JSON'); current = {}; }
+  }
+  if (!isPlainObject(current.mcpServers)) current.mcpServers = {};
+  const managed = catalogServerNames();
+  for (const name of Object.keys(current.mcpServers)) {
+    if (managed.has(name)) delete current.mcpServers[name];
+  }
+  Object.assign(current.mcpServers, servers);
+  writeJson(mcpFile, current);
+  console.log(color('green', `  Wrote .mcp.json (${Object.keys(servers).length} server(s): ${Object.keys(servers).join(', ')})`));
+}
+
+async function configureStack(prompt, configFile) {
+  const tracker = await selectOption(prompt, STACK_CATALOG.tracker);
+  const codeHost = await selectOption(prompt, STACK_CATALOG.codeHost);
+  const chat = await selectOption(prompt, STACK_CATALOG.chat);
+
+  // Compose .mcp.json: framework MCP + whatever the selections require.
+  let servers = { ...FRAMEWORK_MCP, ...(tracker.mcp || {}), ...(codeHost.mcp || {}) };
+
+  // One-time Azure DevOps org prompt if any selected MCP carries the placeholder.
+  if (JSON.stringify(servers).includes('<your-ado-org>')) {
+    const org = await prompt.ask('  Azure DevOps organization (e.g. contoso)', '');
+    if (org) servers = JSON.parse(JSON.stringify(servers).split('<your-ado-org>').join(org));
+    else console.log(color('yellow', '  Left <your-ado-org> placeholder — edit .mcp.json before first run'));
+  }
+  writeMcpServers(servers);
+
+  // .env selectors (PM_PROVIDER / NOTIFY_PROVIDER).
+  patchEnvVars({ ...(tracker.env || {}), ...(chat.env || {}) });
+  console.log(color('green', `  Set PM_PROVIDER=${tracker.env?.PM_PROVIDER ?? '(unchanged)'}, NOTIFY_PROVIDER=${chat.env?.NOTIFY_PROVIDER ?? '(unchanged)'}`));
+
+  // Install any package an MCP needs (e.g. linear-mcp), unless skipped.
+  const installs = [tracker.install, codeHost.install].filter(Boolean);
+  for (const inst of installs) {
+    if (skipInstall) { console.log(color('dim', `  Skipped install of ${inst.label} (--skip-install)`)); continue; }
+    console.log(color('yellow', `  Installing ${inst.label}…`));
+    try { run(inst.cmd, inst.args); } catch (e) { console.log(color('yellow', `  Install failed (${e.message}); run manually: ${inst.cmd} ${inst.args.join(' ')}`)); }
+  }
+
+  // Summary: which secrets the user still needs to supply.
+  const requiredEnv = [...new Set([...(tracker.requiredEnv || []), ...(codeHost.requiredEnv || []), ...(chat.requiredEnv || [])])];
+  const missing = requiredEnv.filter((k) => !envValue(k));
+  const requiredConfig = [...(tracker.requiredConfig || []), ...(codeHost.requiredConfig || []), ...(chat.requiredConfig || [])];
+  if (missing.length || requiredConfig.length) {
+    console.log(color('yellow', '\n  Before the first run, supply these credentials:'));
+    for (const k of missing) console.log(`    .env   ${color('cyan', k)}=…`);
+    for (const c of requiredConfig) console.log(`    config ${color('cyan', c)} in .sdlc-framework.config.json`);
+  } else if (requiredEnv.length) {
+    console.log(color('green', '  All required credentials for this stack are already set.'));
+  }
+}
+
 async function main() {
   console.log(color('cyan', '\n=== SDLC Framework Setup ==='));
   console.log(color('dim', `Platform: ${os.platform()} ${os.arch()}`));
 
-  logStep('[1/8] Checking Node.js');
+  logStep('[1/9] Checking Node.js');
   if (nodeMajor() < 22 || nodeMajor() >= 24) {
     throw new Error(`Node ${process.version} detected. Use Node 22.x before setup.`);
   }
   console.log(color('green', `  Node ${process.version}`));
 
-  logStep('[2/8] Checking optional tools');
+  logStep('[2/9] Checking optional tools');
   printToolStatus('ollama', 'Install from https://ollama.com/download for local models.');
   printToolStatus('goose', 'Install from https://block.github.io/goose/docs/getting-started for local execution mode.');
   printToolStatus('claude', 'Install with: npm install -g @anthropic-ai/claude-code');
   printToolStatus('gh', 'Install GitHub CLI from https://cli.github.com for Renovate/Dependabot PR upkeep.');
   printToolStatus('harlequin', 'Install with: pip install harlequin for the SQLite TUI.');
 
-  logStep('[3/8] Detecting agent driver');
+  logStep('[3/9] Detecting agent driver');
   const driver = detectDriver();
   console.log(color('green', `  Detected driver: ${driver}`));
 
-  logStep('[4/8] Installing Node dependencies');
+  logStep('[4/9] Installing Node dependencies');
   if (skipInstall) {
     console.log(color('dim', '  Skipped by --skip-install'));
   } else {
     run('npm', ['install']);
   }
 
-  logStep('[5/8] Creating environment file');
+  logStep('[5/9] Creating environment file');
   ensureEnvFile();
 
-  logStep('[6/8] Creating framework config');
+  logStep('[6/9] Creating framework config');
   const configFile = ensureConfigFile(driver);
 
   const prompt = createPrompt();
   try {
-    logStep('[7/8] Configuring project workspace paths');
+    logStep('[7/9] Selecting your stack (tracker / code host / chat)');
+    await configureStack(prompt, configFile);
+
+    logStep('[8/9] Configuring project workspace paths');
     await configureWorkspacePaths(prompt, configFile);
 
-    logStep('[8/8] Shell PATH');
+    logStep('[9/9] Shell PATH');
     await maybeAddBinToPath(prompt);
   } finally {
     prompt.close();
@@ -372,7 +538,12 @@ async function main() {
   console.log('  npm run dev         # API + dashboard together');
 }
 
-main().catch((error) => {
-  console.error(color('red', `\nSetup failed: ${error.message}`));
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((error) => {
+    console.error(color('red', `\nSetup failed: ${error.message}`));
+    process.exit(1);
+  });
+}
+
+// Exported for testing the stack-composition logic with a stub prompt.
+module.exports = { STACK_CATALOG, configureStack, writeMcpServers, patchEnvVars, catalogServerNames };
