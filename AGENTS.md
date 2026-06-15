@@ -1,5 +1,7 @@
 ﻿# Agent Notes
 
+See `constitution.json` for the authority hierarchy, protected invariants, branch policy, verification policy, and escalation triggers. This file (AGENTS.md) takes precedence for operational instructions.
+
 ## Node and worktrees
 
 - Use NVS and the repo's `.node-version` before running Node, npm, tests, or dev servers:

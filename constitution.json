@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "authority": [
+    "current user request",
+    "AGENTS.md",
+    "constitution.json (this file)",
+    ".sdlc-framework.config.json",
+    "opencode.json",
+    "live code and tests",
+    "GitHub issue/PR details",
+    "memory",
+    "previous-session handoffs"
+  ],
+  "protected_invariants": [
+    "Never commit API keys, tokens, or secrets.",
+    "Never modify .sdlc-framework.config.json agent models, providers, or API keys without explicit approval.",
+    "Preserve agent role boundaries: backend, devops, qa, frontend, aiqa, orchestrator, reviewer are separate concerns.",
+    "Keep DeepSeek V4 Flash as the primary model for aiqa and orchestrator unless explicitly overridden.",
+    "openprovider configs in opencode.json and provider configs in .sdlc-framework.config.json must stay in sync.",
+    "Worker pool (Bonsai 1-bit) is for summarization/search only, never for code generation decisions."
+  ],
+  "branch_policy": {
+    "flowboard": {
+      "target_branch": "main",
+      "pattern": "fix/{storyNumber}-{slug}",
+      "rules": [
+        "One logical change per branch; do not mix unrelated fixes.",
+        "Never force-push to shared branches.",
+        "Rebase onto target before opening a PR."
+      ]
+    }
+  },
+  "verification_policy": {
+    "before_claiming_done": [
+      "run the focused tests for the changed area (npm test or cargo test as appropriate)",
+      "run lint and typecheck if applicable (npm run lint, npm run typecheck, or similar)",
+      "read changed files back to confirm the edit landed as intended",
+      "never claim verification you did not perform"
+    ]
+  },
+  "escalate_when": [
+    "an action is destructive or hard to reverse and was not explicitly authorized",
+    "changing provider/auth/config or anything that sends data to an external service",
+    "committing or pushing files without explicit user request",
+    "deleting files you did not create",
+    "modifying agent strength assignments or model roles in .sdlc-framework.config.json",
+    "changing the active project or its workspace path"
+  ]
+}
