@@ -599,6 +599,8 @@ export function buildPhaseRunPrompt(input: BuildPhasePromptInput): OrchestratorR
         '',
         phaseSpecificInstructions(item, serverBaseUrl, priorValidationFailure, reviewFeedback, analysisPlan, railFlags),
         '',
+        'IMPORTANT — you are running NON-INTERACTIVELY (headless): there is no human to answer questions and no follow-up turn. Do not ask questions, request confirmation, or stop to summarize — decide from the story, the code, and these instructions, and act. You MUST end your turn by completing this phase: call the complete_phase tool, or POST the contract below, to advance to the next phase. Ending your turn without completing it strands the story — the framework will just re-run this same phase, with no progress.',
+        '',
         'When the phase is complete, POST this contract payload:',
         `${serverBaseUrl}/api/workflows/complete-phase`,
         JSON.stringify({
