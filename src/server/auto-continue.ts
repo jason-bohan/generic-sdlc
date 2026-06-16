@@ -36,6 +36,23 @@ const NEVER_AUTO_CONTINUE_PHASES = new Set([
 export const AUTO_CONTINUE_CAP = 5;
 const autoContinueCounts = new Map<string, number>();
 
+// Debounce: the desk file-watcher can fire several auto-continue events within a second
+// (e.g. a spawn writing isRunning/sessionId before the subprocess registers as active), which
+// burned the cap of 5 in ~6s and killed a phase before the subprocess — which takes minutes —
+// could finish (observed: analyzing capped on UNW-141). Suppress repeats for the same
+// (agent, phase, story) inside this window; a genuine next-phase continue uses a different key.
+const autoContinueLastAt = new Map<string, number>();
+const AUTO_CONTINUE_DEBOUNCE_MS = 15_000;
+
+/** True if an auto-continue for this key fired within the debounce window. Exported for tests. */
+export function autoContinueDebounced(agentId: string, phase: string, storyNumber: string): boolean {
+    const key = `${agentId}:${phase}:${storyNumber}`;
+    const lastAt = autoContinueLastAt.get(key) ?? 0;
+    if (Date.now() - lastAt < AUTO_CONTINUE_DEBOUNCE_MS) return true;
+    autoContinueLastAt.set(key, Date.now());
+    return false;
+}
+
 /**
  * Record an auto-continue attempt for (agent, phase, story) and report whether it's within the cap.
  * Returns false once the cap is exceeded — the caller must then stop re-spawning. Exported for tests.
@@ -50,9 +67,12 @@ export function withinAutoContinueCap(agentId: string, phase: string, storyNumbe
 
 /** Clear the auto-continue counter for an agent's phase (e.g. on a clean manual reset). Exported for tests. */
 export function resetAutoContinueCap(agentId?: string): void {
-    if (!agentId) { autoContinueCounts.clear(); return; }
+    if (!agentId) { autoContinueCounts.clear(); autoContinueLastAt.clear(); return; }
     for (const key of autoContinueCounts.keys()) {
         if (key.startsWith(`${agentId}:`)) autoContinueCounts.delete(key);
+    }
+    for (const key of autoContinueLastAt.keys()) {
+        if (key.startsWith(`${agentId}:`)) autoContinueLastAt.delete(key);
     }
 }
 
@@ -94,6 +114,10 @@ export function maybeAutoContinueAgent(rootDir: string, port: number, configFile
 
     // Step mode: user wants to review before proceeding.
     if (isAgentStepMode(agentId, configFile)) return;
+
+    // Debounce the file-watcher storm so it can't burn the cap before the subprocess runs.
+    // Checked before the cap so suppressed repeats don't count toward it.
+    if (autoContinueDebounced(agentId, phase, String(status.storyNumber))) return;
 
     // Hard cap: stop re-spawning a subprocess driver that keeps exiting on the same phase, instead
     // of storming (the loop driver caps at 3 internally; subprocess drivers had no cap until here).
