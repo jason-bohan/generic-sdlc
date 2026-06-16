@@ -24,6 +24,7 @@ import {
 } from '../status-normalize';
 import { getAgentModel } from '../route-shared';
 import { getSchedulerWorkflowMode } from '../schedulerMode';
+import { autoCommitWorktree, autoCreatePr } from '../agent-runner/commit-pr';
 import type { UseFn } from './types';
 
 export function mount(use: UseFn, rootDir: string, configFile: string): void {
@@ -186,6 +187,48 @@ export function mount(use: UseFn, rootDir: string, configFile: string): void {
                                 missing: ['code-changes'],
                             }, 409);
                             return;
+                        }
+                    }
+                }
+                // Subprocess-path side-effects. The in-process loop driver runs commit + PR
+                // creation in its complete_phase tool (phase-tools.ts) and POSTs here with the
+                // results already in `outputs`. The claude-code subprocess POSTs the bare contract,
+                // so without this it advanced committing/creating-pr with no commit and no PR
+                // (observed: UNW-141 reached watching-reviews with prs:[]). Gated so the loop driver
+                // (which leaves a clean tree / sets outputs.pr) never double-fires.
+                {
+                    const wfItem = dbGetWorkflowItem(idNum);
+                    const storyNum = wfItem?.story_number?.trim() || '';
+                    const workspaceDir = getActiveProject(configFile)?.workspacePath;
+                    const onTarget = !!workspaceDir && workspaceDir !== rootDir && !!storyNum;
+                    const out = (outputs && typeof outputs === 'object') ? outputs as Record<string, unknown> : {};
+                    if (onTarget && sdlcPhase === 'committing') {
+                        // Only the subprocess path leaves the worktree dirty here; the loop driver
+                        // already committed in-process (clean tree) → skip to avoid a double commit.
+                        const wt = resolve(workspaceDir!, '.claude', 'worktrees', `${sdlcAgentId}-${storyNum}`);
+                        let dirty = false;
+                        if (existsSync(wt)) {
+                            try { dirty = execFileSync('git', ['-C', wt, 'status', '--porcelain'], { encoding: 'utf8', timeout: 10_000 }).split('\n').some(l => l.trim() && !l.includes('node_modules/')); } catch { /* fail closed: skip */ }
+                        }
+                        if (dirty) {
+                            const changeTitle = `${storyNum}: ${wfItem?.story_name || 'changes'}`.slice(0, 120);
+                            const ac = autoCommitWorktree(workspaceDir!, sdlcAgentId, storyNum, changeTitle);
+                            if (!ac.ok) { json(res, { error: `Cannot complete committing for ${storyNum}: ${ac.note}. This phase needs real committed source changes — implement the story in generating-code first.`, missing: ['commit'] }, 409); return; }
+                        }
+                    }
+                    if (onTarget && sdlcPhase === 'creating-pr' && !out.pr && !out.mockPr) {
+                        const changeTitle = `${storyNum}: ${wfItem?.story_name || 'changes'}`.slice(0, 120);
+                        const prBody = `Story ${storyNum}${wfItem?.story_name ? `: ${wfItem.story_name}` : ''}\n\nOpened automatically by the ${sdlcAgentId} agent.`;
+                        const autoPr = autoCreatePr(workspaceDir!, sdlcAgentId, storyNum, changeTitle, prBody, configFile);
+                        if (!autoPr.ok) { json(res, { error: `Cannot complete creating-pr for ${storyNum}: ${autoPr.note}.`, missing: ['pr'] }, 409); return; }
+                        const prMeta = (autoPr.pr ?? autoPr.mockPr) as { number?: number; url?: string; title?: string; branch?: string } | undefined;
+                        if (prMeta && typeof prMeta.number === 'number' && prMeta.number > 0) {
+                            const serverUrl = `http://${req.headers.host || 'localhost:3001'}`;
+                            const handoffBody = JSON.stringify({ agentId: sdlcAgentId, prId: prMeta.number, prTitle: prMeta.title || changeTitle, prUrl: prMeta.url, storyNumber: storyNum, branch: prMeta.branch });
+                            for (let attempt = 1; attempt <= 3; attempt++) {
+                                try { const r = await fetch(`${serverUrl}/api/pr/created`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: handoffBody, signal: AbortSignal.timeout(20_000) }); if (r.ok) break; } catch { /* retry */ }
+                                if (attempt < 3) await new Promise((r) => setTimeout(r, attempt * 1000));
+                            }
                         }
                     }
                 }
