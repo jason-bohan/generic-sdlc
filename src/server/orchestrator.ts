@@ -643,8 +643,15 @@ export function startPhaseRun(input: BuildPhasePromptInput): OrchestratorResult<
             const sfPath = isAbsolute(input.statusFile) ? input.statusFile : resolve(process.cwd(), input.statusFile);
             if (existsSync(sfPath)) {
                 const desk = parseJsonUtf8File(sfPath) as Record<string, unknown>;
-                desk.currentPhase = plan.value.item.active_phase;
-                writeFileSync(sfPath, JSON.stringify(desk, null, 2));
+                // Only write on an ACTUAL phase change. startPhaseRun runs on every continue;
+                // rewriting identical content still bumps mtime and re-triggers the desk
+                // file-watcher → another continue → a tight re-spawn loop (observed: analyzing
+                // re-spawned 5× in 6s to the cap). Guarding on change keeps the advance without
+                // the feedback loop.
+                if (desk.currentPhase !== plan.value.item.active_phase) {
+                    desk.currentPhase = plan.value.item.active_phase;
+                    writeFileSync(sfPath, JSON.stringify(desk, null, 2));
+                }
             }
         } catch { /* best-effort desk sync — never block the phase run on it */ }
     }
