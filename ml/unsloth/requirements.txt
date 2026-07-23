@@ -11,7 +11,7 @@ bitsandbytes==0.49.2
 accelerate==1.14.0
 peft==0.19.1
 transformers==5.12.1
-sentencepiece==0.2.1
+sentencepiece==0.2.2
 protobuf==7.35.1
 huggingface_hub==1.24.0
 safetensors==0.8.0
