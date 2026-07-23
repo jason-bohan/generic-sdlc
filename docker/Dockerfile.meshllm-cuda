@@ -11,7 +11,7 @@ FROM nvidia/cuda:13.3.0-runtime-ubuntu24.04
 
 # As of v0.66 upstream splits the CUDA bundle into -cuda-12 / -cuda-13 variants;
 # match the cuda-13 variant to the nvidia/cuda:13.x base image above.
-ARG MESHLLM_VERSION=v0.71.0
+ARG MESHLLM_VERSION=v0.73.1
 ARG MESHLLM_ARCH=x86_64-unknown-linux-gnu-cuda-13
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
